@@ -1,3 +1,11 @@
+# v0.8
+
+- International sidebar simplified to Overview and Competitions.
+- Fixed international competition card contrast and defensive rendering of incomplete group data.
+- Added player market values to Player Pool.
+- Distributed initial generational players among distinct elite clubs and penalized same-rarity hoarding in elite transfers.
+- Rebuilt Magazine Results as 10-12 narrative stories using static rivalries, competition stage, table context, late goals, and standout performances.
+
 # v0.7
 
 - Added permanent coach competition-season and team-season statistics.

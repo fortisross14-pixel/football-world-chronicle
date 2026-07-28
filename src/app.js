@@ -338,7 +338,6 @@ function internationalNav(currentRoute) {
     <summary><span class="nav-globe">🌐</span><b>International Football</b><i>›</i></summary>
     ${navLink('#/international/overview', 'Overview & nations', 'intl', currentRoute.page === 'international' && currentRoute.id !== 'competitions', true)}
     ${navLink('#/international/competitions', 'Competitions', 'trophy', currentRoute.page === 'international' && currentRoute.id === 'competitions', true)}
-    ${comps.slice(0, 4).map((comp) => navLink(`#/competition/${comp.id}/current`, comp.name, 'trophy', currentRoute.page === 'competition' && currentRoute.id === comp.id, true)).join('')}
   </details>`;
 }
 
@@ -540,7 +539,15 @@ function internationalPage(tabRaw = 'overview') {
 function competitionPage(description, tab = 'current', sub = 'players') {
   const active = TABS.includes(tab) ? tab : 'current';
   const base = baseFor(description);
-  return `${pageHead(description.type === 'league' ? 'DOMESTIC COMPETITION' : description.type.toUpperCase(), description.name, `${description.country} · Active season, annual winners and all-time records.`)}${tabs(base, active)}${active === 'weekly' ? weeklyView(description, base, sub) : active === 'current' ? currentView(description) : active === 'history' ? historyView(description) : statsView(description, base, sub)}`;
+  const heading = `${pageHead(description.type === 'league' ? 'DOMESTIC COMPETITION' : description.type.toUpperCase(), description.name, `${description.country} · Active season, annual winners and all-time records.`)}${tabs(base, active)}`;
+  try {
+    const body = active === 'weekly' ? weeklyView(description, base, sub) : active === 'current' ? currentView(description) : active === 'history' ? historyView(description) : statsView(description, base, sub);
+    return `${heading}${body}`;
+  } catch (error) {
+    console.error(`Unable to render ${description.id}`, error);
+    const matches = competitionMatches(description.id);
+    return `${heading}<section class="panel"><div class="panel-head"><div><span class="eyebrow">CURRENT EDITION</span><h3>${esc(description.object?.stage || description.name)}</h3></div><span class="panel-chip">${matches.length} matches</span></div>${bracketView(description)}${groupTables(description)}<div class="matches-list section-gap">${matches.slice(-24).reverse().map((match) => matchRow(match, true)).join('') || '<div class="empty-state">The competition is scheduled but has no completed matches yet.</div>'}</div></section>`;
+  }
 }
 
 function competitionMatches(id) {
@@ -622,7 +629,7 @@ function leagueTable(rows, relegationCount = 0) {
 function groupTables(description) {
   const groups = description.object.groups || [];
   if (!groups.length) return '';
-  return `<div class="group-grid">${groups.map((group) => `<section class="panel"><div class="panel-head"><div><span class="eyebrow">GROUP ${esc(group.id)}</span><h3>Standings</h3></div></div><div class="mini-table">${[...group.table].sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf).map((row, index) => `<div class="mini-table-row"><span class="rank ${index < 2 ? 'qualify' : ''}">${index + 1}</span>${teamLink(row.teamId, description.type === 'international')}<strong>${row.points}</strong><small>${row.gd >= 0 ? '+' : ''}${row.gd}</small></div>`).join('')}</div></section>`).join('')}</div>`;
+  return `<div class="group-grid">${groups.map((group) => `<section class="panel"><div class="panel-head"><div><span class="eyebrow">GROUP ${esc(group.id)}</span><h3>Standings</h3></div></div><div class="mini-table">${[...(group.table || [])].sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf).map((row, index) => `<div class="mini-table-row"><span class="rank ${index < 2 ? 'qualify' : ''}">${index + 1}</span>${teamLink(row.teamId, description.type === 'international')}<strong>${row.points}</strong><small>${row.gd >= 0 ? '+' : ''}${row.gd}</small></div>`).join('')}</div></section>`).join('')}</div>`;
 }
 
 const leaderPanel = (title, id, metric, position = null) => `<section class="panel"><div class="panel-head"><div><span class="eyebrow">CURRENT YEAR</span><h3>${esc(title)}</h3></div></div>${leaders(id, metric, 10, position)}</section>`;
@@ -773,6 +780,92 @@ function matchRelevance(match) {
   return competition + stage + tableBonus + upsetBonus + Math.max(0, Math.max(home || 60, away || 60) - 68) + (match.homeGoals + match.awayGoals) * 2;
 }
 
+
+const STATIC_RIVALRIES = [
+  ['Real Madrid','Atlético Madrid','Madrid derby'], ['Real Madrid','Athletic Club','historic Spanish rivalry'],
+  ['Sevilla','Real Betis','Seville derby'], ['Valencia','Villarreal','regional rivalry'],
+  ['River Plate','Boca Juniors','Superclásico'], ['Racing Club','Independiente','Avellaneda derby'],
+  ['Manchester City','Manchester United','Manchester derby'], ['Liverpool','Everton','Merseyside derby'],
+  ['Arsenal','Tottenham Hotspur','North London derby'], ['Liverpool','Manchester United','historic English rivalry'],
+  ['Inter Milan','AC Milan','Derby della Madonnina'], ['Roma','Lazio','Derby della Capitale'],
+  ['Juventus','Inter Milan','Derby d’Italia'], ['Bayern Munich','Borussia Dortmund','Der Klassiker'],
+  ['Paris Saint-Germain','Marseille','Le Classique'], ['Benfica','Porto','O Clássico'],
+  ['Celtic','Rangers','Old Firm'], ['Ajax','Feyenoord','De Klassieker'],
+  ['Flamengo','Fluminense','Fla–Flu'], ['Palmeiras','Corinthians','Paulista derby'],
+  ['Al Ahly','Zamalek','Cairo derby'], ['Galatasaray','Fenerbahçe','Intercontinental derby']
+];
+
+function rivalryForMatch(match) {
+  if (match.isInternational) return null;
+  const home = clubById(match.homeId)?.name;
+  const away = clubById(match.awayId)?.name;
+  if (!home || !away) return null;
+  const pair = STATIC_RIVALRIES.find(([a,b]) => (a === home && b === away) || (a === away && b === home));
+  return pair ? pair[2] : null;
+}
+
+function standoutForMatch(match) {
+  const logs = [];
+  for (const [playerId, playerLogs] of Object.entries(state.current.playerMatchLogs || {})) {
+    const log = playerLogs.find((item) => item.matchId === match.id);
+    if (log) logs.push({ player: playerById(playerId), log });
+  }
+  return logs.sort((a,b) => (b.log.goals * 2.2 + b.log.assists + b.log.rating) - (a.log.goals * 2.2 + a.log.assists + a.log.rating))[0] || null;
+}
+
+function leagueContext(match) {
+  const league = state.current.leagues?.[match.competitionId];
+  if (!league) return '';
+  const table = getLeagueTable(state, match.competitionId);
+  const winnerId = match.winnerId;
+  if (!winnerId) return '';
+  const winnerPos = table.findIndex((row) => row.teamId === winnerId) + 1;
+  const loserId = winnerId === match.homeId ? match.awayId : match.homeId;
+  const loserPos = table.findIndex((row) => row.teamId === loserId) + 1;
+  if (winnerPos === 1) return `${getEntityName(state, winnerId, false)} finish the week at the top of ${league.name}`;
+  if (winnerPos <= 4 && loserPos <= 4) return `${getEntityName(state, winnerId, false)} strengthen their position in the title and continental race`;
+  return '';
+}
+
+function narrativeMatchStory(match) {
+  const home = getEntityName(state, match.homeId, match.isInternational);
+  const away = getEntityName(state, match.awayId, match.isInternational);
+  const winnerId = match.winnerId;
+  const winner = winnerId ? getEntityName(state, winnerId, match.isInternational) : null;
+  const loser = winnerId ? getEntityName(state, winnerId === match.homeId ? match.awayId : match.homeId, match.isInternational) : null;
+  const rivalry = rivalryForMatch(match);
+  const standout = standoutForMatch(match);
+  const goals = standout?.log.goals || 0;
+  const lateGoal = [...(match.goalEvents || [])].sort((a,b) => b.minute-a.minute)[0];
+  const stage = match.stage || (state.current.leagues?.[match.competitionId] ? `Week ${match.week}` : 'Current round');
+  const isFinal = /final/i.test(stage) && !/semi/i.test(stage);
+  const isSemi = /semi/i.test(stage);
+  const context = leagueContext(match);
+  let headline;
+  if (isFinal && winner) headline = `${winner} lift ${competitionLabel(match.competitionId)}`;
+  else if (isSemi && winner) headline = `${winner} secure a place in the final`;
+  else if (rivalry && winner && lateGoal?.minute >= 85) headline = `${winner} claim a dramatic late win in the ${rivalry}`;
+  else if (rivalry && winner) headline = `${winner} take the honours in the ${rivalry}`;
+  else if (goals >= 3) headline = `${standout.player.name} inspires ${winner || standout.log.teamId} with a hat trick`;
+  else if (winner && Math.abs(match.homeGoals-match.awayGoals) >= 3) headline = `${winner} deliver a statement victory over ${loser}`;
+  else if (winner) headline = `${winner} win a major ${competitionLabel(match.competitionId)} contest`;
+  else headline = `${home} and ${away} share the points`;
+  const details = [];
+  if (rivalry) details.push(`The ${rivalry} ended ${home} ${match.homeGoals}-${match.awayGoals} ${away}`);
+  else details.push(`${home} ${match.homeGoals}-${match.awayGoals} ${away} was one of the most important results of the last four weeks`);
+  if (lateGoal?.minute >= 85 && winner) {
+    const scorer = playerById(lateGoal.scorerId)?.name;
+    details.push(`${scorer || winner} decided it in the ${lateGoal.minute}th minute`);
+  }
+  if (standout?.player && (goals >= 2 || standout.log.rating >= 8.6)) {
+    details.push(`${standout.player.name} ${goals ? `scored ${goals} goal${goals === 1 ? '' : 's'} and ` : ''}earned a ${standout.log.rating.toFixed(1)} rating`);
+  }
+  if (isFinal && winner) details.push(`${winner} are crowned champions`);
+  else if (isSemi && winner) details.push(`${winner} progress to the final`);
+  else if (context) details.push(context);
+  return { match, headline, body: `${details.join('. ')}.`, relevance: matchRelevance(match) + (rivalry ? 18 : 0) + (goals >= 3 ? 16 : 0) + (lateGoal?.minute >= 85 ? 8 : 0), stage };
+}
+
 function magazineTabs(active) {
   return `<nav class="competition-tabs"><a href="#/magazine/transfers" class="${active === 'transfers' ? 'active' : ''}">Transfers</a><a href="#/magazine/results" class="${active === 'results' ? 'active' : ''}">Results</a><a href="#/magazine/players" class="${active === 'players' ? 'active' : ''}">Player Performances</a></nav>`;
 }
@@ -806,8 +899,8 @@ function magazinePage(tabRaw = 'results') {
     const combined = [...performanceStories.map((story) => ({ ...story, entityId: story.entityId })), ...logStories].sort((a, b) => (b.relevance || 0) - (a.relevance || 0)).filter((story, index, rows) => rows.findIndex((item) => item.headline === story.headline) === index).slice(0, 12);
     return `${pageHead('WORLD FOOTBALL MAGAZINE', 'Player performances', `The most relevant individual stories from weeks ${firstWeek}-${lastWeek}. Competition, stage, opponent and player relevance all affect selection.`)}${magazineTabs(tab)}<section class="panel"><div class="story-list magazine-list">${combined.map((story, index) => `<article class="story-card ${index < 2 ? 'major' : 'digest'}"><div class="story-category">PLAYER PERFORMANCE</div><h4>${esc(story.headline)}</h4><p>${esc(story.body)}</p>${story.entityId ? `<a href="#/player/${esc(story.entityId)}/profile">Open player →</a>` : ''}</article>`).join('') || '<div class="empty-state">No standout performances in the last four weeks.</div>'}</div></section>`;
   }
-  const matches = competitionMatchesAll().filter((match) => match.week >= firstWeek && match.week <= lastWeek).sort((a, b) => matchRelevance(b) - matchRelevance(a)).slice(0, 12);
-  return `${pageHead('WORLD FOOTBALL MAGAZINE', 'Results', `The 10-12 most important games from weeks ${firstWeek}-${lastWeek}, weighted by competition, stage, teams and performance.`)}${magazineTabs(tab)}<section class="panel"><div class="matches-list">${matches.map((match) => matchRow(match)).join('') || '<div class="empty-state">No matches in the current four-week window.</div>'}</div></section>`;
+  const stories = competitionMatchesAll().filter((match) => match.week >= firstWeek && match.week <= lastWeek).map(narrativeMatchStory).sort((a, b) => b.relevance - a.relevance).slice(0, 12);
+  return `${pageHead('WORLD FOOTBALL MAGAZINE', 'Results', `The 10-12 most important stories from weeks ${firstWeek}-${lastWeek}, selected through competition prestige, stage, rivalries, table impact and individual performances.`)}${magazineTabs(tab)}<section class="panel"><div class="story-list magazine-list narrative-results">${stories.map((story, index) => `<article class="story-card ${index < 2 ? 'major' : 'digest'}"><div class="story-matchline"><strong>${esc(getEntityName(state, story.match.homeId, story.match.isInternational))} ${story.match.homeGoals}-${story.match.awayGoals} ${esc(getEntityName(state, story.match.awayId, story.match.isInternational))}</strong><span>${esc(competitionLabel(story.match.competitionId))} · ${esc(story.stage)}</span></div><h4>${esc(story.headline)}</h4><p>${esc(story.body)}</p></article>`).join('') || '<div class="empty-state">No matches in the current four-week window.</div>'}</div></section>`;
 }
 
 function competitionMatchesAll() {
@@ -871,7 +964,7 @@ function playersPage(tabRaw = 'overview') {
     return (!term || player.name.toLowerCase().includes(term) || clubById(player.clubId)?.name.toLowerCase().includes(term))
       && (playerPositionFilter === 'ALL' || player.position === playerPositionFilter);
   }).sort((a, b) => b.rating - a.rating || STAR_RARITIES[b.rarity].rank - STAR_RARITIES[a.rarity].rank);
-  return `${pageHead('PLAYER DATABASE', 'Named stars', 'Every player has a rarity, position, tactical role, contract and pre-generated career path.')}${playerTabs(tab)}<section class="panel"><div class="filter-toolbar"><label>Search<input id="player-search" type="search" value="${esc(playerSearch)}" placeholder="Player or club"></label><label>Position<select id="player-position-filter"><option value="ALL">All positions</option>${['GK', 'DF', 'MF', 'FW'].map((position) => `<option value="${position}" ${playerPositionFilter === position ? 'selected' : ''}>${position}</option>`).join('')}</select></label><span>${fmt(filtered.length)} active players</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>Club</th><th>Nation</th><th>Pos</th><th>Role</th><th>Rarity</th><th>Age</th><th>Rating</th><th>Contract</th></tr></thead><tbody>${filtered.slice(0, 500).map((player) => `<tr><td>${playerLink(player.id)}</td><td>${player.clubId ? teamLink(player.clubId) : '<span class="free-agent">Free agent</span>'}</td><td>${flag(player.nationality)}</td><td>${player.position}</td><td>${esc(player.roleLabel)}</td><td>${rarityBadge(player.rarity)}</td><td>${state.season - player.birthYear}</td><td><strong>${player.rating}</strong></td><td>${player.contractYears ? `${player.contractYears} yr` : 'Free'}</td></tr>`).join('')}</tbody></table></div></section>`;
+  return `${pageHead('PLAYER DATABASE', 'Named stars', 'Every player has a rarity, position, tactical role, contract and pre-generated career path.')}${playerTabs(tab)}<section class="panel"><div class="filter-toolbar"><label>Search<input id="player-search" type="search" value="${esc(playerSearch)}" placeholder="Player or club"></label><label>Position<select id="player-position-filter"><option value="ALL">All positions</option>${['GK', 'DF', 'MF', 'FW'].map((position) => `<option value="${position}" ${playerPositionFilter === position ? 'selected' : ''}>${position}</option>`).join('')}</select></label><span>${fmt(filtered.length)} active players</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>Club</th><th>Nation</th><th>Pos</th><th>Role</th><th>Rarity</th><th>Age</th><th>Rating</th><th>Market value</th><th>Contract</th></tr></thead><tbody>${filtered.slice(0, 500).map((player) => `<tr><td>${playerLink(player.id)}</td><td>${player.clubId ? teamLink(player.clubId) : '<span class="free-agent">Free agent</span>'}</td><td>${flag(player.nationality)}</td><td>${player.position}</td><td>${esc(player.roleLabel)}</td><td>${rarityBadge(player.rarity)}</td><td>${state.season - player.birthYear}</td><td><strong>${player.rating}</strong></td><td><strong>${money(player.marketValue)}</strong></td><td>${player.contractYears ? `${player.contractYears} yr` : 'Free'}</td></tr>`).join('')}</tbody></table></div></section>`;
 }
 
 function playerStatisticsTable(activePlayers) {

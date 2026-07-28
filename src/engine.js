@@ -466,6 +466,23 @@ function createClubsAndPlayers(state) {
     rarity: orderedRarities[index]
   }));
 
+  // Elite talents should begin at elite clubs, but not all at the same club merely
+  // because that club occupies the first several roster slots in the sorted deck.
+  const generationalPlayers = players.filter((player) => player.rarity === 'generational');
+  const eliteDestinations = [...clubs]
+    .filter((club) => club.division === 1)
+    .sort((a, b) => b.reputation - a.reputation || b.finances - a.finances);
+  generationalPlayers.forEach((player, index) => {
+    const target = eliteDestinations[index % Math.max(1, eliteDestinations.length)];
+    if (!target || player.clubId === target.id) return;
+    const swap = players.find((candidate) => candidate.clubId === target.id && candidate.position === player.position && candidate.rarity !== 'generational')
+      || players.find((candidate) => candidate.clubId === target.id && candidate.rarity !== 'generational');
+    if (!swap) return;
+    const oldClubId = player.clubId;
+    player.clubId = target.id;
+    swap.clubId = oldClubId;
+  });
+
   for (const team of NATIONAL_TEAMS) {
     if (!players.some((player) => player.nationality === team.id && player.status === 'active')) {
       players.push(createPlayer(state, {
@@ -2647,7 +2664,9 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
     if (!possibleBuyers.length) continue;
     const buyer = weightedPick(state, possibleBuyers, (club) => {
       const positionFit = positionNeed(state, club) === player.position ? 12 : 3;
-      return Math.max(1, club.reputation - 63 + positionFit + (club.ownerNegotiationBonus || 0) * 30);
+      const eliteAtClub = (rosters.get(club.id) || []).filter((item) => item.rarity === player.rarity).length;
+      const hoardingPenalty = player.rarity === 'generational' ? 1 / (1 + eliteAtClub * 3.2) : player.rarity === 'legend' ? 1 / (1 + eliteAtClub * 0.8) : 1;
+      return Math.max(1, (club.reputation - 63 + positionFit + (club.ownerNegotiationBonus || 0) * 30) * hoardingPenalty);
     });
     const fee = seller ? askingPrice(state, player, buyer) : 0;
     const acceptance = clamp(0.58 + desire / 160 + (buyer.reputation - (seller?.reputation || 60)) / 90 + (buyer.ownerNegotiationBonus || 0) * 0.35, 0.35, 0.98);

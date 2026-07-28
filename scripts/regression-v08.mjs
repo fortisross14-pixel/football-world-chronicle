@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { createWorld, simulateNextWeek } from '../src/engine.js';
+const state = createWorld(8082001);
+const gens = state.players.filter((p) => p.rarity === 'generational');
+assert.equal(gens.length, 3);
+assert.equal(new Set(gens.map((p) => p.clubId)).size, 3, 'Initial generational players must be spread over three elite clubs');
+while (state.current.week < 49) simulateNextWeek(state);
+const wc = state.current.internationalCompetitions.WC;
+assert(wc, 'World Cup edition should exist');
+assert((wc.groups || []).every((g) => Array.isArray(g.table)), 'World Cup groups should expose renderable tables');
+assert(state.current.matches.some((m) => m.competitionId === 'WC'), 'World Cup should expose matches');
+console.log(JSON.stringify({ generationalClubs: gens.map((p) => state.clubs.find((c) => c.id === p.clubId)?.name), worldCupStage: wc.stage, worldCupMatches: state.current.matches.filter((m) => m.competitionId === 'WC').length }, null, 2));
