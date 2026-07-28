@@ -1,3 +1,36 @@
+# v0.7
+
+- Added permanent coach competition-season and team-season statistics.
+- Added games, wins, draws, losses, win percentage, goals scored, goals conceded, clean sheets and titles for coaches.
+- Added coach profile pages with current job, rarity, nationality, tactical identity, career timeline, detailed competition record and trophy years.
+- Added Coaches as a third Competition Stats sub-tab.
+- Added a sortable Coaches section to the Almanac and global search.
+- Stored the winning coach with every newly archived competition champion.
+- Rebalanced national-team hiring: Tier 1 nations now overwhelmingly choose domestic coaches, while smaller nations remain more open to foreign appointments.
+- Rebalanced club hiring to approximately 60–65% domestic coaches for major clubs, with elite clubs recruiting more globally.
+- Rebuilt coach generation nationality distribution around the actual number of club and national-team jobs in each country.
+- Added save migration to data revision 7.
+- No Neon schema changes are required.
+
+# v0.6
+
+- Replaced generated condensed-country club names with recognizable six-club sets across the 137-country universe.
+- Replaced text/emoji flag rendering with image-backed flags and reliable fallbacks.
+- Fixed unreadable club text on dark player-profile headers.
+- Optimized the global Player Statistics page and limited output to the top 50.
+- Added competition-position filters and ranking by goals, assists, clean sheets, rating, games and titles.
+- Promoted Magazine to first-level navigation with Transfers, Results and Player Performances tabs.
+- Added four-week relevance scoring for major results, top-table clashes, upsets, finals and elite performances.
+- Added current-year award races and historical Ballon d’Or, Golden Boot and Kopa podiums, plus annual positional winners.
+- Added persistent International Football Overview/Nations and Competitions sections.
+- Moved the first World Cup into the June–July 2002 window and continental qualifying/finals into their intended summer cycles.
+- Added visible brackets and weekly fixtures/results for domestic cups, continental tournaments and international competitions.
+- Added full World Cup final recaps with champion, finalist, MVP, young player, goalkeeper and top scorer.
+- Fixed duplicate World Cup season statistics; a player can now record at most seven appearances in one edition.
+- Increased same-nationality coach hiring, especially in major football countries, while preserving elite international appointments.
+- Added version-4 save migration for renamed clubs and new archive fields.
+- No Neon schema changes are required.
+
 # v0.5
 
 - Added prominent mobile Home/Menu controls, navigation scrim and close control.

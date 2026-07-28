@@ -660,3 +660,103 @@ button { cursor: pointer; }
   .search-button { display:flex; }
   .season-summary-grid, .season-award-strip { grid-template-columns:1fr; }
 }
+
+/* v0.6 international calendar, magazine, flags and competition archives */
+.country-flag {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid rgba(15,35,52,.16);
+  border-radius: 3px;
+  background: #e7edf3;
+  color: #31485d;
+  line-height: 1;
+}
+.country-flag img {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.country-flag .flag-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: -.02em;
+}
+.country-flag-xs { width: 18px; height: 13px; font-size: 7px; }
+.country-flag-sm { width: 24px; height: 17px; font-size: 7px; }
+.country-flag-md { width: 34px; height: 24px; font-size: 8px; }
+.country-flag-lg { width: 52px; height: 36px; font-size: 10px; border-radius: 5px; }
+.country-flag-xl { width: 84px; height: 58px; font-size: 12px; border-radius: 7px; }
+
+.player-entity .entity-meta,
+.player-entity .entity-meta a,
+.player-entity .entity-link,
+.player-entity .entity-link span,
+.player-entity .entity-button,
+.player-entity .entity-button span {
+  color: #fff;
+}
+.player-entity .entity-link:hover { color: #dcecff; }
+
+.bracket-panel { overflow: hidden; }
+.bracket-scroll { width: 100%; overflow-x: auto; padding-bottom: 8px; -webkit-overflow-scrolling: touch; }
+.bracket-grid { display: flex; align-items: flex-start; gap: 14px; width: max-content; min-width: 100%; }
+.bracket-round { width: 238px; flex: 0 0 238px; }
+.bracket-round h4 { margin: 0 0 9px; color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.bracket-match { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: 7px; min-height: 56px; margin-bottom: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-2); }
+.bracket-match .entity-link { min-width: 0; font-size: 10px; }
+.bracket-match .entity-link:last-of-type { justify-content: flex-end; text-align: right; }
+.bracket-match > strong { color: var(--blue); font-size: 12px; white-space: nowrap; }
+.bracket-match > small { grid-column: 1 / -1; color: var(--muted); text-align: center; }
+.bracket-match.upcoming > strong { color: var(--muted); }
+
+.international-recap { margin-bottom: 16px; padding: 22px 24px; border-radius: 18px; color: #fff; background: #162d44; }
+.international-recap h2 { margin: 7px 0 8px; font-size: 24px; }
+.international-recap p { max-width: 850px; margin: 0; color: #d5e2ed; line-height: 1.55; }
+.international-competition-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.international-card { min-height: 118px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: 15px; background: var(--paper); }
+.international-card span { color: var(--blue); font-size: 9px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.international-card h3 { margin: 6px 0 5px; font-size: 16px; }
+.international-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.international-card > b { color: var(--blue); font-size: 20px; }
+
+.award-race-stack { display: grid; gap: 14px; }
+.magazine-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.magazine-list .story-card { margin: 0; }
+.magazine-list .story-card.major { grid-column: span 1; }
+.magazine-list .story-card a { display: inline-block; margin-top: 9px; color: var(--blue); font-size: 11px; font-weight: 800; }
+
+@media (max-width: 880px) {
+  .international-competition-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .magazine-list { grid-template-columns: 1fr; }
+  .country-flag-xl { width: 62px; height: 43px; font-size: 10px; }
+}
+
+@media (max-width: 620px) {
+  .international-competition-grid { grid-template-columns: 1fr; }
+  .international-recap { padding: 18px; }
+  .international-recap h2 { font-size: 20px; }
+  .bracket-round { width: 210px; flex-basis: 210px; }
+  .bracket-match { grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); }
+}
+
+/* v0.7 coach archive */
+.staff-card-head h3 a { color: inherit; text-decoration: none; }
+.staff-card-head h3 a:hover { color: var(--blue); }
+.archive-winner-cell { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.archive-winner-cell small { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); white-space: nowrap; }
+.coach-entity .player-number { font-size: 54px; }
+@media (max-width: 720px) {
+  .archive-winner-cell { flex-direction: column; gap: 4px; }
+  .archive-winner-cell small { white-space: normal; }
+}

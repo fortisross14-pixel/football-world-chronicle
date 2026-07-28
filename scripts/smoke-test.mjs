@@ -40,6 +40,7 @@ assert(Object.keys(world.current.domesticCups).length === LEAGUE_DEFINITIONS.len
 assert(Object.keys(world.current.continentalCompetitions).length === CONTINENTAL_DEFINITIONS.length, 'Not every continental club competition initialized');
 assert(world.current.champions === world.current.continentalCompetitions.UCL, 'Champions League alias is broken');
 assert(Object.keys(world.current.internationalCompetitions).includes('WCQ'), '2001 must open with World Cup qualifying');
+assert(world.clubs.filter((club) => club.country === 'Croatia').some((club) => club.name === 'Dinamo Zagreb'), 'Croatia must use recognizable club names');
 
 for (const league of detailed) {
   const top = world.current.leagues[league.id].table.length;
@@ -76,18 +77,31 @@ assert(eliteTransfers.length >= 2, 'The opening market did not move enough elite
 simulateToSeasonEnd(world);
 assert(world.current.completed, 'The 2001 season did not close');
 assert(world.internationalCycle.worldCupQualified.length === 32, 'World Cup qualifying did not produce 32 teams');
+assert(world.current.date.startsWith('2002-07'), `The 2001-02 season should archive after the summer tournament, received ${world.current.date}`);
+assert(world.current.internationalCompetitions.WC?.completed && world.current.internationalCompetitions.WC?.championId, 'The 2002 World Cup did not complete');
+assert(world.current.internationalCompetitions.WC?.knockout?.rounds?.length === 4, 'The World Cup knockout bracket is incomplete');
+const worldCupMatches = [...(world.current.archivedKnockoutMatches || []), ...(world.current.matches || [])].filter((match) => match.competitionId === 'WC');
+assert(world.current.internationalCompetitions.WC.groupWeeks[0] === 44, 'The World Cup must begin in the June summer window');
+assert(worldCupMatches.some((match) => match.stage === 'Final' && match.week === 50), 'The World Cup final must be played before the season archive');
+const worldCupRows = (world.current.archivedPlayerStats || []).filter((row) => row.competitionId === 'WC');
+assert(Math.max(...worldCupRows.map((row) => row.apps), 0) <= 7, 'A player exceeded seven games in one World Cup edition');
 assert(getLeagueTable(world, 'ESP1')[0].played === 38, 'La Liga did not complete 38 matches per club');
 assert(summary.every((league) => world.current.leagues[league.id].championId), 'A summary league failed to produce a champion');
 for (const competition of CONTINENTAL_DEFINITIONS) {
   assert(world.history.champions.some((entry) => entry.competitionId === competition.id), `${competition.name} champion was not archived`);
 }
-assert(world.history.awards.some((award) => award.category === 'ballon_dor' && award.rank === 1), 'Ballon d’Or was not awarded');
+assert([1, 2, 3].every((rank) => world.history.awards.some((award) => award.category === 'ballon_dor' && award.rank === rank)), 'Ballon d’Or podium was not awarded');
+assert([1, 2, 3].every((rank) => world.history.awards.some((award) => award.category === 'kopa' && award.rank === rank)), 'Kopa Trophy podium was not awarded');
 for (const category of ['mvp', 'best_goalkeeper', 'best_defender', 'best_midfielder', 'best_forward', 'golden_boot']) {
   assert(world.history.awards.some((award) => award.category === category && award.rank === 1), `Missing ${category} award`);
 }
 const seasonReview = world.history.seasonReviews.at(-1);
 assert(seasonReview?.competitionWinners?.length >= 8, 'The season summary did not retain major competition winners');
 assert(seasonReview?.goldenBootPlayerId, 'The season summary did not retain the Golden Boot winner');
+const goldenBootAward = world.history.awards.find((award) => award.category === 'golden_boot' && award.rank === 1 && award.season === 2001);
+const domesticLeagueIds = new Set(LEAGUE_DEFINITIONS.map((league) => league.id));
+const winnerLeagueGoals = (world.current.archivedPlayerStats || []).filter((row) => row.playerId === goldenBootAward.playerId && domesticLeagueIds.has(row.competitionId)).reduce((sum, row) => sum + row.goals, 0);
+assert(goldenBootAward.details?.goals === winnerLeagueGoals, 'World Golden Boot must use domestic league goals only');
 
 const preMovement = new Map(detailed.map((league) => [league.id, world.clubs.filter((club) => club.leagueId === league.id && club.division === 1).map((club) => club.id).sort().join('|')]));
 startNextSeason(world);

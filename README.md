@@ -1,4 +1,4 @@
-# Football World Chronicle — v0.5
+# Football World Chronicle — v0.7
 
 A browser-first football universe simulator with 137 domestic systems, continental club football, international cycles, long player careers, transfers, club staff, historical records and optional Neon cloud saves.
 
@@ -19,13 +19,13 @@ The repository is ready for the existing GitHub → Vercel workflow.
 
 1. Confirm the Vercel project has `DATABASE_URL`.
 2. Confirm Neon contains `cloud_saves` from `database/cloud-save.sql`.
-3. Replace the repository files with v0.5.
+3. Replace the repository files with v0.7.
 4. Push to GitHub and let Vercel deploy.
 5. Open the game and press **Save**.
 
 No local Vercel variables are required unless cloud saving is tested on localhost.
 
-## v0.5 football world
+## v0.7 football world
 
 - **137 national teams and 137 domestic football systems**.
 - **29 full leagues** with 20 top-flight teams, seven promotion-pool clubs and annual three-up/three-down movement.
@@ -33,6 +33,37 @@ No local Vercel variables are required unless cloud saving is tested on localhos
 - **1,431 persistent clubs**, approximately **7,500 active named players**, 1,431 presidents/owners and a larger coach market.
 - FC Barcelona remains excluded. Atlético Madrid, Athletic Club, Valencia and Sevilla begin with stronger resources and quality.
 - The calendar begins in **2001**.
+
+
+## v0.7 coaching history and nationality balance
+
+### Coach history
+
+- Every match now updates the active club or national-team coach record.
+- Coach profiles show team-by-season and competition-by-competition results.
+- Competition Stats includes a Coaches tab for games, wins, win rate, goals, goals conceded and titles.
+- Almanac includes a sortable Coach archive with rarity, nationality and current job.
+- Winning coaches are permanently attached to competition champions.
+
+### Nationality balance
+
+- Tier 1 national teams overwhelmingly prefer a coach from their own country.
+- Tier 2 and Tier 3 countries retain progressively softer domestic preferences.
+- Minor national teams remain open to foreign expertise.
+- Major clubs target roughly 60–65% domestic appointments; elite clubs recruit more globally.
+
+
+- Condensed countries now use recognizable real club names rather than generated labels such as “Croatia Athletic”.
+- Flags use image-backed country flags with compact code fallbacks.
+- Player Statistics and competition rankings render only the top 50 and can be filtered by position and ranked by goals, assists, clean sheets, rating, games or titles.
+- Magazine is a first-level menu with Transfers, Results and Player Performances sections. Results are selected from the last four weeks using competition, round, club strength, table position, upset and score relevance.
+- Annual Awards now retain Ballon d’Or, World Golden Boot and Kopa gold/silver/bronze, plus best GK, defender, midfielder and forward.
+- International Football has a persistent competition directory for qualifiers and final tournaments. The first World Cup begins in June 2002, runs week by week through groups and the final, and is archived before the next transfer window.
+- Domestic cups, continental competitions and international tournaments expose knockout brackets and weekly fixtures/results.
+- World Cup appearances are compacted once per edition and capped naturally at seven matches.
+- Coaches are more frequently recruited from the club or national team’s own country, while elite coach generation remains concentrated in stronger football nations.
+
+No Neon schema change is required. v0.7 remains compatible with version-4 JSON cloud saves. Existing universes are upgraded in place; coach statistics begin from matches available after the upgrade.
 
 ## Continental club football
 
