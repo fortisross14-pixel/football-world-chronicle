@@ -774,3 +774,72 @@ button { cursor: pointer; }
   .story-matchline { display: block; }
   .story-matchline span { display: block; margin-top: 5px; text-align: left; }
 }
+
+/* v0.8.2: reliable two-row mobile toolbar.
+   Keep navigation controls in normal flow so the simulation bar can never cover them. */
+@media (max-width: 880px) {
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    height: auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 10px 9px;
+    background: rgba(255,255,255,.98);
+  }
+
+  .mobile-home-button { grid-column: 1; grid-row: 1; }
+  .menu-button { grid-column: 2; grid-row: 1; }
+  .date-block { grid-column: 3; grid-row: 1; min-width: 0; }
+  .cloud-save-top { grid-column: 4; grid-row: 1; }
+  .search-button { grid-column: 5; grid-row: 1; }
+
+  .sim-controls {
+    position: static;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    margin: 1px 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .sim-controls .control-button,
+  .sim-controls .primary-button {
+    width: 100%;
+    min-width: 0;
+    height: 42px;
+    min-height: 42px;
+    padding: 0 8px;
+    white-space: nowrap;
+  }
+
+  .content { padding-bottom: 70px; }
+}
+
+@media (max-width: 420px) {
+  .topbar { gap: 5px; padding-inline: 7px; }
+  .mobile-home-button,
+  .menu-button {
+    min-width: 54px;
+    padding: 0 6px;
+  }
+  .cloud-save-top,
+  .search-button {
+    width: 38px;
+    min-width: 38px;
+  }
+  .sim-controls { gap: 5px; }
+  .sim-controls .control-button,
+  .sim-controls .primary-button { font-size: 10px; padding: 0 5px; }
+}

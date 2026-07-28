@@ -1,3 +1,7 @@
+## v0.8.2
+- Rebuilt the mobile header as a two-row sticky toolbar so Home and Menu can never be covered by simulation controls.
+- Simulation buttons remain visible directly below the navigation row without using fixed positioning.
+
 # v0.8.1
 
 - Fixed competition routing crash caused by a missing `baseFor` helper. International competitions such as the World Cup now render after their hash route opens.
