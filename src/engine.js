@@ -318,7 +318,7 @@ function createPlayer(state, {
   const id = `${club?.id || actualNationality}-${slug(name)}-${state.nextPlayerId}`;
   state.nextPlayerId += 1;
   const age = 18 + initialCareerYear;
-  const value = calculateMarketValueRaw(baseQuality, rarity, age);
+  const value = calculateMarketValueRaw(baseQuality, rarity, age, actualPosition);
   return {
     id,
     name,
@@ -347,7 +347,7 @@ function createPlayer(state, {
   };
 }
 
-function calculateMarketValueRaw(baseQuality, rarity, age) {
+function calculateMarketValueRaw(baseQuality, rarity, age, position = 'MF') {
   const rarityMultiplier = {
     generational: 4.1,
     legend: 2.9,
@@ -356,13 +356,14 @@ function calculateMarketValueRaw(baseQuality, rarity, age) {
     uncommon: 0.48,
     common: 0.18
   }[rarity] || 0.18;
+  const positionMultiplier = { GK: 0.42, DF: 0.82, MF: 0.96, FW: 1.08 }[position] || 1;
   const ageMultiplier = age <= 23 ? 1.15 : age <= 28 ? 1 : age <= 31 ? 0.78 : 0.48;
-  return Number(Math.max(0.4, ((baseQuality - 52) ** 1.45) * rarityMultiplier * ageMultiplier / 2.6).toFixed(1));
+  return Number(Math.max(0.4, ((baseQuality - 52) ** 1.45) * rarityMultiplier * positionMultiplier * ageMultiplier / 2.6).toFixed(1));
 }
 
 function calculateMarketValue(state, player) {
   const age = state.season - player.birthYear;
-  return calculateMarketValueRaw(player.baseQuality, player.rarity, age);
+  return calculateMarketValueRaw(player.baseQuality, player.rarity, age, player.position);
 }
 
 function initialRarityDeck(state, count) {
@@ -1021,7 +1022,7 @@ function calculateTeamStrength(state, teamId, isInternational) {
   const coachBonus = tactics.coach ? (tactics.coach.quality - 65) * 0.045 : 0;
   const ownerBonus = isInternational ? 0 : (getClub(state, teamId)?.ownerSportingBonus || 0);
   const recentContinentalTitles = isInternational ? 0 : (getRuntimeCache(state).recentContinentalTitles.get(teamId) || 0);
-  const dynastyPressure = Math.max(0, recentContinentalTitles - 1) * 0.7;
+  const dynastyPressure = recentContinentalTitles * 0.65 + Math.max(0, recentContinentalTitles - 1) * 1.0;
   return base * (1 - namedInfluence) + weighted * namedInfluence + form + coachBonus + ownerBonus - dynastyPressure;
 }
 
@@ -1832,9 +1833,13 @@ function calculateCompetitionAwards(state, competitionId, competitionName) {
     stats,
     (stat) => stat.goals * 100 + stat.assists + stat.averageRating / 10
   );
-  const offensive = chooseBestPlayer(
-    stats.filter((stat) => ['FW', 'MF'].includes(getPlayer(state, stat.playerId)?.position)),
-    (stat) => stat.averageRating * 25 + stat.goals * 3 + stat.assists * 2
+  const forward = chooseBestPlayer(
+    stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'FW'),
+    (stat) => stat.averageRating * 27 + stat.goals * 3.2 + stat.assists * 1.7
+  );
+  const midfielder = chooseBestPlayer(
+    stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'MF'),
+    (stat) => stat.averageRating * 29 + stat.goals * 2 + stat.assists * 2.8 + stat.cleanSheets * 0.25
   );
   const defender = chooseBestPlayer(
     stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'DF'),
@@ -1849,10 +1854,11 @@ function calculateCompetitionAwards(state, competitionId, competitionName) {
     (stat) => stat.averageRating * 35 + stat.goals * 2.3 + stat.assists * 1.5 + stat.cleanSheets * 0.5
   );
   award(state, `${competitionName} Top Scorer`, scorer?.playerId, competitionId, 1, 'top_scorer');
-  award(state, `${competitionName} Best Offensive Player`, offensive?.playerId, competitionId, 1, 'best_offensive');
-  award(state, `${competitionName} Best Defender`, defender?.playerId, competitionId, 1, 'best_defender');
-  award(state, `${competitionName} Best Goalkeeper`, goalkeeper?.playerId, competitionId, 1, 'best_goalkeeper');
   award(state, `${competitionName} Player of the Season`, mvp?.playerId, competitionId, 1, 'mvp');
+  award(state, `${competitionName} Best Goalkeeper`, goalkeeper?.playerId, competitionId, 1, 'best_goalkeeper');
+  award(state, `${competitionName} Best Defender`, defender?.playerId, competitionId, 1, 'best_defender');
+  award(state, `${competitionName} Best Midfielder`, midfielder?.playerId, competitionId, 1, 'best_midfielder');
+  award(state, `${competitionName} Best Forward`, forward?.playerId, competitionId, 1, 'best_forward');
 }
 
 function calculateAwards(state) {
@@ -1929,6 +1935,16 @@ function calculateAwards(state) {
     if (stat.isInternational) item.internationalScore += (stat.goals * 3 + stat.assists * 1.5 + stat.averageRating) * weight;
     aggregate.set(stat.playerId, item);
   });
+  const goldenBootCoefficients = new Map(LEAGUE_DEFINITIONS.map((league) => {
+    const coefficient = eliteLeagueIds.has(league.id) ? 2 : strongLeagueIds.has(league.id) ? 1.5 : league.tier === 'detailed' ? 1.25 : 1;
+    return [league.id, coefficient];
+  }));
+  const goldenBoot = Object.values(state.current.playerStats)
+    .filter((stat) => goldenBootCoefficients.has(stat.competitionId) && stat.apps > 0)
+    .map((stat) => ({ ...stat, goldenPoints: stat.goals * goldenBootCoefficients.get(stat.competitionId) }))
+    .sort((a, b) => b.goldenPoints - a.goldenPoints || b.goals - a.goals || b.averageRating - a.averageRating)[0];
+  award(state, 'World Golden Boot', goldenBoot?.playerId, 'GLOBAL', 1, 'golden_boot');
+
   const clubTitleBonus = (clubId) => {
     if (!clubId) return 0;
     let bonus = 0;
@@ -2484,22 +2500,32 @@ function evolveWorld(state) {
 }
 
 function askingPrice(state, player, buyer = null) {
-  const happinessFactor = 0.52 + (player.happiness || 50) / 100;
-  const contractFactor = 0.78 + Math.min(5, player.contractYears || 0) * 0.09;
+  const happinessFactor = 0.38 + (player.happiness || 50) / 125;
+  const contractFactor = 0.62 + Math.min(5, player.contractYears || 0) * 0.09;
   const discount = 1 - (buyer?.ownerNegotiationBonus || 0) * 0.34;
   return Number((player.marketValue * happinessFactor * contractFactor * discount).toFixed(1));
 }
 
 function positionNeed(state, club) {
   const players = state.players.filter((player) => player.clubId === club.id && player.status === 'active');
+  const positions = ['GK', 'DF', 'MF', 'FW'];
   const counts = { GK: 0, DF: 0, MF: 0, FW: 0 };
-  players.forEach((player) => { counts[player.position] += 1; });
+  const totals = { GK: 0, DF: 0, MF: 0, FW: 0 };
+  players.forEach((player) => {
+    counts[player.position] += 1;
+    totals[player.position] += player.rating;
+  });
   const ideal = club.tier === 'detailed'
     ? { GK: 1, DF: 2, MF: 2, FW: 2 }
-    : { GK: 1, DF: 1, MF: 2, FW: 1 };
-  return Object.keys(ideal).sort(
-    (a, b) => (ideal[b] - counts[b]) - (ideal[a] - counts[a])
-  )[0];
+    : { GK: 1, DF: 1, MF: 1, FW: 1 };
+  const missing = positions.filter((position) => counts[position] < ideal[position]);
+  if (missing.length) return weightedPick(state, missing, (position) => (ideal[position] - counts[position]) * (position === 'GK' ? 0.8 : 1.2));
+  const naturalPriority = { GK: 0.38, DF: 1.08, MF: 1.22, FW: 1.34 };
+  return weightedPick(state, positions, (position) => {
+    const average = counts[position] ? totals[position] / counts[position] : club.strength - 12;
+    const qualityGap = clamp(club.strength - average + 8, 1, 22);
+    return naturalPriority[position] * qualityGap;
+  });
 }
 
 function transferPlayer(state, player, buyer, seller, fee, freeTransfer = false) {
@@ -2538,6 +2564,54 @@ function transferPlayer(state, player, buyer, seller, fee, freeTransfer = false)
   }
 }
 
+function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = false) {
+  const caps = { generational: 1, legend: 4, epic: initial ? 7 : 10 };
+  const moved = { generational: 0, legend: 0, epic: 0 };
+  let moves = 0;
+  const candidates = activePlayers
+    .filter((player) => ['generational', 'legend', 'epic'].includes(player.rarity))
+    .map((player) => {
+      const seller = getClub(state, player.clubId);
+      const desire = (100 - player.happiness) * 0.75 + Math.max(0, 3 - (player.contractYears || 0)) * 11 + random(state) * 25 + (seller ? Math.max(0, 84 - seller.reputation) * 0.35 : 28);
+      return { player, seller, desire };
+    })
+    .filter(({ player, seller, desire }) => !seller || desire >= (player.rarity === 'generational' ? 34 : player.rarity === 'legend' ? 27 : 27))
+    .sort((a, b) => STAR_RARITIES[b.player.rarity].rank - STAR_RARITIES[a.player.rarity].rank || b.desire - a.desire || b.player.rating - a.player.rating);
+
+  for (const candidate of candidates) {
+    const { player, seller, desire } = candidate;
+    if (moved[player.rarity] >= caps[player.rarity]) continue;
+    if (seller) {
+      const sellerTarget = seller.division === 2 ? CLUB_ROSTER_TARGET.reserve : CLUB_ROSTER_TARGET[seller.tier];
+      if ((rosters.get(seller.id)?.length || 0) <= Math.max(3, sellerTarget - 1)) continue;
+    }
+    const possibleBuyers = clubs.filter((buyer) => {
+      if (buyer.id === seller?.id || buyer.division === 2) return false;
+      if (buyer.reputation < Math.max(70, (seller?.reputation || 64) - (desire > 50 ? 11 : 6))) return false;
+      const fee = seller ? askingPrice(state, player, buyer) : 0;
+      if (fee > buyer.transferBudget || player.salary > Math.max(0.8, buyer.wageBudget * 0.52)) return false;
+      const samePosition = (rosters.get(buyer.id) || []).filter((item) => item.position === player.position);
+      const weakest = samePosition.sort((a, b) => a.rating - b.rating)[0];
+      return !weakest || player.rating >= weakest.rating + (player.rarity === 'epic' ? 1 : 0);
+    });
+    if (!possibleBuyers.length) continue;
+    const buyer = weightedPick(state, possibleBuyers, (club) => {
+      const positionFit = positionNeed(state, club) === player.position ? 12 : 3;
+      return Math.max(1, club.reputation - 63 + positionFit + (club.ownerNegotiationBonus || 0) * 30);
+    });
+    const fee = seller ? askingPrice(state, player, buyer) : 0;
+    const acceptance = clamp(0.58 + desire / 160 + (buyer.reputation - (seller?.reputation || 60)) / 90 + (buyer.ownerNegotiationBonus || 0) * 0.35, 0.35, 0.98);
+    if (random(state) > acceptance) continue;
+    const oldClubId = player.clubId;
+    transferPlayer(state, player, buyer, seller, fee, !seller);
+    if (oldClubId && rosters.has(oldClubId)) rosters.set(oldClubId, rosters.get(oldClubId).filter((item) => item.id !== player.id));
+    rosters.get(buyer.id).push(player);
+    moved[player.rarity] += 1;
+    moves += 1;
+  }
+  return moves;
+}
+
 function runTransferMarket(state, initial = false) {
   const clubs = shuffle(state, [...state.clubs]).sort((a, b) => b.reputation - a.reputation + (random(state) - 0.5) * 12);
   const activePlayers = state.players.filter((player) => player.status === 'active');
@@ -2545,7 +2619,7 @@ function runTransferMarket(state, initial = false) {
   for (const club of state.clubs) rosters.set(club.id, []);
   activePlayers.forEach((player) => { if (player.clubId && rosters.has(player.clubId)) rosters.get(player.clubId).push(player); });
   const maxMoves = initial ? Math.min(260, Math.round(state.clubs.length * 0.18)) : Math.min(420, Math.round(state.clubs.length * 0.24));
-  let moves = 0;
+  let moves = runEliteTransferMarket(state, clubs, activePlayers, rosters, initial);
   for (const buyer of clubs) {
     if (moves >= maxMoves) break;
     if (buyer.division === 2 && random(state) < 0.56) continue;
@@ -2600,23 +2674,45 @@ function closeSeason(state) {
   );
   const internationalChampion = Object.values(state.current.internationalCompetitions || {})
     .find((competition) => competition.championId)?.championId || null;
+  const goldenBoot = state.history.awards.find(
+    (item) => item.season === state.season && item.category === 'golden_boot' && item.rank === 1
+  );
+  const flagshipIds = new Set(['UCL', 'UEL', 'UECL', 'LIB', 'SUD', 'CCC', 'ACL', 'CAFCL', 'OCL']);
+  const competitionWinners = [
+    ...Object.values(state.current.continentalCompetitions || {})
+      .filter((competition) => flagshipIds.has(competition.id) && competition.championId)
+      .map((competition) => ({ competitionId: competition.id, competitionName: competition.name, winnerId: competition.championId, isInternational: false })),
+    ...Object.values(state.current.internationalCompetitions || {})
+      .filter((competition) => competition.championId)
+      .map((competition) => ({ competitionId: competition.id, competitionName: competition.name, winnerId: competition.championId, isInternational: true }))
+  ];
   state.history.seasonReviews.push({
     season: state.season,
     seasonLabel: formatSeason(state.season),
     championsCupWinnerId: state.current.champions.championId,
     spainChampionId: sortTable(state.current.leagues.ESP1.table)[0]?.teamId,
     internationalChampionId: internationalChampion,
-    ballonDorPlayerId: ballon?.playerId || null
+    ballonDorPlayerId: ballon?.playerId || null,
+    goldenBootPlayerId: goldenBoot?.playerId || null,
+    competitionWinners
   });
 
   state.current.archivedMatchCount = state.current.matches.length;
   state.current.matches = [];
   state.current.playerMatchLogs = {};
+  const summaryNames = competitionWinners.slice(0, 6).map((winner) => `${winner.competitionName}: ${getTeamName(state, winner.winnerId, winner.isInternational)}`).join(' · ');
   state.current.news = [{
-    id: `news-${state.season}-archive`,
+    id: `news-${state.season}-summary`,
     week: state.current.week,
     importance: 'feature',
-    category: 'Season Review',
+    category: 'Season Summary',
+    headline: `${formatSeason(state.season)} champions and world awards`,
+    body: `${summaryNames}${ballon ? ` · Ballon d'Or: ${getPlayer(state, ballon.playerId)?.name}` : ''}${goldenBoot ? ` · Golden Boot: ${getPlayer(state, goldenBoot.playerId)?.name}` : ''}`
+  }, {
+    id: `news-${state.season}-archive`,
+    week: state.current.week,
+    importance: 'digest',
+    category: 'Archive',
     headline: `${formatSeason(state.season)} has been archived`,
     body: `${state.current.archivedMatchCount} match records were consolidated into permanent player, club, award and trophy summaries.`
   }];

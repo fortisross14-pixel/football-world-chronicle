@@ -1,20 +1,23 @@
-# v0.4 deterministic balance pass
+# v0.5 deterministic balance pass
 
-The included report simulates eight complete seasons from the same seed.
+The included report simulates **six complete seasons** from a fixed seed after the transfer and dynasty adjustments.
 
 ## Results
 
-- Six different Champions League winners.
-- Longest Champions League title streak: two seasons.
+- 4 different Champions League winners.
+- Longest Champions League title streak: 1 season.
 - No weak-club Champions League winner under the test threshold.
-- Every Ballon d'Or winner came from an elite European context.
-- Stable active-player population: 7,715 after eight seasons.
-- Highest-scoring Common player: 198 goals in 347 appearances, well below the runaway-career warning.
-- Average transfer activity: 332 moves per season.
-- Median club finances: $334m; maximum $920.5m; no club crossed the $1bn hoarding threshold.
+- Ballon d'Or credible-context rate: 100%.
+- Highest-scoring Common player: 152 goals in 199 appearances.
+- Average transfer activity: 329 moves per season.
+- Median club finances after six seasons: $252.0m.
+- Clubs above the $1bn warning threshold: 1 of 1,431.
+- The test completed with **no balance warnings**.
+
+The transfer-market smoke test also checks that goalkeepers do not occupy more than four of the 20 largest deals and that elite players move during the opening window.
 
 The machine-readable output is in `docs/BALANCE_REPORT.json`. Run it again with:
 
 ```bash
-npm run balance
+BALANCE_SEASONS=6 npm run balance
 ```

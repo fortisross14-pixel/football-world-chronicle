@@ -1,4 +1,4 @@
-# Football World Chronicle — v0.4
+# Football World Chronicle — v0.5
 
 A browser-first football universe simulator with 137 domestic systems, continental club football, international cycles, long player careers, transfers, club staff, historical records and optional Neon cloud saves.
 
@@ -19,13 +19,13 @@ The repository is ready for the existing GitHub → Vercel workflow.
 
 1. Confirm the Vercel project has `DATABASE_URL`.
 2. Confirm Neon contains `cloud_saves` from `database/cloud-save.sql`.
-3. Replace the repository files with v0.4.
+3. Replace the repository files with v0.5.
 4. Push to GitHub and let Vercel deploy.
 5. Open the game and press **Save**.
 
 No local Vercel variables are required unless cloud saving is tested on localhost.
 
-## v0.4 football world
+## v0.5 football world
 
 - **137 national teams and 137 domestic football systems**.
 - **29 full leagues** with 20 top-flight teams, seven promotion-pool clubs and annual three-up/three-down movement.
@@ -90,18 +90,20 @@ The World Magazine now publishes:
 
 Player and club profiles list the exact trophies, individual awards and winning seasons rather than only an aggregate honors number.
 
+The mobile layout now has permanent **Home** and **Menu** controls. Major clubs use recognizable real-world color treatments, competition archives include positional awards, player profiles include a club-by-season timeline, and completed seasons show a dedicated summary with major champions, Ballon d’Or and the coefficient-weighted World Golden Boot.
+
 ## Balancing and performance
 
-The engine includes an eight-season deterministic balance test covering continental dominance, Ballon d’Or context, player scoring, transfer activity, active-player population and club finances.
+The engine includes a configurable deterministic balance test covering continental dominance, Ballon d’Or context, player scoring, transfer activity, active-player population and club finances.
 
-A tested eight-season sample produced:
+The current six-season sample produced:
 
-- Six Champions League winners; the longest title streak was two seasons.
-- Ballon d’Or winners exclusively from elite European contexts in that sample.
+- Four Champions League winners; no consecutive winner.
+- A 100% credible-context rate for Ballon d’Or winners.
 - No weak Champions League winner.
 - Stable active-player population.
-- About 332 transfers per season.
-- No club exceeding the anti-hoarding finance warning.
+- About 329 transfers per season.
+- One club above $1bn after six years, below the anti-hoarding warning threshold.
 
 Runtime roster and entity indexes substantially reduce weekly simulation work, especially for later seasons and condensed-league closure.
 

@@ -1,3 +1,14 @@
+# v0.5
+
+- Added prominent mobile Home/Menu controls, navigation scrim and close control.
+- Added authentic color treatments for major European, Argentine, Brazilian, Mexican and Japanese clubs.
+- Rebalanced transfer position needs, goalkeeper market values and elite-player movement.
+- Added competition MVP plus best GK, defender, midfielder and forward awards.
+- Added World Golden Boot using league-strength coefficients.
+- Added an end-of-season summary with major continental winners and world awards.
+- Added a club-by-season career timeline to player profiles.
+- No Neon schema changes: cloud saves remain JSON snapshots.
+
 # v0.4 — Complete Football World
 
 ## Domestic universe

@@ -121,7 +121,7 @@ button { cursor: pointer; }
 .entity-link:hover, .player-link:hover { color: var(--blue); }
 .player-link { color: #26384b; font-weight: 700; }
 
-.crest { display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: white; background: hsl(var(--crest-hue), 60%, 42%); border: 2px solid rgba(255,255,255,.8); box-shadow: 0 0 0 1px hsla(var(--crest-hue),60%,30%,.22); font-weight: 850; letter-spacing: -.04em; }
+.crest { display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: var(--crest-ink,#fff); background: var(--crest-bg,#315f8e); border: 2px solid var(--crest-border,rgba(255,255,255,.8)); box-shadow: 0 0 0 1px rgba(20,38,56,.18); font-weight: 900; letter-spacing: -.04em; text-shadow: 0 1px 1px rgba(255,255,255,.28); }
 .crest-sm { width: 25px; height: 25px; font-size: 7px; }
 .crest-md { width: 34px; height: 34px; font-size: 9px; }
 .crest-xl { width: 108px; height: 108px; font-size: 24px; border-width: 5px; }
@@ -623,4 +623,40 @@ button { cursor: pointer; }
   background: rgba(166, 52, 52, 0.14);
   color: #8f2f2f;
   border-color: rgba(166, 52, 52, 0.28);
+}
+
+
+/* v0.5 mobile navigation, season summary and authentic club colors */
+.mobile-home-button { display:none; }
+.sidebar-close { display:none; margin-left:auto; width:36px; height:36px; border:0; border-radius:9px; color:#eaf1f7; background:rgba(255,255,255,.08); font-size:22px; }
+.sidebar-scrim { display:none; position:fixed; inset:0; z-index:29; border:0; background:rgba(7,17,27,.54); backdrop-filter:blur(2px); }
+.season-summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.season-summary-row { min-height:58px; display:flex; flex-direction:column; justify-content:center; gap:7px; padding:10px 12px; border-radius:11px; background:var(--surface-2); border:1px solid #e5ebf0; }
+.season-summary-row > span { color:var(--muted); font-size:9px; font-weight:850; letter-spacing:.06em; text-transform:uppercase; }
+.season-award-strip { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:12px; }
+.season-award-strip > div { min-height:64px; padding:12px 14px; border-radius:11px; color:white; background:#183047; }
+.season-award-strip > div > span { display:block; margin-bottom:7px; color:#9fb4c7; font-size:9px; font-weight:850; letter-spacing:.09em; }
+.season-award-strip .player-link { color:white; }
+
+@media (max-width:880px) {
+  body.nav-open { overflow:hidden; }
+  .sidebar.open + .sidebar-scrim, .sidebar-scrim.open { display:block; }
+  .sidebar-close { display:grid; place-items:center; }
+  .mobile-home-button, .menu-button { height:42px; min-width:66px; display:flex; align-items:center; justify-content:center; gap:5px; padding:0 10px; border-radius:11px; color:#123047; background:#edf4fb; border:1px solid #cdddeb; font-size:11px; font-weight:850; }
+  .mobile-home-button .nav-icon, .menu-button .nav-icon { width:auto; min-width:0; font-size:17px; }
+  .topbar { height:64px; padding:8px 10px; gap:7px; }
+  .date-block { flex:1; text-align:center; }
+  .date-kicker { font-size:8px; }
+  .date-main { font-size:10px; }
+  .search-button, .cloud-save-top { width:40px; min-width:40px; padding:0; justify-content:center; }
+  .season-summary-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width:620px) {
+  .mobile-home-button, .menu-button { min-width:58px; padding:0 8px; }
+  .mobile-home-button span:last-child, .menu-button span:last-child { font-size:10px; }
+  .date-main { display:none; }
+  .date-kicker { font-size:9px; line-height:1.2; }
+  .search-button { display:flex; }
+  .season-summary-grid, .season-award-strip { grid-template-columns:1fr; }
 }

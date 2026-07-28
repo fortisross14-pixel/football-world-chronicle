@@ -45,6 +45,87 @@ const CLOUD_CODE_KEY = 'football-world-cloud-code-v1';
 const TABS = ['weekly', 'current', 'history', 'stats'];
 const PLAYER_TABS = ['overview', 'statistics'];
 const PLAYER_PAGE_TABS = ['profile', 'statistics', 'honours'];
+const CLUB_VISUALS = {
+  'Real Madrid': ['#ffffff', '#5f259f', '#d4af37'],
+  'Atlético Madrid': ['linear-gradient(90deg,#d71920 0 22%,#ffffff 22% 44%,#d71920 44% 66%,#ffffff 66% 78%,#d71920 78%)', '#102a56', '#102a56'],
+  'Athletic Club': ['linear-gradient(90deg,#d71920 0 25%,#ffffff 25% 50%,#d71920 50% 75%,#ffffff 75%)', '#111827', '#d71920'],
+  'Valencia': ['#ffffff', '#111827', '#f28c28'],
+  'Sevilla': ['#ffffff', '#d71920', '#d71920'],
+  'Villarreal': ['#ffe667', '#173b73', '#173b73'],
+  'Real Sociedad': ['linear-gradient(90deg,#1d67b1 0 25%,#ffffff 25% 50%,#1d67b1 50% 75%,#ffffff 75%)', '#163a67', '#1d67b1'],
+  'Real Betis': ['linear-gradient(90deg,#168f4a 0 25%,#ffffff 25% 50%,#168f4a 50% 75%,#ffffff 75%)', '#0e5b30', '#168f4a'],
+  'Manchester City': ['#6cabdd', '#ffffff', '#1c2c5b'],
+  'Manchester United': ['#da291c', '#fbe122', '#111111'],
+  'Liverpool': ['#c8102e', '#ffffff', '#00b2a9'],
+  'Arsenal': ['#ef0107', '#ffffff', '#063672'],
+  'Chelsea': ['#034694', '#ffffff', '#dba111'],
+  'Tottenham': ['#ffffff', '#132257', '#132257'],
+  'Newcastle United': ['linear-gradient(90deg,#111111 0 25%,#ffffff 25% 50%,#111111 50% 75%,#ffffff 75%)', '#111111', '#41b6e6'],
+  'Aston Villa': ['#95bfe5', '#670e36', '#670e36'],
+  'West Ham': ['#7a263a', '#1bb1e7', '#f3d459'],
+  'Everton': ['#003399', '#ffffff', '#ffffff'],
+  'Leeds United': ['#ffffff', '#1d428a', '#ffcd00'],
+  'Inter': ['linear-gradient(90deg,#0068a8 0 25%,#111111 25% 50%,#0068a8 50% 75%,#111111 75%)', '#ffffff', '#0068a8'],
+  'AC Milan': ['linear-gradient(90deg,#fb090b 0 25%,#111111 25% 50%,#fb090b 50% 75%,#111111 75%)', '#ffffff', '#fb090b'],
+  'Juventus': ['linear-gradient(90deg,#111111 0 25%,#ffffff 25% 50%,#111111 50% 75%,#ffffff 75%)', '#111111', '#111111'],
+  'Napoli': ['#12a0d7', '#ffffff', '#0a6da0'],
+  'Roma': ['#8e1f2f', '#f5a623', '#f5a623'],
+  'Lazio': ['#87d8f7', '#ffffff', '#ffffff'],
+  'Fiorentina': ['#5b2c83', '#ffffff', '#ffffff'],
+  'Atalanta': ['linear-gradient(90deg,#1e71b8 0 25%,#111111 25% 50%,#1e71b8 50% 75%,#111111 75%)', '#ffffff', '#1e71b8'],
+  'Bayern Munich': ['#dc052d', '#ffffff', '#0066b2'],
+  'Borussia Dortmund': ['#fde100', '#111111', '#111111'],
+  'Bayer Leverkusen': ['#e32221', '#111111', '#111111'],
+  'RB Leipzig': ['#ffffff', '#d50032', '#001e5a'],
+  'Eintracht Frankfurt': ['#111111', '#ffffff', '#e1000f'],
+  'Paris Saint-Germain': ['#004170', '#ffffff', '#da291c'],
+  'Marseille': ['#ffffff', '#2faee0', '#2faee0'],
+  'Monaco': ['linear-gradient(135deg,#e30613 0 50%,#ffffff 50%)', '#111111', '#e30613'],
+  'Lyon': ['#ffffff', '#1f5aa6', '#e30613'],
+  'Lille': ['#d71920', '#ffffff', '#12284b'],
+  'Benfica': ['#e10600', '#ffffff', '#f3c32d'],
+  'Porto': ['linear-gradient(90deg,#004b9b 0 25%,#ffffff 25% 50%,#004b9b 50% 75%,#ffffff 75%)', '#123b6d', '#004b9b'],
+  'Sporting CP': ['linear-gradient(90deg,#168f4a 0 25%,#ffffff 25% 50%,#168f4a 50% 75%,#ffffff 75%)', '#0b5c2e', '#168f4a'],
+  'Ajax': ['#ffffff', '#d2122e', '#d2122e'],
+  'PSV': ['linear-gradient(90deg,#ed1b24 0 25%,#ffffff 25% 50%,#ed1b24 50% 75%,#ffffff 75%)', '#111111', '#ed1b24'],
+  'Feyenoord': ['linear-gradient(90deg,#ffffff 0 50%,#e21b23 50%)', '#111111', '#111111'],
+  'Celtic': ['linear-gradient(90deg,#188b45 0 25%,#ffffff 25% 50%,#188b45 50% 75%,#ffffff 75%)', '#0e5b2e', '#188b45'],
+  'Rangers': ['#1b458f', '#ffffff', '#e30613'],
+  'Galatasaray': ['linear-gradient(90deg,#a90432 0 50%,#fdb912 50%)', '#ffffff', '#a90432'],
+  'Fenerbahçe': ['linear-gradient(90deg,#ffed00 0 50%,#002d72 50%)', '#111111', '#002d72'],
+  'Beşiktaş': ['#111111', '#ffffff', '#ffffff'],
+  'River Plate': ['#ffffff', '#d71920', '#d71920'],
+  'Boca Juniors': ['#003b73', '#f9d616', '#f9d616'],
+  'Racing Club': ['linear-gradient(90deg,#6ec5e9 0 25%,#ffffff 25% 50%,#6ec5e9 50% 75%,#ffffff 75%)', '#1d4c78', '#6ec5e9'],
+  'Independiente': ['#d71920', '#ffffff', '#ffffff'],
+  'San Lorenzo': ['linear-gradient(90deg,#1d428a 0 50%,#d71920 50%)', '#ffffff', '#1d428a'],
+  'Vélez Sarsfield': ['#ffffff', '#1d4c91', '#1d4c91'],
+  'Estudiantes': ['linear-gradient(90deg,#d71920 0 25%,#ffffff 25% 50%,#d71920 50% 75%,#ffffff 75%)', '#111111', '#d71920'],
+  'Flamengo': ['linear-gradient(90deg,#d71920 0 50%,#111111 50%)', '#ffffff', '#d71920'],
+  'Palmeiras': ['#006437', '#ffffff', '#ffffff'],
+  'Botafogo': ['linear-gradient(90deg,#111111 0 25%,#ffffff 25% 50%,#111111 50% 75%,#ffffff 75%)', '#111111', '#111111'],
+  'Fluminense': ['linear-gradient(90deg,#7a263a 0 34%,#ffffff 34% 66%,#00843d 66%)', '#ffffff', '#7a263a'],
+  'São Paulo': ['#ffffff', '#d71920', '#111111'],
+  'Corinthians': ['#ffffff', '#111111', '#111111'],
+  'Grêmio': ['linear-gradient(90deg,#5bb8e8 0 34%,#111111 34% 66%,#ffffff 66%)', '#111111', '#5bb8e8'],
+  'Internacional': ['#d71920', '#ffffff', '#ffffff'],
+  'Santos': ['#ffffff', '#111111', '#111111'],
+  'Club América': ['#fff200', '#123a7a', '#d71920'],
+  'Tigres UANL': ['#f5c400', '#1d3f73', '#1d3f73'],
+  'Monterrey': ['linear-gradient(90deg,#1d3f73 0 25%,#ffffff 25% 50%,#1d3f73 50% 75%,#ffffff 75%)', '#1d3f73', '#1d3f73'],
+  'Cruz Azul': ['#1755a3', '#ffffff', '#e31b23'],
+  'Guadalajara': ['linear-gradient(90deg,#d71920 0 34%,#ffffff 34% 66%,#1d3f73 66%)', '#111111', '#1d3f73'],
+  'Kawasaki Frontale': ['#62b5e5', '#111111', '#111111'],
+  'Yokohama F. Marinos': ['#1d4f91', '#ffffff', '#d71920'],
+  'Vissel Kobe': ['#8b1e3f', '#ffffff', '#111111'],
+  'Urawa Red Diamonds': ['#e60012', '#ffffff', '#111111'],
+  'Kashima Antlers': ['#b5122b', '#ffffff', '#002b49'],
+  'Sanfrecce Hiroshima': ['#5b2c83', '#ffffff', '#ffffff'],
+  'Gamba Osaka': ['linear-gradient(90deg,#1d4f91 0 50%,#111111 50%)', '#ffffff', '#1d4f91'],
+  'Cerezo Osaka': ['#e85a9b', '#111111', '#1d4f91'],
+  'FC Tokyo': ['linear-gradient(90deg,#1d4f91 0 50%,#e60012 50%)', '#ffffff', '#1d4f91'],
+  'Nagoya Grampus': ['#d71920', '#f3c32d', '#f3c32d']
+};
 
 function openSaveDatabase() {
   return new Promise((resolve, reject) => {
@@ -155,7 +236,11 @@ function flag(value, size = 'sm') {
 function crest(id, size = 'md') {
   const club = clubById(id);
   const initials = (club?.name || id).split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
-  return `<span class="crest crest-${size}" style="--crest-hue:${club?.crestHue ?? 210}">${esc(initials)}</span>`;
+  const visual = club ? CLUB_VISUALS[club.name] : null;
+  const style = visual
+    ? `--crest-bg:${visual[0]};--crest-ink:${visual[1]};--crest-border:${visual[2]}`
+    : `--crest-bg:hsl(${club?.crestHue ?? 210},60%,42%);--crest-ink:#fff;--crest-border:hsla(${club?.crestHue ?? 210},60%,28%,.55)`;
+  return `<span class="crest crest-${size}" style="${style}">${esc(initials)}</span>`;
 }
 
 function rarityBadge(rarity) {
@@ -191,7 +276,7 @@ function route() {
 
 function icon(name) {
   const icons = {
-    world: '◎', awards: '★', region: '◈', intl: '◉', trophy: '◆', reset: '↺',
+    home: '⌂', world: '◎', awards: '★', region: '◈', intl: '◉', trophy: '◆', reset: '↺',
     menu: '☰', search: '⌕', other: '…', players: '●', archive: '▤',
     transfer: '⇄', cloud: '☁', load: '⇩', save: '⇧'
   };
@@ -233,7 +318,7 @@ function internationalNav(currentRoute) {
 function sidebar(currentRoute) {
   const otherCountries = LEAGUE_DEFINITIONS.map((league) => league.country).filter((country) => !PRIORITY_COUNTRIES.includes(country));
   return `<aside class="sidebar" id="sidebar">
-    <div class="brand-block"><div class="brand-mark">FW</div><div><div class="brand-title">Football World</div><div class="brand-subtitle">Chronicle</div></div></div>
+    <div class="brand-block"><div class="brand-mark">FW</div><div><div class="brand-title">Football World</div><div class="brand-subtitle">Chronicle</div></div><button class="sidebar-close" data-action="close-menu" aria-label="Close navigation">×</button></div>
     <nav class="sidebar-nav">
       <div class="nav-section-label">World</div>
       ${navLink('#/world', 'World', 'world', currentRoute.page === 'world')}
@@ -269,7 +354,8 @@ function sidebar(currentRoute) {
 
 function topbar() {
   return `<header class="topbar">
-    <button class="menu-button" data-action="toggle-menu">${icon('menu')}</button>
+    <a class="mobile-home-button" href="#/world" aria-label="Go to world home">${icon('home')}<span>Home</span></a>
+    <button class="menu-button" data-action="toggle-menu" aria-label="Open navigation">${icon('menu')}<span>Menu</span></button>
     <div class="date-block"><div class="date-kicker">${esc(state.current.seasonLabel)} · Week ${state.current.week}</div><div class="date-main">${dateLabel(state.current.date)}</div></div>
     <div class="sim-controls">
       ${state.current.completed
@@ -329,6 +415,15 @@ function descriptor(id) {
 
 const baseFor = (description) => description.type === 'league' ? `#/league/${description.id}` : `#/competition/${description.id}`;
 
+function latestSeasonSummary() {
+  const review = [...(state.history.seasonReviews || [])].sort((a, b) => b.season - a.season)[0];
+  if (!review || !state.current.completed) return '';
+  const winners = review.competitionWinners || [];
+  const ballon = playerById(review.ballonDorPlayerId);
+  const goldenBoot = playerById(review.goldenBootPlayerId);
+  return `<section class="panel season-summary section-gap"><div class="panel-head"><div><span class="eyebrow">SEASON SUMMARY</span><h3>${esc(review.seasonLabel)} at a glance</h3></div><span class="panel-chip">Archived</span></div><div class="season-summary-grid">${winners.map((winner) => `<div class="season-summary-row"><span>${esc(winner.competitionName)}</span>${teamLink(winner.winnerId, winner.isInternational)}</div>`).join('')}</div><div class="season-award-strip"><div><span>BALLON D'OR</span>${ballon ? playerLink(ballon.id) : '<strong>—</strong>'}</div><div><span>WORLD GOLDEN BOOT</span>${goldenBoot ? playerLink(goldenBoot.id) : '<strong>—</strong>'}</div></div></section>`;
+}
+
 function worldPage() {
   const active = state.players.filter((player) => player.status === 'active').length;
   const rarities = getRarityCounts(state);
@@ -338,7 +433,7 @@ function worldPage() {
     <section class="hero-panel">
       <div class="hero-copy"><span class="hero-pill">${NATIONAL_TEAMS.length} NATIONAL TEAMS · ${LEAGUE_DEFINITIONS.filter((league) => league.tier === 'detailed').length} FULL LEAGUES · ${LEAGUE_DEFINITIONS.filter((league) => league.tier === 'summary').length} SUMMARY LEAGUES</span><h2>One connected football world, from a weekly league match to the Ballon d'Or.</h2><p>${esc(internationalNames)} run beside domestic and continental football. Current-season match detail is archived into compact permanent statistics every summer.</p><div class="season-progress"><div class="season-progress-fill" style="width:${Math.min(100, Math.round(state.current.week / 44 * 100))}%"></div></div><div class="progress-label"><span>Opening market</span><strong>Week ${state.current.week} of 44</strong><span>Season archive</span></div></div>
       <div class="hero-metrics">${statCard('Clubs', fmt(state.clubs.length), 'Visible football organizations')}${statCard('Active stars', fmt(active), 'Named career players')}${statCard('International teams', fmt(NATIONAL_TEAMS.length), 'Six confederations')}${statCard('Transfers', fmt(transferCount), 'This opening market')}</div>
-    </section>
+    </section>${latestSeasonSummary()}
     <div class="rarity-ribbon section-gap">
       ${['generational', 'legend', 'epic', 'rare', 'uncommon', 'common'].map((rarity) => `<div>${rarityBadge(rarity)}<strong>${fmt(rarities[rarity] || 0)}</strong></div>`).join('')}
     </div>
@@ -458,10 +553,10 @@ function currentView(description) {
 function historyView(description) {
   const champions = state.history.champions.filter((row) => row.competitionId === description.id).sort((a, b) => b.season - a.season);
   const awardFor = (season, category) => state.history.awards.find((row) => row.season === season && row.competitionId === description.id && row.category === category && row.rank === 1);
-  return `<section class="panel"><div class="panel-head"><div><span class="eyebrow">YEAR BY YEAR</span><h3>Champions and individual leaders</h3></div><span class="muted">Permanent after season close</span></div><div class="table-scroll"><table class="data-table history-table"><thead><tr><th>Season</th><th>Champion</th><th>Runner-up</th><th>Top scorer</th><th>Best offensive player</th><th>Best defender</th></tr></thead><tbody>${champions.map((champion) => {
+  return `<section class="panel"><div class="panel-head"><div><span class="eyebrow">YEAR BY YEAR</span><h3>Champions and positional awards</h3></div><span class="muted">Permanent after season close</span></div><div class="table-scroll"><table class="data-table history-table"><thead><tr><th>Season</th><th>Champion</th><th>Runner-up</th><th>Top scorer</th><th>Best player</th><th>Best GK</th><th>Best defender</th><th>Best midfielder</th><th>Best forward</th></tr></thead><tbody>${champions.map((champion) => {
     const international = champion.isInternational;
-    return `<tr><td><strong>${esc(champion.seasonLabel)}</strong></td><td>${teamLink(champion.winnerId, international)}</td><td>${champion.runnerUpId ? teamLink(champion.runnerUpId, international) : '—'}</td><td>${playerLink(awardFor(champion.season, 'top_scorer')?.playerId)}</td><td>${playerLink(awardFor(champion.season, 'best_offensive')?.playerId)}</td><td>${playerLink(awardFor(champion.season, 'best_defender')?.playerId)}</td></tr>`;
-  }).join('') || '<tr><td colspan="6">Complete a season to create the historical archive.</td></tr>'}</tbody></table></div></section>`;
+    return `<tr><td><strong>${esc(champion.seasonLabel)}</strong></td><td>${teamLink(champion.winnerId, international)}</td><td>${champion.runnerUpId ? teamLink(champion.runnerUpId, international) : '—'}</td><td>${playerLink(awardFor(champion.season, 'top_scorer')?.playerId)}</td><td>${playerLink(awardFor(champion.season, 'mvp')?.playerId)}</td><td>${playerLink(awardFor(champion.season, 'best_goalkeeper')?.playerId)}</td><td>${playerLink(awardFor(champion.season, 'best_defender')?.playerId)}</td><td>${playerLink(awardFor(champion.season, 'best_midfielder')?.playerId)}</td><td>${playerLink(awardFor(champion.season, 'best_forward')?.playerId || awardFor(champion.season, 'best_offensive')?.playerId)}</td></tr>`;
+  }).join('') || '<tr><td colspan="9">Complete a season to create the historical archive.</td></tr>'}</tbody></table></div></section>`;
 }
 
 function aggregatePlayerCompetition(description) {
@@ -611,6 +706,24 @@ function honoursList(rows, nameKey) {
   return `<div class="honours-list">${groups.map((group) => `<div class="honour-line"><div><strong>${esc(group.name)} ×${group.years.length}</strong><span>${group.years.sort((a, b) => a - b).join(', ')}</span></div></div>`).join('')}</div>`;
 }
 
+function playerClubTimeline(player, career) {
+  const rows = [...career.seasons, ...career.current].filter((row) => !row.isInternational && row.apps > 0);
+  const map = new Map();
+  for (const row of rows) {
+    const season = row.season ?? state.season;
+    const seasonLabel = row.seasonLabel || state.current.seasonLabel;
+    const key = `${season}::${row.teamId}`;
+    const item = map.get(key) || { season, seasonLabel, teamId: row.teamId, apps: 0, goals: 0, assists: 0, ratingWeighted: 0 };
+    item.apps += row.apps || 0;
+    item.goals += row.goals || 0;
+    item.assists += row.assists || 0;
+    item.ratingWeighted += (row.averageRating || 0) * (row.apps || 0);
+    map.set(key, item);
+  }
+  const timeline = [...map.values()].map((row) => ({ ...row, averageRating: row.apps ? row.ratingWeighted / row.apps : 0 })).sort((a, b) => b.season - a.season || b.apps - a.apps);
+  return `<section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">CLUB CAREER</span><h3>Teams by season</h3></div><span class="muted">Quick total across all club competitions</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Season</th><th>Club</th><th>Games</th><th>Goals</th><th>Assists</th><th>Rating</th></tr></thead><tbody>${timeline.map((row) => `<tr><td><strong>${esc(row.seasonLabel)}</strong></td><td>${teamLink(row.teamId)}</td><td>${row.apps}</td><td>${row.goals}</td><td>${row.assists}</td><td>${row.averageRating ? row.averageRating.toFixed(2) : '—'}</td></tr>`).join('') || `<tr><td colspan="6">${esc(player.name)} has not completed a club season yet.</td></tr>`}</tbody></table></div></section>`;
+}
+
 function playerPage(id, tabRaw = 'profile') {
   const player = playerById(id);
   if (!player) return notFound();
@@ -624,7 +737,7 @@ function playerPage(id, tabRaw = 'profile') {
   const careerLabel = CAREER_TYPES[player.careerType]?.label || player.careerType;
   return `${heading}<section class="entity-hero player-entity"><div class="player-number">${player.position}</div><div class="entity-main"><div class="entity-badges">${rarityBadge(player.rarity)}${flag(player.nationality)}</div><span class="entity-kicker">${esc(player.roleLabel)}</span><h2>${esc(player.name)}</h2><div class="entity-meta">${player.clubId ? teamLink(player.clubId) : '<span class="free-agent">Free agent</span>'} · ${player.contractYears ? `${player.contractYears} years remaining` : 'Out of contract'}</div></div><div class="rating-orbit"><strong>${player.rating}</strong><span>ABILITY</span></div></section>
     <div class="stats-ribbon section-gap">${statCard('Base quality', player.baseQuality, STAR_RARITIES[player.rarity].label)}${statCard('Market value', money(player.marketValue), `Salary ${money(player.salary)}`)}${statCard('Happiness', player.happiness, player.happiness < 45 ? 'Open to a move' : 'Settled')}${statCard('International', `${career.international.caps} / ${career.international.goals}`, 'Caps / goals')}</div>
-    <div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><span class="eyebrow">CAREER MODEL</span><h3>${esc(careerLabel)} · ${esc(player.careerLengthType)} career</h3></div><span class="muted">Year ${player.careerYear + 1} of ${player.careerLength}</span></div><div class="career-curve">${player.careerMultipliers.map((multiple, index) => `<div class="career-year ${index === player.careerYear ? 'current' : ''} ${index < player.careerYear ? 'past' : ''}"><span>Y${index + 1}</span><strong>${multiple.toFixed(2)}</strong><small>${Math.round(player.baseQuality * multiple)}</small></div>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">TACTICAL ROLE</span><h3>${esc(player.roleLabel)}</h3></div></div><p class="role-copy">Role influences scoring, assists and defensive contributions. ${player.position === 'FW' && player.role === 'winger' ? 'Wingers trade some scoring volume for more assists.' : player.position === 'MF' ? 'Midfield roles shape the balance between creation, scoring and defensive value.' : player.position === 'DF' ? 'Defender roles change clean-sheet impact and attacking output.' : 'Goalkeeper style affects defensive influence.'}</p></section></div>`;
+    <div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><span class="eyebrow">CAREER MODEL</span><h3>${esc(careerLabel)} · ${esc(player.careerLengthType)} career</h3></div><span class="muted">Year ${player.careerYear + 1} of ${player.careerLength}</span></div><div class="career-curve">${player.careerMultipliers.map((multiple, index) => `<div class="career-year ${index === player.careerYear ? 'current' : ''} ${index < player.careerYear ? 'past' : ''}"><span>Y${index + 1}</span><strong>${multiple.toFixed(2)}</strong><small>${Math.round(player.baseQuality * multiple)}</small></div>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">TACTICAL ROLE</span><h3>${esc(player.roleLabel)}</h3></div></div><p class="role-copy">Role influences scoring, assists and defensive contributions. ${player.position === 'FW' && player.role === 'winger' ? 'Wingers trade some scoring volume for more assists.' : player.position === 'MF' ? 'Midfield roles shape the balance between creation, scoring and defensive value.' : player.position === 'DF' ? 'Defender roles change clean-sheet impact and attacking output.' : 'Goalkeeper style affects defensive influence.'}</p></section></div>${playerClubTimeline(player, career)}`;
 }
 
 function playerStatisticsPage(player, career) {
@@ -720,7 +833,7 @@ function page(currentRoute) {
 
 function render() {
   const currentRoute = route();
-  document.getElementById('app').innerHTML = `<div class="app-shell">${sidebar(currentRoute)}<div class="main-shell">${topbar()}<main class="content">${page(currentRoute)}</main></div></div>${searchOverlay()}${clubModal()}<div id="toast-root"></div>`;
+  document.getElementById('app').innerHTML = `<div class="app-shell">${sidebar(currentRoute)}<button class="sidebar-scrim" id="sidebar-scrim" data-action="close-menu" aria-label="Close navigation"></button><div class="main-shell">${topbar()}<main class="content">${page(currentRoute)}</main></div></div>${searchOverlay()}${clubModal()}<div id="toast-root"></div>`;
   bind();
 }
 
@@ -945,7 +1058,19 @@ document.addEventListener('click', async (event) => {
   if (!target) return;
   const action = target.dataset.action;
   if (['simulate-week', 'simulate-month', 'simulate-season', 'next-season'].includes(action)) await simulate(action);
-  if (action === 'toggle-menu') document.getElementById('sidebar')?.classList.toggle('open');
+  if (action === 'toggle-menu') {
+    const sidebarElement = document.getElementById('sidebar');
+    const scrim = document.getElementById('sidebar-scrim');
+    const open = !sidebarElement?.classList.contains('open');
+    sidebarElement?.classList.toggle('open', open);
+    scrim?.classList.toggle('open', open);
+    document.body.classList.toggle('nav-open', open);
+  }
+  if (action === 'close-menu') {
+    document.getElementById('sidebar')?.classList.remove('open');
+    document.getElementById('sidebar-scrim')?.classList.remove('open');
+    document.body.classList.remove('nav-open');
+  }
   if (action === 'toggle-search') { searchOpen = !searchOpen; render(); }
   if (action === 'close-search') { searchOpen = false; render(); }
   if (action === 'open-club-modal') { event.preventDefault(); clubModalId = target.dataset.id; searchOpen = false; render(); }
@@ -962,6 +1087,7 @@ document.addEventListener('click', async (event) => {
 });
 
 window.addEventListener('hashchange', () => {
+  document.body.classList.remove('nav-open');
   searchOpen = false;
   clubModalId = null;
   render();

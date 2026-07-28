@@ -67,6 +67,11 @@ simulateNextWeek(world);
 assert(world.current.week === 1, 'Week did not advance');
 assert(world.current.matches.length > 200, 'The detailed football calendar did not simulate');
 assert(world.current.transfers.length > 100, 'The opening transfer market generated too few moves');
+const topTransfers = [...world.current.transfers].sort((a, b) => b.fee - a.fee).slice(0, 20);
+const topGoalkeepers = topTransfers.filter((move) => world.players.find((player) => player.id === move.playerId)?.position === 'GK');
+const eliteTransfers = world.current.transfers.filter((move) => ['generational', 'legend', 'epic'].includes(world.players.find((player) => player.id === move.playerId)?.rarity));
+assert(topGoalkeepers.length <= 4, `Goalkeepers are overrepresented among major transfers: ${topGoalkeepers.length} of 20`);
+assert(eliteTransfers.length >= 2, 'The opening market did not move enough elite players');
 
 simulateToSeasonEnd(world);
 assert(world.current.completed, 'The 2001 season did not close');
@@ -77,6 +82,12 @@ for (const competition of CONTINENTAL_DEFINITIONS) {
   assert(world.history.champions.some((entry) => entry.competitionId === competition.id), `${competition.name} champion was not archived`);
 }
 assert(world.history.awards.some((award) => award.category === 'ballon_dor' && award.rank === 1), 'Ballon d’Or was not awarded');
+for (const category of ['mvp', 'best_goalkeeper', 'best_defender', 'best_midfielder', 'best_forward', 'golden_boot']) {
+  assert(world.history.awards.some((award) => award.category === category && award.rank === 1), `Missing ${category} award`);
+}
+const seasonReview = world.history.seasonReviews.at(-1);
+assert(seasonReview?.competitionWinners?.length >= 8, 'The season summary did not retain major competition winners');
+assert(seasonReview?.goldenBootPlayerId, 'The season summary did not retain the Golden Boot winner');
 
 const preMovement = new Map(detailed.map((league) => [league.id, world.clubs.filter((club) => club.leagueId === league.id && club.division === 1).map((club) => club.id).sort().join('|')]));
 startNextSeason(world);
