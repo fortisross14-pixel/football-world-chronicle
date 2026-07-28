@@ -41,6 +41,7 @@ let clubModalId = null;
 let cloudStatus = 'Local autosave ready';
 let playerSearch = '';
 let playerPositionFilter = 'ALL';
+let playerCareerFilter = 'ALL';
 let playerStatsScope = 'club';
 let playerStatsSort = 'goals';
 let competitionStatsPosition = 'ALL';
@@ -357,16 +358,16 @@ function sidebar(currentRoute) {
         <summary><span class="nav-globe">◆</span><b>Continental clubs</b><i>›</i></summary>
         ${CONTINENTAL_DEFINITIONS.map((competition) => navLink(`#/competition/${competition.id}/current`, competition.name, 'trophy', currentRoute.page === 'competition' && currentRoute.id === competition.id, true)).join('')}
       </details>
+      <div class="nav-section-label">People & archive</div>
+      ${navLink('#/players/overview', 'Players', 'players', ['players', 'player'].includes(currentRoute.page))}
+      ${navLink('#/almanac/coaches', 'Coaches', 'players', currentRoute.page === 'coach' || (currentRoute.page === 'almanac' && currentRoute.id === 'coaches'))}
+      ${navLink('#/almanac/champions', 'Almanac', 'archive', currentRoute.page === 'almanac' && currentRoute.id !== 'coaches')}
       <div class="nav-section-label">Priority countries</div>
       ${PRIORITY_COUNTRIES.map((country) => countryNav(country, currentRoute)).join('')}
       <details class="country-nav other-nav" ${currentRoute.page === 'country' && otherCountries.includes(decodeURIComponent(currentRoute.id || '')) ? 'open' : ''}>
         <summary><span class="nav-globe">🌍</span><b>Other</b><i>›</i></summary>
         ${otherCountries.map((country) => navLink(`#/country/${encodeURIComponent(country)}`, country, 'other', currentRoute.page === 'country' && decodeURIComponent(currentRoute.id || '') === country, true)).join('')}
       </details>
-      <div class="nav-section-label">Archive</div>
-      ${navLink('#/players/overview', 'Players', 'players', ['players', 'player'].includes(currentRoute.page))}
-      ${navLink('#/almanac/coaches', 'Coaches', 'players', currentRoute.page === 'coach' || (currentRoute.page === 'almanac' && currentRoute.id === 'coaches'))}
-      ${navLink('#/almanac/champions', 'Almanac', 'archive', currentRoute.page === 'almanac' && currentRoute.id !== 'coaches')}
     </nav>
     <div class="sidebar-foot">
       <div class="cloud-button-grid">
@@ -873,13 +874,22 @@ function narrativeMatchStory(match) {
 }
 
 function magazineTabs(active) {
-  return `<nav class="competition-tabs"><a href="#/magazine/transfers" class="${active === 'transfers' ? 'active' : ''}">Transfers</a><a href="#/magazine/results" class="${active === 'results' ? 'active' : ''}">Results</a><a href="#/magazine/players" class="${active === 'players' ? 'active' : ''}">Player Performances</a></nav>`;
+  return `<nav class="competition-tabs"><a href="#/magazine/preseason" class="${active === 'preseason' ? 'active' : ''}">Preseason</a><a href="#/magazine/transfers" class="${active === 'transfers' ? 'active' : ''}">Transfers</a><a href="#/magazine/results" class="${active === 'results' ? 'active' : ''}">Results</a><a href="#/magazine/players" class="${active === 'players' ? 'active' : ''}">Player Performances</a></nav>`;
 }
 
 function magazinePage(tabRaw = 'results') {
-  const tab = ['transfers','results','players'].includes(tabRaw) ? tabRaw : 'results';
+  const tab = ['preseason','transfers','results','players'].includes(tabRaw) ? tabRaw : 'results';
   const lastWeek = state.current.week;
   const firstWeek = Math.max(0, lastWeek - 3);
+  if (tab === 'preseason') {
+    const newStars = (state.current.newStars || [])
+      .map((row) => ({ ...row, player: playerById(row.playerId) }))
+      .filter((row) => row.player && ['generational', 'legend', 'epic'].includes(row.player.rarity))
+      .sort((a, b) => STAR_RARITIES[b.player.rarity].rank - STAR_RARITIES[a.player.rarity].rank || b.player.baseQuality - a.player.baseQuality);
+    const favoriteStories = state.current.news.filter((story) => ['Preseason Favorites', 'Preseason Guide', 'New Generation'].includes(story.category)).slice(0, 12);
+    const starRows = newStars.map(({ player }) => `<tr><td>${playerLink(player.id)}</td><td>${rarityBadge(player.rarity)}</td><td>${flag(player.nationality)} ${esc(countryName(player.nationality))}</td><td>${player.position} · ${esc(player.roleLabel)}</td><td>${player.clubId ? teamLink(player.clubId) : '<span class="free-agent">Free agent</span>'}</td><td><strong>${player.baseQuality}</strong></td></tr>`).join('');
+    return `${pageHead('WORLD FOOTBALL MAGAZINE', 'Preseason', 'Meet the new elite generation, review the largest transfers and see the favorites before competitive football begins.')}${magazineTabs(tab)}<section class="panel"><div class="panel-head"><div><span class="eyebrow">NEW GENERATION</span><h3>${state.current.seasonLabel} elite rookies</h3></div><span class="muted">Generational, Legend and Epic debuts</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>Rarity</th><th>Nation</th><th>Role</th><th>Starting club</th><th>Base</th></tr></thead><tbody>${starRows || '<tr><td colspan="6">No elite rookie entered the world this preseason.</td></tr>'}</tbody></table></div></section><section class="panel section-gap"><div class="story-list magazine-list">${favoriteStories.map((story, index) => `<article class="story-card ${index < 2 ? 'major' : 'digest'}"><div class="story-category">${esc(story.category)}</div><h4>${esc(story.headline)}</h4><p>${esc(story.body)}</p></article>`).join('') || '<div class="empty-state">Preseason forecasts will appear after the market and continental draws.</div>'}</div></section>`;
+  }
   if (tab === 'transfers') {
     const transfers = state.history.transfers.filter((row) => row.season === state.season).sort((a, b) => {
       const pa = playerById(a.playerId); const pb = playerById(b.playerId);
@@ -968,9 +978,10 @@ function playersPage(tabRaw = 'overview') {
   const filtered = activePlayers.filter((player) => {
     const term = playerSearch.trim().toLowerCase();
     return (!term || player.name.toLowerCase().includes(term) || clubById(player.clubId)?.name.toLowerCase().includes(term))
-      && (playerPositionFilter === 'ALL' || player.position === playerPositionFilter);
+      && (playerPositionFilter === 'ALL' || player.position === playerPositionFilter)
+      && (playerCareerFilter === 'ALL' || (playerCareerFilter === 'NEW' ? player.debutSeason === state.season : player.careerYear + 1 === Number(playerCareerFilter)));
   }).sort((a, b) => b.rating - a.rating || STAR_RARITIES[b.rarity].rank - STAR_RARITIES[a.rarity].rank);
-  return `${pageHead('PLAYER DATABASE', 'Named stars', 'Every player has a rarity, position, tactical role, contract and pre-generated career path.')}${playerTabs(tab)}<section class="panel"><div class="filter-toolbar"><label>Search<input id="player-search" type="search" value="${esc(playerSearch)}" placeholder="Player or club"></label><label>Position<select id="player-position-filter"><option value="ALL">All positions</option>${['GK', 'DF', 'MF', 'FW'].map((position) => `<option value="${position}" ${playerPositionFilter === position ? 'selected' : ''}>${position}</option>`).join('')}</select></label><span>${fmt(filtered.length)} active players</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>Club</th><th>Nation</th><th>Pos</th><th>Role</th><th>Rarity</th><th>Age</th><th>Rating</th><th>Market value</th><th>Contract</th></tr></thead><tbody>${filtered.slice(0, 500).map((player) => `<tr><td>${playerLink(player.id)}</td><td>${player.clubId ? teamLink(player.clubId) : '<span class="free-agent">Free agent</span>'}</td><td>${flag(player.nationality)}</td><td>${player.position}</td><td>${esc(player.roleLabel)}</td><td>${rarityBadge(player.rarity)}</td><td>${state.season - player.birthYear}</td><td><strong>${player.rating}</strong></td><td><strong>${money(player.marketValue)}</strong></td><td>${player.contractYears ? `${player.contractYears} yr` : 'Free'}</td></tr>`).join('')}</tbody></table></div></section>`;
+  return `${pageHead('PLAYER DATABASE', 'Named stars', 'Every player has a rarity, position, tactical role, contract and pre-generated career path.')}${playerTabs(tab)}<section class="panel"><div class="filter-toolbar"><label>Search<input id="player-search" type="search" value="${esc(playerSearch)}" placeholder="Player or club"></label><label>Position<select id="player-position-filter"><option value="ALL">All positions</option>${['GK', 'DF', 'MF', 'FW'].map((position) => `<option value="${position}" ${playerPositionFilter === position ? 'selected' : ''}>${position}</option>`).join('')}</select></label><label>Career<select id="player-career-filter"><option value="ALL">All career years</option><option value="NEW" ${playerCareerFilter === 'NEW' ? 'selected' : ''}>Debuted this season</option>${Array.from({length: 13}, (_, index) => index + 1).map((year) => `<option value="${year}" ${String(playerCareerFilter) === String(year) ? 'selected' : ''}>Career year ${year}</option>`).join('')}</select></label><span>${fmt(filtered.length)} active players</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>Club</th><th>Nation</th><th>Pos</th><th>Role</th><th>Rarity</th><th>Career</th><th>Debut</th><th>Age</th><th>Rating</th><th>Market value</th><th>Contract</th></tr></thead><tbody>${filtered.slice(0, 500).map((player) => `<tr><td>${playerLink(player.id)}</td><td>${player.clubId ? teamLink(player.clubId) : '<span class="free-agent">Free agent</span>'}</td><td>${flag(player.nationality)}</td><td>${player.position}</td><td>${esc(player.roleLabel)}</td><td>${rarityBadge(player.rarity)}</td><td><strong>Y${player.careerYear + 1}</strong></td><td>${player.debutSeason || state.season - player.careerYear}</td><td>${state.season - player.birthYear}</td><td><strong>${player.rating}</strong></td><td><strong>${money(player.marketValue)}</strong></td><td>${player.contractYears ? `${player.contractYears} yr` : 'Free'}</td></tr>`).join('')}</tbody></table></div></section>`;
 }
 
 function playerStatisticsTable(activePlayers) {

@@ -336,6 +336,7 @@ function createPlayer(state, {
     careerType: type,
     careerMultipliers: curve,
     careerYear: initialCareerYear,
+    debutSeason: state.season - initialCareerYear,
     fame: clamp(Math.round((baseQuality - 55) * 1.8 + randomInt(state, 0, 12)), 5, 100),
     status: 'active',
     isNationalSpecialist: nationalSpecialist,
@@ -420,6 +421,41 @@ function createStaffMember(state, type, nationality, assignment = {}) {
   };
 }
 
+function rookieClubWeight(player, club, eliteDestination = false) {
+  if (!club || club.division !== 1) return 0;
+  const nationName = teamById(player.nationality)?.name;
+  const domesticBonus = club.country === nationName ? 4.5 : 1;
+  if (eliteDestination) {
+    return Math.max(0.1, (club.reputation - 78) ** 1.5) * domesticBonus;
+  }
+  // Young stars can emerge at secondary leagues and modest clubs before earning a major move.
+  const developmentBand = Math.max(1, 25 - Math.abs(club.reputation - 71));
+  const minorLeagueBonus = club.tier === 'summary' ? 1.45 : 1;
+  const elitePenalty = club.reputation >= 84 ? 0.06 : 1;
+  return developmentBand * domesticBonus * minorLeagueBonus * elitePenalty;
+}
+
+function chooseRookieDestination(state, clubs, player) {
+  const eliteChance = player.rarity === 'generational' ? 0.28 : player.rarity === 'legend' ? 0.22 : 0.16;
+  const eliteDestination = random(state) < eliteChance;
+  const candidates = clubs.filter((club) => club.division === 1 && (eliteDestination ? club.reputation >= 80 : club.reputation < 84));
+  return weightedPick(state, candidates, (club) => rookieClubWeight(player, club, eliteDestination)) || pick(state, candidates) || null;
+}
+
+function swapPlayerIntoClub(state, players, player, target) {
+  if (!target || player.clubId === target.id) return;
+  const swap = players
+    .filter((candidate) => candidate.clubId === target.id && candidate.id !== player.id)
+    .sort((a, b) => {
+      const positionPenaltyA = a.position === player.position ? -20 : 0;
+      const positionPenaltyB = b.position === player.position ? -20 : 0;
+      return (STAR_RARITIES[a.rarity].rank * 12 + a.rating + positionPenaltyA) - (STAR_RARITIES[b.rarity].rank * 12 + b.rating + positionPenaltyB);
+    })[0];
+  const oldClubId = player.clubId;
+  player.clubId = target.id;
+  if (swap) swap.clubId = oldClubId;
+}
+
 function createClubsAndPlayers(state) {
   const clubs = [];
   const playerSlots = [];
@@ -466,22 +502,16 @@ function createClubsAndPlayers(state) {
     rarity: orderedRarities[index]
   }));
 
-  // Elite talents should begin at elite clubs, but not all at the same club merely
-  // because that club occupies the first several roster slots in the sorted deck.
-  const generationalPlayers = players.filter((player) => player.rarity === 'generational');
-  const eliteDestinations = [...clubs]
-    .filter((club) => club.division === 1)
-    .sort((a, b) => b.reputation - a.reputation || b.finances - a.finances);
-  generationalPlayers.forEach((player, index) => {
-    const target = eliteDestinations[index % Math.max(1, eliteDestinations.length)];
-    if (!target || player.clubId === target.id) return;
-    const swap = players.find((candidate) => candidate.clubId === target.id && candidate.position === player.position && candidate.rarity !== 'generational')
-      || players.find((candidate) => candidate.clubId === target.id && candidate.rarity !== 'generational');
-    if (!swap) return;
-    const oldClubId = player.clubId;
-    player.clubId = target.id;
-    swap.clubId = oldClubId;
-  });
+  // Veterans of elite rarity normally begin at major clubs. Rookies can emerge almost
+  // anywhere: a secondary league, a modest domestic side, or occasionally an elite academy.
+  const eliteYoungPlayers = players.filter((player) => ['generational', 'legend', 'epic'].includes(player.rarity) && player.careerYear <= 2);
+  for (const player of eliteYoungPlayers) {
+    const target = chooseRookieDestination(state, clubs, player);
+    swapPlayerIntoClub(state, players, player, target);
+  }
+  state.pendingSeasonStars = eliteYoungPlayers
+    .filter((player) => player.careerYear === 0)
+    .map((player) => ({ playerId: player.id, clubId: player.clubId, rarity: player.rarity, season: state.season }));
 
   for (const team of NATIONAL_TEAMS) {
     if (!players.some((player) => player.nationality === team.id && player.status === 'active')) {
@@ -529,11 +559,20 @@ function initializeStaff(state) {
   const available = [...coaches];
   const nationalAssignments = [...state.nationalTeams].sort((a, b) => b.strength - a.strength);
   for (const team of nationalAssignments) {
-    if (!available.length) break;
-    const domestic = available.filter((coach) => coach.nationality === team.id);
-    const useDomestic = domestic.length && random(state) < nationalCoachDomesticPreference(team);
+    let domestic = available.filter((coach) => coach.nationality === team.id);
+    if (!domestic.length) {
+      const generated = createStaffMember(state, 'coach', team.id);
+      coaches.push(generated);
+      available.push(generated);
+      domestic = [generated];
+    }
+    const useDomestic = random(state) < nationalCoachDomesticPreference(team);
     const pool = useDomestic ? domestic : available;
-    const coach = [...pool].sort((a, b) => b.quality - a.quality)[0];
+    const coach = [...pool].sort((a, b) => {
+      const aFit = a.quality + (a.nationality === team.id ? 7 + team.tier * -0.7 : 0);
+      const bFit = b.quality + (b.nationality === team.id ? 7 + team.tier * -0.7 : 0);
+      return bFit - aFit;
+    })[0];
     available.splice(available.indexOf(coach), 1);
     assignCoachToNation(state, coach, team);
   }
@@ -867,6 +906,7 @@ function newCurrentSeason(state) {
     matches: [],
     transfers: [],
     staffMoves: [],
+    newStars: [...(state.pendingSeasonStars || [])],
     news: [
       ...(state.pendingSeasonNews || []),
       {
@@ -885,7 +925,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 7,
+    dataRevision: 8,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -899,6 +939,7 @@ export function createWorld(seed = Date.now() % 2147483647) {
     owners: [],
     coaches: [],
     pendingSeasonNews: [],
+    pendingSeasonStars: [],
     internationalCycle: { worldCupQualified: [], regionalQualified: {} },
     current: null,
     history: {
@@ -927,6 +968,7 @@ export function createWorld(seed = Date.now() % 2147483647) {
   state.players = entities.players;
   initializeStaff(state);
   state.current = newCurrentSeason(state);
+  state.pendingSeasonStars = [];
   runTransferMarket(state, true);
   addPreseasonMagazine(state);
   invalidateRuntimeCache(state);
@@ -957,7 +999,7 @@ function getCoach(state, teamId, isInternational = false) {
 }
 
 function nationalCoachDomesticPreference(team) {
-  return ({ 1: 0.97, 2: 0.78, 3: 0.60, 4: 0.36 })[team?.tier] || 0.36;
+  return ({ 1: 0.985, 2: 0.90, 3: 0.72, 4: 0.46 })[team?.tier] || 0.46;
 }
 
 function clubCoachDomesticPreference(club) {
@@ -1209,10 +1251,14 @@ function simulateMatch(state, {
   const createGoals = (teamId, opponentId, count, lineup, side) => {
     for (let i = 0; i < count; i += 1) {
       if (!lineup.length) continue;
-      const scorer = weightedPick(state, lineup, goalWeight);
-      addContribution(scorer.id, 'goals');
+      // Named stars represent only part of the full squad. Some goals belong to
+      // anonymous squad players so a four-to-seven-star roster does not funnel
+      // every team goal into the same few careers.
+      const namedScorerChance = isInternational ? 0.82 : lineup.length >= 7 ? 0.72 : 0.58;
+      const scorer = random(state) < namedScorerChance ? weightedPick(state, lineup, goalWeight) : null;
+      if (scorer) addContribution(scorer.id, 'goals');
       let assister = null;
-      if (random(state) < 0.74 && lineup.length > 1) {
+      if (scorer && random(state) < 0.7 && lineup.length > 1) {
         const options = lineup.filter((player) => player.id !== scorer.id);
         assister = weightedPick(state, options, assistWeight);
         addContribution(assister.id, 'assists');
@@ -1221,7 +1267,7 @@ function simulateMatch(state, {
         teamId,
         opponentId,
         side,
-        scorerId: scorer.id,
+        scorerId: scorer?.id || null,
         assistId: assister?.id || null,
         minute: randomInt(state, 4, resolution?.extraTime ? 118 : 90)
       });
@@ -1236,7 +1282,7 @@ function simulateMatch(state, {
     lineup.forEach((player) => {
       const contribution = contributions.get(player.id) || { goals: 0, assists: 0 };
       let rating = 6.15 + random(state) * 0.9;
-      rating += contribution.goals * 0.9 + contribution.assists * 0.45;
+      rating += contribution.goals * 0.58 + contribution.assists * 0.36;
       rating += (player.rating - 70) / 115;
       if (winnerSide === side || resolution?.winnerId === teamId) rating += 0.32;
       if (winnerSide !== 'draw' && winnerSide !== side && !resolution) rating -= 0.22;
@@ -1364,7 +1410,7 @@ function generateMatchNews(state, match, homeStrength, awayStrength) {
   const homeName = getTeamName(state, match.homeId, match.isInternational);
   const awayName = getTeamName(state, match.awayId, match.isInternational);
   const scorerCounts = {};
-  match.goalEvents.forEach((goal) => { scorerCounts[goal.scorerId] = (scorerCounts[goal.scorerId] || 0) + 1; });
+  match.goalEvents.forEach((goal) => { if (goal.scorerId) scorerCounts[goal.scorerId] = (scorerCounts[goal.scorerId] || 0) + 1; });
   const stageWeight = /Final/i.test(match.stage || '') ? 30 : /Semi/i.test(match.stage || '') ? 22 : /Quarter/i.test(match.stage || '') ? 16 : /Round of 16/i.test(match.stage || '') ? 10 : 0;
   const competitionWeight = match.competitionId === 'WC' ? 34 : ['UCL', 'LIB', 'EURO', 'COPA'].includes(match.competitionId) ? 25 : ['UEL', 'AFCON', 'ASIACUP', 'GOLDCUP'].includes(match.competitionId) ? 16 : 7;
   const teamWeight = Math.max(homeStrength, awayStrength) - 65;
@@ -1427,8 +1473,9 @@ function distributeSummaryPlayerStats(state, league, row) {
   const assistShares = lineup.map((player) => ({ player, weight: assistWeight(player) }));
   const goals = Object.fromEntries(lineup.map((player) => [player.id, 0]));
   const assists = Object.fromEntries(lineup.map((player) => [player.id, 0]));
-  for (let index = 0; index < row.gf; index += 1) goals[weightedPick(state, goalShares, (item) => item.weight).player.id] += 1;
-  for (let index = 0; index < Math.round(row.gf * 0.72); index += 1) assists[weightedPick(state, assistShares, (item) => item.weight).player.id] += 1;
+  const namedGoals = Math.round(row.gf * (lineup.length >= 7 ? 0.7 : 0.56));
+  for (let index = 0; index < namedGoals; index += 1) goals[weightedPick(state, goalShares, (item) => item.weight).player.id] += 1;
+  for (let index = 0; index < Math.round(namedGoals * 0.7); index += 1) assists[weightedPick(state, assistShares, (item) => item.weight).player.id] += 1;
   const finish = sortTable(league.table).findIndex((item) => item.teamId === row.teamId) + 1;
   lineup.forEach((player) => {
     const stat = ensurePlayerStat(state, player.id, league.id, row.teamId, false);
@@ -1924,7 +1971,18 @@ function calculateCompetitionAwards(state, competitionId, competitionName) {
   );
   const mvp = chooseBestPlayer(
     stats,
-    (stat) => stat.averageRating * 35 + stat.goals * 2.3 + stat.assists * 1.5 + stat.cleanSheets * 0.5
+    (stat) => {
+      const player = getPlayer(state, stat.playerId);
+      const positionValue = player?.position === 'GK'
+        ? stat.cleanSheets * 1.8
+        : player?.position === 'DF'
+          ? stat.cleanSheets * 1.15 + stat.assists * 0.55
+          : player?.position === 'MF'
+            ? stat.assists * 1.45 + Math.sqrt(stat.goals) * 1.2
+            : stat.assists * 0.8 + Math.sqrt(stat.goals) * 1.55;
+      const scorerDuplicationPenalty = 0;
+      return stat.averageRating * 42 + positionValue + Math.min(3.2, stat.apps * 0.08) + (player?.rating || 70) * 0.08 - scorerDuplicationPenalty;
+    }
   );
   award(state, `${competitionName} Top Scorer`, scorer?.playerId, competitionId, 1, 'top_scorer');
   award(state, `${competitionName} Player of the Season`, mvp?.playerId, competitionId, 1, 'mvp');
@@ -2236,35 +2294,73 @@ function chooseNewRarity(state, counts, remainingSlots) {
 }
 
 function generateReplacementStars(state) {
-  const active = state.players.filter((player) => player.status === 'active').length;
-  const needed = Math.max(0, state.targetActivePlayers - active);
+  const activePlayers = state.players.filter((player) => player.status === 'active');
+  const populationNeed = Math.max(0, state.targetActivePlayers - activePlayers.length);
   const counts = rarityCounts(state);
-  for (let i = 0; i < needed; i += 1) {
-    const rarity = chooseNewRarity(state, counts, needed - i);
-    const player = createPlayer(state, {
-      rarity,
-      careerYear: 0,
-      nationalSpecialist: true
-    });
+  state.pendingSeasonStars ||= [];
+
+  // Each preseason introduces a small visible rookie class while respecting the
+  // simultaneous rarity ceilings. Generational talent only appears when one of the
+  // three slots opens; Legends can rise to 15 and Epics gradually refill toward 50.
+  const eliteIntake = [];
+  while ((counts.generational || 0) + eliteIntake.filter((rarity) => rarity === 'generational').length < 3) eliteIntake.push('generational');
+  while ((counts.legend || 0) + eliteIntake.filter((rarity) => rarity === 'legend').length < 15) eliteIntake.push('legend');
+  const epicRoom = Math.max(0, 50 - (counts.epic || 0));
+  eliteIntake.push(...Array(Math.min(epicRoom, randomInt(state, 2, 4))).fill('epic'));
+  const totalNew = Math.max(populationNeed, eliteIntake.length);
+
+  for (let i = 0; i < totalNew; i += 1) {
+    const rarity = eliteIntake[i] || chooseNewRarity(state, counts, totalNew - i);
+    const player = createPlayer(state, { rarity, careerYear: 0, nationalSpecialist: true });
     player.birthYear = state.season + 1 - 18;
-    player.contractYears = 0;
-    player.salary = 0;
+    player.debutSeason = state.season + 1;
     player.happiness = randomInt(state, 64, 92);
+    const target = chooseRookieDestination(state, state.clubs, player);
+    if (target) {
+      player.clubId = target.id;
+      player.contractYears = randomInt(state, 2, 5);
+      player.salary = Number((player.marketValue * (0.038 + random(state) * 0.022)).toFixed(1));
+      const displaced = state.players
+        .filter((candidate) => candidate.status === 'active' && candidate.clubId === target.id)
+        .sort((a, b) => STAR_RARITIES[a.rarity].rank - STAR_RARITIES[b.rarity].rank || a.rating - b.rating)[0];
+      if (displaced && !['generational', 'legend', 'epic'].includes(displaced.rarity)) {
+        displaced.clubId = null;
+        displaced.contractYears = 0;
+        displaced.salary = 0;
+      }
+    } else {
+      player.clubId = null;
+      player.contractYears = 0;
+      player.salary = 0;
+    }
     state.players.push(player);
     counts[rarity] = (counts[rarity] || 0) + 1;
     if (['generational', 'legend', 'epic'].includes(rarity)) {
-      state.current.news.unshift({
-        id: `news-${state.season}-prospect-${player.id}`,
-        week: state.current.week,
+      state.pendingSeasonStars.push({ playerId: player.id, clubId: player.clubId, rarity, season: state.season + 1 });
+      state.pendingSeasonNews ||= [];
+      state.pendingSeasonNews.unshift({
+        id: `news-${state.season + 1}-prospect-${player.id}`,
+        week: 0,
         importance: rarity === 'generational' ? 'feature' : 'major',
         category: 'New Generation',
         headline: `${player.name} emerges as a ${STAR_RARITIES[rarity].label.toLowerCase()} talent`,
-        body: `${teamById(player.nationality)?.name} have produced an ${player.roleLabel.toLowerCase()} rated ${player.baseQuality} at base quality.`,
-        entityType: 'player',
-        entityId: player.id
+        body: `${teamById(player.nationality)?.name} prospect ${player.name}, a ${player.roleLabel.toLowerCase()}, begins at ${target?.name || 'free agency'} with ${player.baseQuality} base quality.`,
+        entityType: 'player', entityId: player.id
       });
     }
   }
+
+  // When the rookie class is larger than natural retirements, stop tracking the
+  // lowest-level veteran squad players so the universe remains compact.
+  const excess = Math.max(0, totalNew - populationNeed);
+  const candidates = state.players
+    .filter((player) => player.status === 'active' && !['generational', 'legend', 'epic'].includes(player.rarity) && player.careerYear >= 3)
+    .sort((a, b) => STAR_RARITIES[a.rarity].rank - STAR_RARITIES[b.rarity].rank || a.rating - b.rating);
+  candidates.slice(0, excess).forEach((player) => {
+    player.status = 'untracked';
+    player.clubId = null;
+    player.contractYears = 0;
+  });
 }
 
 function refreshClubStrength(state, club) {
@@ -2427,10 +2523,16 @@ function runCoachMarket(state) {
   // National federations recruit first, and elite countries strongly protect their domestic identity.
   const nationalFree = state.coaches.filter((coach) => !coach.clubId && !coach.nationalTeamId);
   nationalVacancies.sort((a, b) => b.strength - a.strength).forEach((team) => {
-    const domestic = nationalFree.filter((coach) => coach.nationality === team.id);
-    const useDomestic = domestic.length && random(state) < nationalCoachDomesticPreference(team);
+    let domestic = nationalFree.filter((coach) => coach.nationality === team.id);
+    if (!domestic.length) {
+      const generated = createStaffMember(state, 'coach', team.id);
+      state.coaches.push(generated);
+      nationalFree.push(generated);
+      domestic = [generated];
+    }
+    const useDomestic = random(state) < nationalCoachDomesticPreference(team);
     const pool = useDomestic ? domestic : nationalFree;
-    const coach = [...pool].sort((a, b) => b.quality - a.quality)[0];
+    const coach = [...pool].sort((a, b) => (b.quality + (b.nationality === team.id ? 7 : 0)) - (a.quality + (a.nationality === team.id ? 7 : 0)))[0];
     if (!coach) return;
     nationalFree.splice(nationalFree.indexOf(coach), 1);
     assignCoachToNation(state, coach, team);
@@ -2545,8 +2647,15 @@ function evolveWorld(state) {
     player.happiness = clamp(player.happiness + randomInt(state, -9, 7), 18, 100);
     if (player.contractYears === 0) {
       const club = player.clubId ? getClub(state, player.clubId) : null;
+      const rarityAmbition = ['generational', 'legend'].includes(player.rarity) ? 1 : player.rarity === 'epic' ? 0.55 : 0;
+      const prestigeGap = club ? Math.max(0, player.rating - club.reputation) : 0;
       const renewalChance = club
-        ? clamp(0.58 + player.happiness / 250 + (club.reputation - 68) / 260 - Math.max(0, player.rating - club.strength) / 180, 0.42, 0.92)
+        ? clamp(
+            0.54 + player.happiness / 270 + (club.reputation - 68) / 280
+            - prestigeGap / 75 - rarityAmbition * Math.max(0, 82 - club.reputation) / 70,
+            0.12,
+            0.9
+          )
         : 0;
       if (club && random(state) < renewalChance) {
         player.contractYears = randomInt(state, 1, 4);
@@ -2567,8 +2676,10 @@ function evolveWorld(state) {
 }
 
 function askingPrice(state, player, buyer = null) {
-  const happinessFactor = 0.38 + (player.happiness || 50) / 125;
-  const contractFactor = 0.62 + Math.min(5, player.contractYears || 0) * 0.09;
+  const happiness = player.happiness ?? 50;
+  const happinessFactor = happiness < 35 ? 0.42 : happiness < 50 ? 0.58 : happiness < 65 ? 0.78 : 0.92 + (happiness - 65) / 190;
+  const years = Math.max(0, player.contractYears || 0);
+  const contractFactor = years <= 1 ? 0.48 : years === 2 ? 0.72 : years === 3 ? 0.88 : 1.0;
   const discount = 1 - (buyer?.ownerNegotiationBonus || 0) * 0.34;
   return Number((player.marketValue * happinessFactor * contractFactor * discount).toFixed(1));
 }
@@ -2639,7 +2750,7 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
     .filter((player) => ['generational', 'legend', 'epic'].includes(player.rarity))
     .map((player) => {
       const seller = getClub(state, player.clubId);
-      const desire = (100 - player.happiness) * 0.75 + Math.max(0, 3 - (player.contractYears || 0)) * 11 + random(state) * 25 + (seller ? Math.max(0, 84 - seller.reputation) * 0.35 : 28);
+      const desire = (100 - player.happiness) * 0.75 + Math.max(0, 3 - (player.contractYears || 0)) * 15 + random(state) * 25 + (seller ? Math.max(0, 86 - seller.reputation) * (['generational', 'legend'].includes(player.rarity) ? 0.75 : 0.42) : 32);
       return { player, seller, desire };
     })
     .filter(({ player, seller, desire }) => !seller || desire >= (player.rarity === 'generational' ? 34 : player.rarity === 'legend' ? 27 : 27))
@@ -2669,7 +2780,7 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       return Math.max(1, (club.reputation - 63 + positionFit + (club.ownerNegotiationBonus || 0) * 30) * hoardingPenalty);
     });
     const fee = seller ? askingPrice(state, player, buyer) : 0;
-    const acceptance = clamp(0.58 + desire / 160 + (buyer.reputation - (seller?.reputation || 60)) / 90 + (buyer.ownerNegotiationBonus || 0) * 0.35, 0.35, 0.98);
+    const acceptance = clamp(0.52 + desire / 145 + (buyer.reputation - (seller?.reputation || 60)) / 82 + Math.max(0, 2 - (player.contractYears || 0)) * 0.09 + (buyer.ownerNegotiationBonus || 0) * 0.35, 0.35, 0.99);
     if (random(state) > acceptance) continue;
     const oldClubId = player.clubId;
     transferPlayer(state, player, buyer, seller, fee, !seller);
@@ -2798,6 +2909,7 @@ export function startNextSeason(state) {
   evolveWorld(state);
   state.season += 1;
   state.current = newCurrentSeason(state);
+  state.pendingSeasonStars = [];
   runTransferMarket(state, false);
   addPreseasonMagazine(state);
   return state;
@@ -3073,6 +3185,31 @@ export function upgradeWorld(state) {
       }
     }
     state.dataRevision = 7;
+    invalidateRuntimeCache(state);
+  }
+  if (state.dataRevision < 8) {
+    state.pendingSeasonStars ||= [];
+    state.current.newStars ||= [];
+    for (const player of state.players || []) {
+      if (player.debutSeason == null) player.debutSeason = state.season - (player.careerYear || 0);
+    }
+    // Repair older saves where the original assignment routine produced implausibly
+    // foreign national-team benches. Tier 1 and 2 federations receive a domestic coach;
+    // tier 3 does so most of the time, while minor nations remain open to foreign experts.
+    for (const team of state.nationalTeams || []) {
+      const currentCoach = state.coaches?.find((coach) => coach.id === team.coachId);
+      const mustRepair = team.tier <= 2 && currentCoach?.nationality !== team.id;
+      const shouldRepairTier3 = team.tier === 3 && currentCoach?.nationality !== team.id && random(state) < 0.72;
+      if (!mustRepair && !shouldRepairTier3) continue;
+      let domestic = state.coaches.find((coach) => coach.nationality === team.id && !coach.clubId && !coach.nationalTeamId);
+      if (!domestic) {
+        domestic = createStaffMember(state, 'coach', team.id);
+        state.coaches.push(domestic);
+      }
+      if (currentCoach) currentCoach.nationalTeamId = null;
+      assignCoachToNation(state, domestic, team);
+    }
+    state.dataRevision = 8;
     invalidateRuntimeCache(state);
   }
   return state;

@@ -1,3 +1,10 @@
+# v0.10
+
+- Elite rookies can emerge at secondary and minor clubs.
+- Added career-year/debut filters and preseason new-generation magazine.
+- Expanded Greek and Spanish-language name pools.
+- Repaired and strengthened domestic national-team coach assignment.
+
 ## v0.8.2
 - Rebuilt the mobile header as a two-row sticky toolbar so Home and Menu can never be covered by simulation controls.
 - Simulation buttons remain visible directly below the navigation row without using fixed positioning.
@@ -108,3 +115,10 @@
 ## Compatibility
 
 v0.4 uses save version 4 and starts a new universe. v0.3 cloud snapshots are not automatically migrated.
+
+## v0.9.0
+- Rebalanced elite transfers: unhappy players and players entering the final contract year are materially cheaper and more likely to leave lower-reputation clubs.
+- Reduced named-player goal concentration by assigning a realistic share of club goals to unnamed squad members.
+- Reworked competition MVP scoring to value ratings, assists, clean sheets and positional impact rather than simply duplicating the top-scorer award.
+- Moved Players, Coaches and Almanac above Priority Countries in the sidebar.
+- Added an eight-season deterministic award and scoring regression test.
