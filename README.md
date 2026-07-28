@@ -1,73 +1,127 @@
-# Football World Chronicle — v0.2
+# Football World Chronicle — v0.4
 
-A dependency-free playable prototype of the broader football-world simulator: country-first navigation, domestic and continental competitions, international football, persistent player careers and compact historical archives.
+A browser-first football universe simulator with 137 domestic systems, continental club football, international cycles, long player careers, transfers, club staff, historical records and optional Neon cloud saves.
 
 ## Run locally
 
-You need Node.js. From this folder:
-
 ```bash
+npm install
 npm run dev
 ```
 
 Open the local address shown in the terminal, normally `http://localhost:4173`.
 
-The game autosaves one universe in browser IndexedDB. Use **Reset universe** to generate a fresh save.
+The game autosaves locally in IndexedDB. The explicit **Save** button uploads the same universe to Neon through the Vercel API.
 
-## Expanded universe
+## Deploy
 
-- **18 simulated countries** and **236 clubs**.
-- Detailed 16–20-club leagues in Spain, England, Italy, Germany, France and Portugal.
-- Condensed but persistent leagues in the Netherlands, Belgium, Scotland, Türkiye, Brazil, Argentina, Mexico, United States, Saudi Arabia, Japan, Morocco and Egypt.
-- A domestic cup in every simulated country.
-- Spanish Super Cup.
-- 32-club European Champions Cup with eight groups and a full knockout bracket.
-- 48 national teams in the world database; the playable international cycle currently centers on European qualifying and the European Championship.
-- 1,400+ named players, generally seven per detailed club and five per condensed club, plus national-team specialists.
+The repository is ready for the existing GitHub → Vercel workflow.
 
-## Country-first navigation
+1. Confirm the Vercel project has `DATABASE_URL`.
+2. Confirm Neon contains `cloud_saves` from `database/cloud-save.sql`.
+3. Replace the repository files with v0.4.
+4. Push to GitHub and let Vercel deploy.
+5. Open the game and press **Save**.
 
-The sidebar now follows the football world rather than app features:
+No local Vercel variables are required unless cloud saving is tested on localhost.
 
-- World
-- Annual Awards
-- Europe and continental football
-- Priority countries such as Spain, England, Italy, Germany and France
-- Other countries grouped below
-- Each country expands into its overview, league and domestic cup
+## v0.4 football world
 
-Country pages provide direct access to competitions and clubs. Clicking a club opens a modal with its squad, current position, trophies and historical league finishes.
+- **137 national teams and 137 domestic football systems**.
+- **29 full leagues** with 20 top-flight teams, seven promotion-pool clubs and annual three-up/three-down movement.
+- **108 condensed leagues** with six persistent leading clubs; champions, cup winners and continental qualifiers are still simulated.
+- **1,431 persistent clubs**, approximately **7,500 active named players**, 1,431 presidents/owners and a larger coach market.
+- FC Barcelona remains excluded. Atlético Madrid, Athletic Club, Valencia and Sevilla begin with stronger resources and quality.
+- The calendar begins in **2001**.
 
-## Competition pages
+## Continental club football
 
-Every league, cup and major tournament uses the same four-tab structure:
+Eleven competitions now share the global calendar:
 
-1. **Weekly View** — fixtures and results by week.
-2. **Current Year** — standings or bracket plus scoring, assist, goalkeeper and rating leaders.
-3. **History** — champion, runner-up, top scorer, best offensive player and best defender by season.
-4. **Stats** — all-time player and club records, including goals, assists, ratings, clean sheets, points, wins and titles where relevant.
+- European Champions League, Europa League and Conference League.
+- Copa Libertadores and Copa Sudamericana.
+- CONCACAF Champions Cup.
+- AFC Champions League and AFC Cup.
+- CAF Champions League and CAF Confederation Cup.
+- OFC Champions League.
 
-## Simulation and history
+Domestic league and cup outcomes feed qualification for the following season.
 
-- Advance one week, four weeks or to season end.
-- Current-season player match logs retain goals, assists, clean sheets and ratings by match.
-- At season end, ordinary match detail is compacted into permanent player and club summaries.
-- Awards, trophies, honours, champions and landmark finals remain permanently available.
-- Ballon d'Or, World Best XI, young-player awards and competition-specific awards are generated annually.
-- Players age, develop, decline, retire and are replaced by new prospects.
+## Presidents and coaches
 
-## Scope of this iteration
+Every club has a persistent president/owner with a rarity and operating profile. Their bonuses affect sporting stability, available money, negotiation leverage and patience with the coach.
 
-This is still a browser-first prototype. It uses a simplified, score-focused match engine and does not expose shots, possession or xG. The production backend is not connected yet; `database/schema.sql` and `docs/ARCHITECTURE.md` describe the intended Neon/PostgreSQL migration.
+The coach pool is larger than the number of club and national-team jobs, creating free agency. Coaches have rarities and tactical identities such as pressing, counter-attacking, defensive rock, possession, adaptive, tournament specialist and youth developer. Strong teams pursue stronger coaches, and underperforming coaches can be dismissed at season end.
 
-The next major international expansion is the full four-year cycle for the World Cup, Copa América, AFCON, Asian Cup and their qualifiers.
+## Star generation
+
+Every named player has:
+
+- Common, Uncommon, Rare, Epic, Legend or Generational rarity.
+- Rarity-constrained base quality.
+- Position and tactical role affecting goals, assists and defence.
+- One of at least ten career-curve archetypes.
+- An 8–13-year career path.
+- Contract years, happiness, salary and market value.
+
+Population controls maintain no more than three simultaneous Generational players, approximately 12–15 Legends and 30–50 Epics. Nationality generation is weighted by four country tiers.
+
+## International football
+
+The readable four-year cycle remains:
+
+- **Year 1:** World Cup qualifying.
+- **Year 2:** World Cup.
+- **Year 3:** continental qualifying and friendlies.
+- **Year 4:** Euro, Copa América, AFCON, Asian Cup, Gold Cup and Oceania Nations Cup.
+
+National teams select up to eight visible stars with no more than one goalkeeper. Caps, international goals, tournament honours and awards are retained permanently.
+
+## Magazine and history
+
+The World Magazine now publishes:
+
+- Preseason continental favorites.
+- Major Epic, Legend and Generational transfers.
+- Promotion and relegation reports.
+- Elite coaching appointments.
+- Upsets, hat tricks, exceptional goalkeeper clean sheets and 9.5-level star performances.
+- Finals and season-review stories.
+
+Player and club profiles list the exact trophies, individual awards and winning seasons rather than only an aggregate honors number.
+
+## Balancing and performance
+
+The engine includes an eight-season deterministic balance test covering continental dominance, Ballon d’Or context, player scoring, transfer activity, active-player population and club finances.
+
+A tested eight-season sample produced:
+
+- Six Champions League winners; the longest title streak was two seasons.
+- Ballon d’Or winners exclusively from elite European contexts in that sample.
+- No weak Champions League winner.
+- Stable active-player population.
+- About 332 transfers per season.
+- No club exceeding the anti-hoarding finance warning.
+
+Runtime roster and entity indexes substantially reduce weekly simulation work, especially for later seasons and condensed-league closure.
+
+## Cloud saving
+
+Cloud saving stores one compressed, chunked JSON snapshot per private cloud code. Chunking keeps long current-season saves below serverless request limits without requiring another Neon table:
+
+```text
+Tablet browser → /api/save → Vercel Function → Neon cloud_saves
+```
+
+On the first cloud save, the game creates a private cloud code. Enter that code on another device and press **Load cloud** to retrieve the same universe.
 
 ## Files
 
-- `src/data.js` — countries, leagues, clubs, national teams and name pools.
-- `src/engine.js` — deterministic simulation, awards and compaction engine.
-- `src/app.js` — country navigation, competition tabs and entity views.
-- `styles.css` — responsive interface and modal system.
-- `database/schema.sql` — proposed PostgreSQL schema.
-- `docs/ARCHITECTURE.md` — lifecycle and backend notes.
-- `scripts/smoke-test.mjs` — complete-season simulation test.
+- `src/data.js` — 137 domestic systems, clubs, countries, continental formats, staff profiles, roles, careers and names.
+- `src/engine.js` — simulation, promotion/relegation, staff markets, transfers, awards, magazine and compaction.
+- `src/app.js` — navigation, entity pages, records and cloud controls.
+- `api/save.js` / `api/load.js` — Vercel functions for Neon snapshots.
+- `database/cloud-save.sql` — the only database table required by the current application.
+- `database/schema.sql` — optional future relational model; not required for play.
+- `scripts/smoke-test.mjs` — structural and season-lifecycle test.
+- `scripts/balance-test.mjs` — deterministic multi-season balance report.

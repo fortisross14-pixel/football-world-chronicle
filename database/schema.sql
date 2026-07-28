@@ -1,9 +1,20 @@
--- Football World Chronicle: proposed Neon/PostgreSQL schema
--- The browser prototype currently uses localStorage. This schema is the migration target.
+-- Football World Chronicle: optional future relational schema
+-- The current v0.4 application only requires cloud_saves from cloud-save.sql.
+-- This file is not used by the live browser-first simulation.
 
 create extension if not exists pgcrypto;
 
-create table worlds (
+-- The only table used by v0.4.
+create table if not exists cloud_saves (
+  id uuid primary key default gen_random_uuid(),
+  save_key text not null unique,
+  save_name text not null default 'Main Universe',
+  current_season integer,
+  game_data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists worlds (
   id uuid primary key default gen_random_uuid(),
   user_id text,
   name text not null,
@@ -16,22 +27,22 @@ create table worlds (
   updated_at timestamptz not null default now()
 );
 
-create table countries (
+create table if not exists countries (
   id text primary key,
   name text not null,
   confederation text not null,
   simulation_tier smallint not null check (simulation_tier in (1,2))
 );
 
-  create table leagues (
-    id text primary key,
-    country_id text not null references countries(id),
-    name text not null,
-    tier smallint not null,
-    format_config jsonb not null default '{}'::jsonb
-  );
+create table if not exists leagues (
+  id text primary key,
+  country_id text not null references countries(id),
+  name text not null,
+  tier smallint not null,
+  format_config jsonb not null default '{}'::jsonb
+);
 
-create table clubs (
+create table if not exists clubs (
   id text primary key,
   league_id text not null references leagues(id),
   name text not null,
@@ -40,7 +51,7 @@ create table clubs (
   created_at timestamptz not null default now()
 );
 
-create table world_clubs (
+create table if not exists world_clubs (
   world_id uuid not null references worlds(id) on delete cascade,
   club_id text not null references clubs(id),
   strength smallint not null,
@@ -51,7 +62,7 @@ create table world_clubs (
   primary key (world_id, club_id)
 );
 
-create table players (
+create table if not exists players (
   id uuid primary key default gen_random_uuid(),
   world_id uuid not null references worlds(id) on delete cascade,
   club_id text references clubs(id),
@@ -67,10 +78,10 @@ create table players (
   is_national_specialist boolean not null default false
 );
 
-create index players_world_club_idx on players(world_id, club_id);
-create index players_world_nationality_idx on players(world_id, nationality_id);
+create index if not exists players_world_club_idx on players(world_id, club_id);
+create index if not exists players_world_nationality_idx on players(world_id, nationality_id);
 
-create table competition_editions (
+create table if not exists competition_editions (
   id uuid primary key default gen_random_uuid(),
   world_id uuid not null references worlds(id) on delete cascade,
   competition_code text not null,
@@ -86,7 +97,7 @@ create table competition_editions (
 );
 
 -- LIVE CURRENT-SEASON TABLES: deleted after successful compaction.
-create table live_matches (
+create table if not exists live_matches (
   id uuid primary key default gen_random_uuid(),
   world_id uuid not null references worlds(id) on delete cascade,
   edition_id uuid not null references competition_editions(id) on delete cascade,
@@ -105,10 +116,10 @@ create table live_matches (
   is_landmark boolean not null default false
 );
 
-create index live_matches_world_week_idx on live_matches(world_id, week);
-create index live_matches_edition_idx on live_matches(edition_id);
+create index if not exists live_matches_world_week_idx on live_matches(world_id, week);
+create index if not exists live_matches_edition_idx on live_matches(edition_id);
 
-create table live_player_match_stats (
+create table if not exists live_player_match_stats (
   match_id uuid not null references live_matches(id) on delete cascade,
   player_id uuid not null references players(id) on delete cascade,
   team_id text not null,
@@ -122,7 +133,7 @@ create table live_player_match_stats (
   primary key (match_id, player_id)
 );
 
-create table live_tables (
+create table if not exists live_tables (
   world_id uuid not null references worlds(id) on delete cascade,
   edition_id uuid not null references competition_editions(id) on delete cascade,
   team_id text not null,
@@ -137,7 +148,7 @@ create table live_tables (
   primary key (edition_id, team_id)
 );
 
-create table live_news (
+create table if not exists live_news (
   id uuid primary key default gen_random_uuid(),
   world_id uuid not null references worlds(id) on delete cascade,
   season integer not null,
@@ -152,7 +163,7 @@ create table live_news (
 );
 
 -- PERMANENT COMPACT HISTORY.
-create table player_competition_seasons (
+create table if not exists player_competition_seasons (
   world_id uuid not null references worlds(id) on delete cascade,
   player_id uuid not null references players(id) on delete cascade,
   season integer not null,
@@ -169,9 +180,9 @@ create table player_competition_seasons (
   primary key (world_id, player_id, season, competition_code)
 );
 
-create index player_history_lookup_idx on player_competition_seasons(world_id, player_id, season desc);
+create index if not exists player_history_lookup_idx on player_competition_seasons(world_id, player_id, season desc);
 
-create table club_league_seasons (
+create table if not exists club_league_seasons (
   world_id uuid not null references worlds(id) on delete cascade,
   club_id text not null references clubs(id),
   league_id text not null references leagues(id),
@@ -187,7 +198,7 @@ create table club_league_seasons (
   primary key (world_id, club_id, season, league_id)
 );
 
-create table champions (
+create table if not exists champions (
   id uuid primary key default gen_random_uuid(),
   world_id uuid not null references worlds(id) on delete cascade,
   season integer not null,
@@ -199,7 +210,7 @@ create table champions (
   unique(world_id, season, competition_code)
 );
 
-create table awards (
+create table if not exists awards (
   id uuid primary key default gen_random_uuid(),
   world_id uuid not null references worlds(id) on delete cascade,
   season integer not null,
@@ -211,9 +222,9 @@ create table awards (
   unique(world_id, season, award_name, player_id, finishing_rank)
 );
 
-create index award_winner_lookup_idx on awards(world_id, award_name, finishing_rank, season desc);
+create index if not exists award_winner_lookup_idx on awards(world_id, award_name, finishing_rank, season desc);
 
-create table player_honours (
+create table if not exists player_honours (
   id uuid primary key default gen_random_uuid(),
   world_id uuid not null references worlds(id) on delete cascade,
   season integer not null,
@@ -224,7 +235,7 @@ create table player_honours (
   is_international boolean not null default false
 );
 
-create table landmark_matches (
+create table if not exists landmark_matches (
   id uuid primary key,
   world_id uuid not null references worlds(id) on delete cascade,
   season integer not null,
@@ -241,14 +252,14 @@ create table landmark_matches (
   is_international boolean not null default false
 );
 
-create table season_reviews (
+create table if not exists season_reviews (
   world_id uuid not null references worlds(id) on delete cascade,
   season integer not null,
   review_json jsonb not null,
   primary key (world_id, season)
 );
 
-create table simulation_jobs (
+create table if not exists simulation_jobs (
   id uuid primary key default gen_random_uuid(),
   world_id uuid not null references worlds(id) on delete cascade,
   target_type text not null check (target_type in ('week','month','season_end')),

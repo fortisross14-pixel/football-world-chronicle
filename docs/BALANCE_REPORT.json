@@ -1,0 +1,342 @@
+{
+  "seasons": 8,
+  "seasonSnapshots": [
+    {
+      "season": 2001,
+      "uclWinner": "Inter",
+      "uclWinnerId": "inter",
+      "uclWinnerStrength": 88,
+      "uclWinnerReputation": 88,
+      "ballon": "Fábio Alves",
+      "ballonRarity": "legend",
+      "ballonClub": "Bayern Munich",
+      "ballonLeagueTier": "detailed",
+      "ballonWonEliteClub": false,
+      "ballonWonInternational": false,
+      "activePlayers": 7464,
+      "transfers": 258,
+      "eliteTransfers": 0,
+      "medianFinances": 60
+    },
+    {
+      "season": 2002,
+      "uclWinner": "Bayern Munich",
+      "uclWinnerId": "bayern",
+      "uclWinnerStrength": 90,
+      "uclWinnerReputation": 90.96,
+      "ballon": "Rubén Suárez",
+      "ballonRarity": "legend",
+      "ballonClub": "Real Madrid",
+      "ballonLeagueTier": "detailed",
+      "ballonWonEliteClub": false,
+      "ballonWonInternational": true,
+      "activePlayers": 7597,
+      "transfers": 343,
+      "eliteTransfers": 0,
+      "medianFinances": 94.4
+    },
+    {
+      "season": 2003,
+      "uclWinner": "Manchester City",
+      "uclWinnerId": "man-city",
+      "uclWinnerStrength": 92,
+      "uclWinnerReputation": 90.88159999999999,
+      "ballon": "Jordan Murray",
+      "ballonRarity": "legend",
+      "ballonClub": "Manchester City",
+      "ballonLeagueTier": "detailed",
+      "ballonWonEliteClub": true,
+      "ballonWonInternational": false,
+      "activePlayers": 7715,
+      "transfers": 343,
+      "eliteTransfers": 0,
+      "medianFinances": 129.8
+    },
+    {
+      "season": 2004,
+      "uclWinner": "Manchester City",
+      "uclWinnerId": "man-city",
+      "uclWinnerStrength": 93,
+      "uclWinnerReputation": 90.88633599999999,
+      "ballon": "Kamil Ionescu",
+      "ballonRarity": "epic",
+      "ballonClub": "Liverpool",
+      "ballonLeagueTier": "detailed",
+      "ballonWonEliteClub": false,
+      "ballonWonInternational": false,
+      "activePlayers": 7715,
+      "transfers": 343,
+      "eliteTransfers": 0,
+      "medianFinances": 168
+    },
+    {
+      "season": 2005,
+      "uclWinner": "Paris Saint-Germain",
+      "uclWinnerId": "psg",
+      "uclWinnerStrength": 91,
+      "uclWinnerReputation": 90.73709311999998,
+      "ballon": "Kamil Ionescu",
+      "ballonRarity": "epic",
+      "ballonClub": "Liverpool",
+      "ballonLeagueTier": "detailed",
+      "ballonWonEliteClub": false,
+      "ballonWonInternational": false,
+      "activePlayers": 7715,
+      "transfers": 343,
+      "eliteTransfers": 3,
+      "medianFinances": 210
+    },
+    {
+      "season": 2006,
+      "uclWinner": "Liverpool",
+      "uclWinnerId": "liverpool",
+      "uclWinnerStrength": 90,
+      "uclWinnerReputation": 88.81979883519998,
+      "ballon": "Kamil Ionescu",
+      "ballonRarity": "epic",
+      "ballonClub": "Liverpool",
+      "ballonLeagueTier": "detailed",
+      "ballonWonEliteClub": true,
+      "ballonWonInternational": false,
+      "activePlayers": 7715,
+      "transfers": 343,
+      "eliteTransfers": 2,
+      "medianFinances": 250.6
+    },
+    {
+      "season": 2007,
+      "uclWinner": "Real Madrid",
+      "uclWinnerId": "real-madrid",
+      "uclWinnerStrength": 94,
+      "uclWinnerReputation": 91.92621056,
+      "ballon": "Wilfried Kone",
+      "ballonRarity": "rare",
+      "ballonClub": "Liverpool",
+      "ballonLeagueTier": "detailed",
+      "ballonWonEliteClub": false,
+      "ballonWonInternational": false,
+      "activePlayers": 7715,
+      "transfers": 343,
+      "eliteTransfers": 0,
+      "medianFinances": 293
+    },
+    {
+      "season": 2008,
+      "uclWinner": "Bayern Munich",
+      "uclWinnerId": "bayern",
+      "uclWinnerStrength": 84,
+      "uclWinnerReputation": 90.07302382780414,
+      "ballon": "Wilfried Kone",
+      "ballonRarity": "rare",
+      "ballonClub": "Liverpool",
+      "ballonLeagueTier": "detailed",
+      "ballonWonEliteClub": false,
+      "ballonWonInternational": false,
+      "activePlayers": 7715,
+      "transfers": 343,
+      "eliteTransfers": 0,
+      "medianFinances": 334
+    }
+  ],
+  "ucl": {
+    "uniqueWinners": 6,
+    "longestWinningStreak": 2,
+    "weakWinnerSeasons": []
+  },
+  "ballonDor": {
+    "credibleContextRate": 1,
+    "winners": [
+      {
+        "season": 2001,
+        "player": "Fábio Alves",
+        "rarity": "legend",
+        "club": "Bayern Munich"
+      },
+      {
+        "season": 2002,
+        "player": "Rubén Suárez",
+        "rarity": "legend",
+        "club": "Real Madrid"
+      },
+      {
+        "season": 2003,
+        "player": "Jordan Murray",
+        "rarity": "legend",
+        "club": "Manchester City"
+      },
+      {
+        "season": 2004,
+        "player": "Kamil Ionescu",
+        "rarity": "epic",
+        "club": "Liverpool"
+      },
+      {
+        "season": 2005,
+        "player": "Kamil Ionescu",
+        "rarity": "epic",
+        "club": "Liverpool"
+      },
+      {
+        "season": 2006,
+        "player": "Kamil Ionescu",
+        "rarity": "epic",
+        "club": "Liverpool"
+      },
+      {
+        "season": 2007,
+        "player": "Wilfried Kone",
+        "rarity": "rare",
+        "club": "Liverpool"
+      },
+      {
+        "season": 2008,
+        "player": "Wilfried Kone",
+        "rarity": "rare",
+        "club": "Liverpool"
+      }
+    ]
+  },
+  "players": {
+    "activeAtEnd": 7715,
+    "totalCreated": 12154,
+    "rarityCounts": {
+      "generational": 3,
+      "legend": 14,
+      "epic": 42,
+      "rare": 1100,
+      "uncommon": 2302,
+      "common": 4254
+    },
+    "topCommon": {
+      "name": "Denis Petrovic",
+      "position": "FW",
+      "goals": 198,
+      "assists": 27,
+      "apps": 347,
+      "titles": 0
+    },
+    "generationalForwards": []
+  },
+  "economy": {
+    "minimum": 20.2,
+    "median": 334,
+    "p90": 511,
+    "maximum": 920.5,
+    "clubsAbove1000": 0,
+    "totalTransfers": 2659,
+    "averageTransfersPerSeason": 332
+  },
+  "continentalWinners": {
+    "UCL": [
+      "Inter",
+      "Bayern Munich",
+      "Manchester City",
+      "Manchester City",
+      "Paris Saint-Germain",
+      "Liverpool",
+      "Real Madrid",
+      "Bayern Munich"
+    ],
+    "UEL": [
+      "LASK",
+      "Chelsea",
+      "Union Saint-Gilloise",
+      "Brighton",
+      "Brann",
+      "Rapid Vienna",
+      "Red Bull Salzburg",
+      "Rapid Vienna"
+    ],
+    "UECL": [
+      "Sevilla",
+      "Aris",
+      "Borussia Dortmund",
+      "Strømsgodset",
+      "Parma",
+      "Atromitos",
+      "Como",
+      "Borussia Dortmund"
+    ],
+    "LIB": [
+      "Millonarios",
+      "Boca Juniors",
+      "Flamengo",
+      "Nacional",
+      "Peñarol",
+      "Danubio",
+      "Danubio",
+      "Atlético Nacional"
+    ],
+    "SUD": [
+      "Corinthians",
+      "Junior",
+      "Defensa y Justicia",
+      "Deportivo Cali",
+      "São Paulo",
+      "São Paulo",
+      "Internacional",
+      "Once Caldas"
+    ],
+    "CCC": [
+      "Tigres UANL",
+      "Tigres UANL",
+      "Los Angeles FC",
+      "Los Angeles FC",
+      "Cruz Azul",
+      "Tigres UANL",
+      "Club América",
+      "Los Angeles FC"
+    ],
+    "ACL": [
+      "Vissel Kobe",
+      "Sydney FC",
+      "Sydney FC",
+      "Al Nassr",
+      "Melbourne Victory",
+      "Melbourne Victory",
+      "Al Hilal",
+      "Kashima Antlers"
+    ],
+    "AFC2": [
+      "Al Shabab",
+      "Al Hilal",
+      "South Korea United",
+      "Brisbane Roar",
+      "Al Qadsiah",
+      "Shimizu S-Pulse",
+      "Brisbane Roar",
+      "Al Nassr"
+    ],
+    "CAFCL": [
+      "Kano Pillars",
+      "Ittihad Tanger",
+      "Ittihad Tanger",
+      "Lobi Stars",
+      "Kaizer Chiefs",
+      "Al Ahly",
+      "Algeria Champions",
+      "Enyimba"
+    ],
+    "CAFCC": [
+      "Chabab Mohammedia",
+      "Plateau United",
+      "Difaa El Jadida",
+      "Sunshine Stars",
+      "Enyimba",
+      "Senegal United",
+      "Heartland",
+      "Heartland"
+    ],
+    "OCL": [
+      "New Zealand Sporting",
+      "New Zealand Champions",
+      "New Zealand Sporting",
+      "New Zealand Champions",
+      "Papua New Guinea Athletic",
+      "New Zealand United",
+      "Samoa Athletic",
+      "Fiji City"
+    ]
+  },
+  "warnings": []
+}

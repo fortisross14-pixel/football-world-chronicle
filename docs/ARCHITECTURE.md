@@ -1,124 +1,120 @@
-# Football World Chronicle v0.2 architecture
+# Football World Chronicle v0.4 architecture
 
-## What this iteration proves
+## Practical architecture
 
-The prototype now validates the full world-to-history loop at a larger scale:
+The game remains browser-first because that is the fastest and simplest way to simulate a large private universe:
 
-1. Generate 18 domestic football systems, 236 clubs and more than 1,400 named players.
-2. Run one shared calendar for domestic leagues, domestic cups, continental football and international football.
-3. Navigate by region, country and competition rather than by isolated features.
-4. Inspect current-season matches and player contributions week by week.
-5. Reuse a common competition presentation with Weekly, Current Year, History and Stats tabs.
-6. Close the season and compact live detail into permanent player, club, award and champion summaries.
-7. Begin a new season with aging, development, retirement and replacement prospects.
+```text
+Browser simulation + IndexedDB autosave
+                 ↓ explicit Save
+         Vercel /api/save
+                 ↓
+       Neon JSON cloud snapshot
+```
 
-## Current simulation scope
+The active universe is one JavaScript object. Weekly simulation, current-season detail and historical compaction all happen locally. Neon is used as a cloud-save and cross-device synchronization layer rather than as the live simulation engine.
 
-### Domestic football
+## Why the cloud snapshot is sufficient
 
-- Detailed leagues: Spain, England, Italy, Germany, France and Portugal.
-- Condensed persistent leagues: Netherlands, Belgium, Scotland, Türkiye, Brazil, Argentina, Mexico, United States, Saudi Arabia, Japan, Morocco and Egypt.
-- Every league has a domestic cup.
-- Spain additionally has a four-team Super Cup.
+At the end of every season, ordinary match detail is discarded after the engine writes compact player, club, champion, award, honour, transfer and landmark-match summaries. This prevents the save from growing like a permanent play-by-play database.
 
-Condensed countries still retain real club entities, tables, named players, champions and history. They use fewer clubs and named players to keep the world broad without requiring a 25-player roster for every team.
+The cloud payload is GZIP-compressed in the browser and divided into small sequential chunks before upload. The API stores those chunks inside the existing `game_data` JSONB field, so no additional Neon table is required. Loading retrieves the metadata and chunks separately, reassembles the payload and writes the restored universe into IndexedDB.
 
-### Continental football
+## Save flow
 
-- European Champions Cup: 32 clubs, eight groups, Round of 16, quarter-finals, semi-finals and a single-game final.
-- Domestic and continental awards use the same generic award categories.
+1. The player presses **Save**.
+2. The game performs its normal local IndexedDB save.
+3. The world object is serialized and GZIP-compressed when supported.
+4. The browser divides the compressed payload into roughly 600 KB parts.
+5. The parts are posted sequentially to `/api/save` using one upload identifier.
+6. The Vercel function reads `DATABASE_URL` privately.
+7. Neon upserts the parts into one row in `cloud_saves`.
+8. The interface reports progress and the final cloud timestamp.
 
-### International football
+The browser never sees the Neon connection string.
 
-- The world database contains 48 national teams across Europe, South America, North America, Asia and Africa.
-- The currently playable tournament is the European Championship with qualifying and a knockout final tournament.
-- Player international appearances and goals are stored through the same player-stat architecture.
-- World Cup, Copa América, AFCON and Asian Cup cycles remain the next major engine expansion.
+## Load flow
+
+1. The player enters the same private cloud code on another device.
+2. `/api/load` retrieves lightweight metadata for the matching snapshot.
+3. The browser downloads the stored parts separately and reassembles them.
+4. The browser decompresses and validates save version 4.
+5. The local IndexedDB universe is replaced.
+6. The interface renders the downloaded world.
+
+## Core simulation modules
+
+### Data layer
+
+`src/data.js` defines:
+
+- 29 full domestic pyramids and 108 condensed systems.
+- 1,431 clubs and starting strength/resources.
+- Eleven continental club competitions.
+- Owner and coach profiles, rarities and effects.
+- 137 national teams and four generation tiers.
+- ISO flag codes and confederations.
+- Expanded multilingual name pools.
+- Six rarity bands.
+- Position-specific tactical roles.
+- Ten career-curve archetypes.
+
+### Engine layer
+
+`src/engine.js` owns:
+
+- Deterministic random generation.
+- Rarity population limits and replacement stars.
+- Country-tier nationality weighting.
+- Career length, base quality and annual multipliers.
+- Club finances, budgets, happiness and transfers.
+- Promotion/relegation, owner effects and coach-market decisions.
+- Domestic, eleven-continent-club and international calendars.
+- Simplified match outcomes and role-weighted statistics.
+- Awards, trophies, records and season compaction.
+
+### Presentation layer
+
+`src/app.js` provides:
+
+- Country-first navigation.
+- International competition and national-team pages.
+- Weekly, Current Year, History and Stats competition tabs.
+- Player Pool and Statistics tabs.
+- Team and player all-time record subtabs.
+- Detailed trophy and individual-award lists.
+- IndexedDB autosave plus explicit Neon Save/Load controls.
+
+## International cycle
+
+The simulation uses a readable four-year rhythm rather than reproducing every real-world calendar detail:
+
+- Year 1: World Cup qualifying.
+- Year 2: World Cup finals.
+- Year 3: confederation qualifying/friendlies.
+- Year 4: confederation championships.
+
+The cycle is data-driven enough to add other competitions later without changing the save architecture.
 
 ## Current-season detail and permanent history
 
-During an active season the world retains:
+During an active season the world retains match scores, player logs, tables, brackets, news, transfers, injuries/availability state where applicable and leaderboard data.
 
-- Match score and scorers.
-- Assists, clean sheets and player ratings.
-- Player match logs.
-- League tables and cup brackets.
-- News and weekly context.
-
-At season closure it permanently stores:
+At closure it permanently retains:
 
 - Player/competition season summaries.
-- Club league-season summaries.
+- Club/competition season summaries.
 - Champions and runners-up.
-- Individual awards and player honours.
+- Individual awards.
+- Player honours with exact seasons.
 - Landmark finals.
-- Annual season review.
+- Transfer history.
+- Annual review.
 
-Ordinary match-level data is then removed. This is the defining storage contract: **detailed while active, compact after completion**.
+The detailed current-season match collection is then cleared.
 
-## Competition view contract
+## Relational schema status
 
-All competitions expose four presentation layers:
+`database/schema.sql` remains an optional future model. The current game does not require those tables and does not write to them. Only `cloud_saves` is required.
 
-- `weekly`: scheduled and completed matches grouped by simulation week.
-- `current`: table/bracket plus current player leaders.
-- `history`: season-by-season champions and award winners.
-- `stats`: all-time records derived from compact historical rows and current-season data.
-
-The UI resolves each competition through a descriptor rather than hardcoding a separate page for each league or cup. Adding another configured country therefore automatically provides navigation, competition tabs and history surfaces.
-
-## Browser prototype versus production
-
-The package intentionally has no external runtime dependencies and saves one world in IndexedDB. That makes it immediately playable, but IndexedDB is not the final persistence architecture.
-
-Production target:
-
-- React/Next.js application on Vercel.
-- Neon PostgreSQL.
-- Drizzle ORM.
-- Short deterministic simulation batches committed transactionally.
-- Live current-season tables separated from permanent history tables.
-- Multiple save worlds attached to users.
-
-`database/schema.sql` defines the initial relational structure.
-
-## Compaction contract
-
-Season closure must be atomic in the database-backed version:
-
-1. Aggregate live player rows into `player_competition_seasons`.
-2. Aggregate league tables into `club_league_seasons`.
-3. Write champions, runners-up, awards and honours.
-4. Copy finals and selected major matches into `landmark_matches`.
-5. Write the season review.
-6. Verify totals and record counts.
-7. Delete non-landmark live match details.
-8. Mark the edition compacted.
-
-A failure in any step must roll back the transaction and leave the active season inspectable.
-
-## Modules to split for production
-
-The portable prototype keeps the engine in one JavaScript file. The production refactor should create:
-
-- `calendar.ts`
-- `match-engine.ts`
-- `league-engine.ts`
-- `knockout-engine.ts`
-- `qualification-engine.ts`
-- `international-cycle.ts`
-- `player-careers.ts`
-- `awards.ts`
-- `season-compaction.ts`
-- `narrative.ts`
-- `repositories/`
-
-## Next expansion priorities
-
-1. Dynamic continental qualification from the previous domestic season.
-2. Four-year international cycles: World Cup, Euro, Copa América, AFCON and Asian Cup.
-3. Transfer windows and contracts.
-4. Promotion/relegation for detailed countries.
-5. Club finances, fans and changing league reputation.
-6. Emergence of named players from anonymous squad depth.
-7. Neon-backed save worlds and multiple save slots.
+A future relational migration would become worthwhile only for public universes, multi-user rankings, server-side simulation or SQL-heavy historical analysis.
