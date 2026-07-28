@@ -536,6 +536,12 @@ function internationalPage(tabRaw = 'overview') {
     }).join('')}</div></section>`;
 }
 
+function baseFor(description) {
+  return description.type === 'league'
+    ? `#/league/${encodeURIComponent(description.id)}`
+    : `#/competition/${encodeURIComponent(description.id)}`;
+}
+
 function competitionPage(description, tab = 'current', sub = 'players') {
   const active = TABS.includes(tab) ? tab : 'current';
   const base = baseFor(description);

@@ -1,3 +1,7 @@
+# v0.8.1
+
+- Fixed competition routing crash caused by a missing `baseFor` helper. International competitions such as the World Cup now render after their hash route opens.
+
 # v0.8
 
 - International sidebar simplified to Overview and Competitions.
