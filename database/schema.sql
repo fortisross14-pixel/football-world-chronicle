@@ -8,7 +8,7 @@ create table worlds (
   user_id text,
   name text not null,
   current_season integer not null,
-  current_date date not null,
+  simulation_date date not null,
   current_week integer not null default 0,
   rng_seed bigint not null,
   status text not null default 'active' check (status in ('active','archived')),
@@ -23,13 +23,13 @@ create table countries (
   simulation_tier smallint not null check (simulation_tier in (1,2))
 );
 
-create table leagues (
-  id text primary key,
-  country_id text not null references countries(id),
-  name text not null,
-  tier smallint not null,
-  format_config jsonb not null default '{}'::jsonb
-);
+  create table leagues (
+    id text primary key,
+    country_id text not null references countries(id),
+    name text not null,
+    tier smallint not null,
+    format_config jsonb not null default '{}'::jsonb
+  );
 
 create table clubs (
   id text primary key,
