@@ -77,7 +77,7 @@ export default async function handler(request, response) {
         rows = await sql`
           update cloud_saves
           set
-            game_data = game_data || jsonb_build_object(${chunkKey}, ${chunk}),
+            game_data = game_data || jsonb_build_object(${chunkKey}::text, ${chunk}::text),
             updated_at = case when ${chunkIndex === totalChunks - 1} then now() else updated_at end
           where save_key = ${saveKey}
             and game_data->>'uploadId' = ${uploadId}
@@ -127,6 +127,6 @@ export default async function handler(request, response) {
     return response.status(200).json({ ok: true, save: rows[0] });
   } catch (error) {
     console.error('Cloud save failed:', error);
-    return response.status(500).json({ ok: false, error: 'Cloud save failed.' });
+    return response.status(500).json({ ok: false, error: `Cloud save failed: ${error?.message || 'Unknown database error.'}` });
   }
 }

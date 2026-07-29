@@ -23,7 +23,7 @@ export default async function handler(request, response) {
       }
       const chunkKey = `chunk_${index}`;
       const rows = await sql`
-        select game_data->>${chunkKey} as chunk
+        select game_data->>(${chunkKey}::text) as chunk
         from cloud_saves
         where save_key = ${saveKey}
         limit 1
@@ -57,6 +57,6 @@ export default async function handler(request, response) {
     return response.status(200).json({ ok: true, save: rows[0] });
   } catch (error) {
     console.error('Cloud load failed:', error);
-    return response.status(500).json({ ok: false, error: 'Cloud load failed.' });
+    return response.status(500).json({ ok: false, error: `Cloud load failed: ${error?.message || 'Unknown database error.'}` });
   }
 }
