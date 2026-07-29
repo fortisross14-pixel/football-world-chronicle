@@ -1,3 +1,11 @@
+# v0.14.0 — Regional filters and universal rankings
+
+- Added region filters to People for players, coaches, and presidents.
+- Added region and metric sorting to Team, Player, and Coach Almanac tables.
+- Added Magazine → Rankings with competition and metric selectors across domestic, continental, and international football.
+- Rankings support player scoring, assists, ratings, clean sheets and titles; team general score, goals, clean sheets and titles; and coach wins and titles.
+- No Neon schema changes required.
+
 # v0.13 — Football Hall of Fame
 
 - Added Magazine → FHoF.
@@ -148,3 +156,9 @@ v0.4 uses save version 4 and starts a new universe. v0.3 cloud snapshots are not
 - Reworked competition MVP scoring to value ratings, assists, clean sheets and positional impact rather than simply duplicating the top-scorer award.
 - Moved Players, Coaches and Almanac above Priority Countries in the sidebar.
 - Added an eight-season deterministic award and scoring regression test.
+
+## v0.15.0
+- Rebuilt competition MVP and Ballon d'Or scoring around sustained average performance, appearances, competition prestige, finals and titles.
+- Reduced direct goal/assist boosts to match ratings and Man of the Match selection.
+- Kept Golden Boot entirely goal-driven.
+- Added deterministic award-balance regression.

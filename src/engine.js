@@ -1334,9 +1334,11 @@ function simulateMatch(state, {
     lineup.forEach((player) => {
       const contribution = contributions.get(player.id) || { goals: 0, assists: 0 };
       let rating = 6.15 + random(state) * 0.9;
-      rating += contribution.goals * 0.58 + contribution.assists * 0.36;
+      // Goals and assists matter, but do not define the whole performance. A brace
+      // can rescue a mediocre display without automatically producing a 9+ rating.
+      rating += contribution.goals * 0.28 + contribution.assists * 0.24;
       rating += (player.rating - 70) / 115;
-      if (winnerSide === side || resolution?.winnerId === teamId) rating += 0.32;
+      if (winnerSide === side || resolution?.winnerId === teamId) rating += 0.26;
       if (winnerSide !== 'draw' && winnerSide !== side && !resolution) rating -= 0.22;
       if (player.position === 'GK' && goalsAgainst === 0) rating += 0.68 * roleData(player).defence;
       if (player.position === 'DF' && goalsAgainst === 0) rating += 0.31 * roleData(player).defence;
@@ -1381,7 +1383,7 @@ function simulateMatch(state, {
         const contribution = contributions.get(player.id) || { goals: 0, assists: 0 };
         return {
           id: player.id,
-          score: player.rating + contribution.goals * 7 + contribution.assists * 3 + random(state) * 2
+          score: player.rating + contribution.goals * 2.7 + contribution.assists * 1.8 + random(state) * 4
         };
       })
       .sort((a, b) => b.score - a.score);
@@ -1853,7 +1855,7 @@ function simulateInternationalKnockout(state, comp, week) {
     comp.completed = true;
     const stats = statsForCompetition(state, comp.id);
     const topScorer = chooseBestPlayer(stats, (stat) => stat.goals * 100 + stat.assists + stat.averageRating);
-    const mvp = chooseBestPlayer(stats, (stat) => stat.averageRating * 35 + stat.goals * 2.4 + stat.assists * 1.5);
+    const mvp = chooseBestPlayer(stats, (stat) => competitionMvpScore(state, stat, comp.id));
     const goalkeeper = chooseBestPlayer(stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'GK'), (stat) => stat.averageRating * 30 + stat.cleanSheets * 3);
     const young = chooseBestPlayer(stats.filter((stat) => state.season + 1 - getPlayer(state, stat.playerId)?.birthYear <= 21), (stat) => stat.averageRating * 30 + stat.goals * 2 + stat.assists * 1.5 + (getPlayer(state, stat.playerId)?.baseQuality || 0) * 0.35);
     const previousTitles = state.history.champions.filter((row) => row.competitionId === comp.id && row.winnerId === comp.championId).length;
@@ -1998,44 +2000,61 @@ function award(state, name, playerId, competitionId = null, rank = 1, category =
   });
 }
 
+function getCompetitionOutcome(state, competitionId) {
+  if (state.current.leagues?.[competitionId]) {
+    const rows = sortTable(state.current.leagues[competitionId].table || []);
+    return { championId: rows[0]?.teamId || null, finalistId: rows[1]?.teamId || null };
+  }
+  if (state.current.domesticCups?.[competitionId]) {
+    const comp = state.current.domesticCups[competitionId];
+    return { championId: comp.championId || null, finalistId: comp.finalistId || null };
+  }
+  if (competitionId === 'SUPERCUP') {
+    const comp = state.current.supercup || {};
+    return { championId: comp.championId || null, finalistId: comp.finalistId || null };
+  }
+  const comp = state.current.continentalCompetitions?.[competitionId] || state.current.internationalCompetitions?.[competitionId];
+  return { championId: comp?.championId || null, finalistId: comp?.finalistId || null };
+}
+
+function finalMatchRating(state, playerId, competitionId) {
+  const logs = state.current.playerMatchLogs?.[playerId] || [];
+  const finals = logs.filter((log) => log.competitionId === competitionId && String(log.stage || '').toLowerCase() === 'final');
+  return finals.length ? Math.max(...finals.map((log) => log.rating || 0)) : 0;
+}
+
+function performanceValue(stat) {
+  return Math.max(0, stat.averageRating - 6.0) * stat.apps;
+}
+
+function competitionMvpScore(state, stat, competitionId) {
+  const player = getPlayer(state, stat.playerId);
+  const outcome = getCompetitionOutcome(state, competitionId);
+  const won = stat.teamId === outcome.championId;
+  const finalist = stat.teamId === outcome.finalistId;
+  const finalRating = finalMatchRating(state, stat.playerId, competitionId);
+  const positional = player?.position === 'GK'
+    ? stat.cleanSheets * 0.28
+    : player?.position === 'DF'
+      ? stat.cleanSheets * 0.17 + stat.assists * 0.08
+      : player?.position === 'MF'
+        ? stat.assists * 0.14 + stat.goals * 0.05
+        : stat.assists * 0.07 + stat.goals * 0.07;
+  const outcomeBonus = won ? 8.5 : finalist ? 3.5 : 0;
+  const finalBonus = finalRating >= 8 ? (finalRating - 7.5) * (won ? 4.2 : 2.2) : 0;
+  return performanceValue(stat) * 5.2 + outcomeBonus + finalBonus + positional;
+}
+
 function calculateCompetitionAwards(state, competitionId, competitionName) {
   const stats = statsForCompetition(state, competitionId);
   if (!stats.length) return;
-  const scorer = chooseBestPlayer(
-    stats,
-    (stat) => stat.goals * 100 + stat.assists + stat.averageRating / 10
-  );
-  const forward = chooseBestPlayer(
-    stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'FW'),
-    (stat) => stat.averageRating * 27 + stat.goals * 3.2 + stat.assists * 1.7
-  );
-  const midfielder = chooseBestPlayer(
-    stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'MF'),
-    (stat) => stat.averageRating * 29 + stat.goals * 2 + stat.assists * 2.8 + stat.cleanSheets * 0.25
-  );
-  const defender = chooseBestPlayer(
-    stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'DF'),
-    (stat) => stat.averageRating * 30 + stat.cleanSheets * 2 + stat.goals + stat.assists
-  );
-  const goalkeeper = chooseBestPlayer(
-    stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'GK'),
-    (stat) => stat.averageRating * 30 + stat.cleanSheets * 3
-  );
-  const mvp = chooseBestPlayer(
-    stats,
-    (stat) => {
-      const player = getPlayer(state, stat.playerId);
-      const positionValue = player?.position === 'GK'
-        ? stat.cleanSheets * 1.8
-        : player?.position === 'DF'
-          ? stat.cleanSheets * 1.15 + stat.assists * 0.55
-          : player?.position === 'MF'
-            ? stat.assists * 1.45 + Math.sqrt(stat.goals) * 1.2
-            : stat.assists * 0.8 + Math.sqrt(stat.goals) * 1.55;
-      const scorerDuplicationPenalty = 0;
-      return stat.averageRating * 42 + positionValue + Math.min(3.2, stat.apps * 0.08) + (player?.rating || 70) * 0.08 - scorerDuplicationPenalty;
-    }
-  );
+  const scorer = chooseBestPlayer(stats, (stat) => stat.goals * 100 + stat.assists + stat.averageRating / 10);
+  const formula = (stat) => competitionMvpScore(state, stat, competitionId);
+  const forward = chooseBestPlayer(stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'FW'), formula);
+  const midfielder = chooseBestPlayer(stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'MF'), formula);
+  const defender = chooseBestPlayer(stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'DF'), formula);
+  const goalkeeper = chooseBestPlayer(stats.filter((stat) => getPlayer(state, stat.playerId)?.position === 'GK'), formula);
+  const mvp = chooseBestPlayer(stats, formula);
   award(state, `${competitionName} Top Scorer`, scorer?.playerId, competitionId, 1, 'top_scorer');
   award(state, `${competitionName} Player of the Season`, mvp?.playerId, competitionId, 1, 'mvp');
   award(state, `${competitionName} Best Goalkeeper`, goalkeeper?.playerId, competitionId, 1, 'best_goalkeeper');
@@ -2069,7 +2088,7 @@ function buildAnnualAwardRace(state) {
     : (state.current.archivedPlayerStats || []);
   for (const stat of annualStats) {
     if (!stat.apps) continue;
-    const item = byPlayer.get(stat.playerId) || { playerId: stat.playerId, apps: 0, goals: 0, assists: 0, ratingWeighted: 0, weightedGoals: 0, weightedAssists: 0, leagueGoals: 0, leagueWeightedGoals: 0, competitionScore: 0 };
+    const item = byPlayer.get(stat.playerId) || { playerId: stat.playerId, apps: 0, goals: 0, assists: 0, ratingWeighted: 0, weightedGoals: 0, weightedAssists: 0, leagueGoals: 0, leagueWeightedGoals: 0, competitionScore: 0, eliteApps: 0 };
     const w = weight(stat.competitionId, stat.isInternational);
     item.apps += stat.apps;
     item.goals += stat.goals;
@@ -2082,7 +2101,9 @@ function buildAnnualAwardRace(state) {
       item.leagueGoals += stat.goals;
       item.leagueWeightedGoals += stat.goals * w;
     }
-    item.competitionScore += (stat.goals * 1.5 + stat.assists + stat.averageRating * 0.35) * w;
+    item.competitionScore += Math.max(0, stat.averageRating - 6.0) * stat.apps * w;
+    item.competitionScore += (stat.goals * 0.11 + stat.assists * 0.10 + stat.cleanSheets * 0.035) * w;
+    if (w >= 1.5) item.eliteApps += stat.apps;
     byPlayer.set(stat.playerId, item);
   }
   const trophyBonus = new Map();
@@ -2092,15 +2113,18 @@ function buildAnnualAwardRace(state) {
   ];
   for (const trophy of champions) {
     const lineup = trophy.international ? getNationalLineup(state, trophy.winnerId) : getClubLineup(state, trophy.winnerId);
-    const bonus = weight(trophy.id, trophy.international) * 9;
+    const bonus = weight(trophy.id, trophy.international) * 15;
     lineup.forEach((player) => trophyBonus.set(player.id, (trophyBonus.get(player.id) || 0) + bonus));
   }
   const candidates = [...byPlayer.values()].map((item) => {
     const player = getPlayer(state, item.playerId);
     const average = item.apps ? item.ratingWeighted / item.apps : 0;
     const trophies = trophyBonus.get(item.playerId) || 0;
-    const score = item.competitionScore + average * 12 + trophies + (player?.fame || 0) * 0.12;
-    const components = { apps: item.apps, goals: item.goals, assists: item.assists, weightedGoals: Number(item.weightedGoals.toFixed(2)), averageRating: Number(average.toFixed(2)), trophyBonus: Number(trophies.toFixed(1)), score: Number(score.toFixed(2)) };
+    const finalImpact = (state.current.playerMatchLogs?.[item.playerId] || [])
+      .filter((log) => String(log.stage || '').toLowerCase() === 'final')
+      .reduce((sum, log) => sum + Math.max(0, (log.rating || 0) - 7.0) * (log.isInternational ? 4.5 : 3.2), 0);
+    const score = item.competitionScore + trophies + finalImpact + average * 0.9 + Math.min(3, item.eliteApps * 0.03) + (player?.fame || 0) * 0.025;
+    const components = { apps: item.apps, goals: item.goals, assists: item.assists, weightedGoals: Number(item.weightedGoals.toFixed(2)), averageRating: Number(average.toFixed(2)), performanceScore: Number(item.competitionScore.toFixed(1)), trophyBonus: Number(trophies.toFixed(1)), finalImpact: Number(finalImpact.toFixed(1)), score: Number(score.toFixed(2)) };
     return { ...item, average, score, components, age: state.season + 1 - (player?.birthYear || state.season) };
   }).filter((candidate) => candidate.apps >= 5).sort((a, b) => b.score - a.score);
   const goldenBoot = candidates
