@@ -1,3 +1,29 @@
+# v0.13 — Football Hall of Fame
+
+- Added Magazine → FHoF.
+- Top 10 players at each position, coaches, presidents and club eras.
+- Top five national-team cycles.
+- Competition-weighted career scoring, titles, awards and ratings.
+- Club eras require 2–3 seasons under the same coach.
+- Rankings begin after the first archived season and evolve annually.
+
+# v0.12
+
+- Restored and expanded the Almanac into Champions, Teams, Players and Coaches.
+- Added current club/job, career statistics and honor totals to team, player and coach rankings.
+- Replaced the sidebar Players entry with People.
+- Added People tabs for Presidents, Coaches and Players, emphasizing rarity, quality, role/profile and current assignment.
+- Preserved legacy player routes for existing links and saves.
+
+# Football World Chronicle v0.11
+
+- Added an active coaching market: ambitious clubs and national teams can poach successful employed coaches from weaker jobs.
+- Added Players/Coaches tabs to the Transfer Market, with coach rarity, nationality, tactical profile and from/to jobs.
+- Added long presidential tenures of 5-22 years, weighted toward 12-20 years, plus automatic boardroom succession.
+- President effects now change when leadership changes; elite Academy Patrons increase the chance of strong rookies emerging at their club.
+- Club screens show the president's remaining tenure.
+- Existing saves upgrade to data revision 9 without Neon changes.
+
 # v0.10
 
 - Elite rookies can emerge at secondary and minor clubs.

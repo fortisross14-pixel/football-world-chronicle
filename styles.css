@@ -843,3 +843,7 @@ button { cursor: pointer; }
   .sim-controls .control-button,
   .sim-controls .primary-button { font-size: 10px; padding: 0 5px; }
 }
+
+/* v0.13 Football Hall of Fame */
+.fhof-intro{padding:32px;border-radius:28px;background:var(--ink,#10243a);color:#fff}.fhof-intro h2{font-size:clamp(1.7rem,4vw,2.6rem);margin:8px 0}.fhof-intro p{max-width:760px;color:#d6e2ef}.fhof-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.fhof-list{display:grid}.fhof-row{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 4px;border-bottom:1px solid var(--line,#dde3ea)}.fhof-row:last-child{border-bottom:0}.fhof-row>b{color:var(--blue,#2469d8);font-size:1.05rem}.fhof-row>div{min-width:0}.fhof-row small{display:block;margin-top:4px;color:var(--muted,#68778a);line-height:1.35}.fhof-row>strong:last-child{font-variant-numeric:tabular-nums;color:var(--blue,#2469d8)}
+@media(max-width:800px){.fhof-grid{grid-template-columns:1fr}.fhof-intro{padding:24px 20px}.fhof-row{grid-template-columns:26px minmax(0,1fr) auto;gap:8px}.fhof-row small{font-size:.78rem}}
