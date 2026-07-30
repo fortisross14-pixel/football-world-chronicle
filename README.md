@@ -1,6 +1,17 @@
-# Football World Chronicle — v0.7
+# Football World Chronicle — v0.18
 
 A browser-first football universe simulator with 137 domestic systems, continental club football, international cycles, long player careers, transfers, club staff, historical records and optional Neon cloud saves.
+
+
+## v0.18 goalkeeper and superstar-market balance
+
+- Goalkeepers remain essential but no longer dominate high-profile transfers or open player-of-the-season awards.
+- Clean sheets contribute modestly to ratings; poor multi-goal concessions now reduce goalkeeper and defender ratings.
+- Match MVP selection uses the actual match performance rather than permanent ability.
+- Market values now have rarity- and position-specific ceilings, with lower goalkeeper ceilings.
+- Elite rookies may develop anywhere, but prime Generational and Legendary players build migration pressure when a non-elite club fails to reach major continental finals.
+- Winning a recent Libertadores or equivalent major continental title can delay European poaching.
+- Run `npm run market-balance` for the deterministic report.
 
 ## Run locally
 
@@ -19,7 +30,7 @@ The repository is ready for the existing GitHub → Vercel workflow.
 
 1. Confirm the Vercel project has `DATABASE_URL`.
 2. Confirm Neon contains `cloud_saves` from `database/cloud-save.sql`.
-3. Replace the repository files with v0.7.
+3. Replace the repository files with v0.18.
 4. Push to GitHub and let Vercel deploy.
 5. Open the game and press **Save**.
 

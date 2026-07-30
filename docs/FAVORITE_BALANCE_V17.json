@@ -1,0 +1,42 @@
+{
+  "baseline": {
+    "seeds": 8,
+    "UCL": {
+      "topFiveWins": 5,
+      "editions": 8,
+      "rate": 0.625
+    },
+    "LIB": {
+      "topFiveWins": 4,
+      "editions": 8,
+      "rate": 0.5
+    },
+    "WC": {
+      "topFiveWins": 6,
+      "editions": 8,
+      "rate": 0.75
+    },
+    "majorClubTopFiveRate": 0.563,
+    "overallTopFiveRate": 0.625
+  },
+  "v0.17": {
+    "seeds": 8,
+    "UCL": {
+      "topFiveWins": 8,
+      "editions": 8,
+      "rate": 1.0
+    },
+    "LIB": {
+      "topFiveWins": 5,
+      "editions": 8,
+      "rate": 0.625
+    },
+    "WC": {
+      "topFiveWins": 5,
+      "editions": 8,
+      "rate": 0.625
+    },
+    "majorClubTopFiveRate": 0.813,
+    "overallTopFiveRate": 0.75
+  }
+}

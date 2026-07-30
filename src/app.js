@@ -44,12 +44,15 @@ let playerPositionFilter = 'ALL';
 let playerCareerFilter = 'ALL';
 let playerStatsScope = 'club';
 let playerStatsSort = 'goals';
+let playerStatsCompetition = 'ALL';
 let competitionStatsPosition = 'ALL';
 let competitionStatsSort = 'titles';
 let competitionCoachStatsSort = 'titles';
 let coachStatsScope = 'all';
 let coachStatsSort = 'titles';
-let peopleRegionFilter = 'ALL';
+let coachStatsCompetition = 'ALL';
+let peopleOriginRegionFilter = 'ALL';
+let peopleTeamRegionFilter = 'ALL';
 let almanacRegionFilter = 'ALL';
 let almanacTeamSort = 'titles';
 let almanacPlayerSort = 'totalHonours';
@@ -238,7 +241,7 @@ function regionOptions(selected, includeAll = true) {
   return `${includeAll ? `<option value="ALL">All regions</option>` : ''}${REGION_ORDER.map((region) => `<option value="${region}" ${selected === region ? 'selected' : ''}>${region}</option>`).join('')}`;
 }
 
-function matchesRegion(nationality, selected = peopleRegionFilter) {
+function matchesRegion(nationality, selected = 'ALL') {
   return selected === 'ALL' || regionForNationality(nationality) === selected;
 }
 
@@ -973,7 +976,7 @@ function magazineTabs(active) {
 }
 
 
-function magazineRankingCompetitionOptions() {
+function universalCompetitionOptions(selected = 'ALL', includeAll = false) {
   const domestic = LEAGUE_DEFINITIONS.map((league) => ({ id: league.id, name: league.name, group: `${league.confederation} leagues` }))
     .concat(LEAGUE_DEFINITIONS.map((league) => ({ id: `CUP-${league.id}`, name: league.cupName, group: `${league.confederation} cups` })));
   const continental = CONTINENTAL_DEFINITIONS.map((competition) => ({ id: competition.id, name: competition.name, group: 'Continental club competitions' }));
@@ -981,7 +984,12 @@ function magazineRankingCompetitionOptions() {
   const all = [{ id: 'SUPERCUP', name: 'Spanish Super Cup', group: 'Europe cups' }, ...domestic, ...continental, ...international];
   const groups = new Map();
   all.forEach((item) => { if (!groups.has(item.group)) groups.set(item.group, []); groups.get(item.group).push(item); });
-  return [...groups.entries()].map(([group, items]) => `<optgroup label="${esc(group)}">${items.sort((a,b)=>a.name.localeCompare(b.name)).map((item) => `<option value="${item.id}" ${magazineRankingCompetition === item.id ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</optgroup>`).join('');
+  const allOption = includeAll ? `<option value="ALL" ${selected === 'ALL' ? 'selected' : ''}>All competitions</option>` : '';
+  return `${allOption}${[...groups.entries()].map(([group, items]) => `<optgroup label="${esc(group)}">${items.sort((a,b)=>a.name.localeCompare(b.name)).map((item) => `<option value="${item.id}" ${selected === item.id ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</optgroup>`).join('')}`;
+}
+
+function magazineRankingCompetitionOptions() {
+  return universalCompetitionOptions(magazineRankingCompetition, false);
 }
 
 function magazineRankingsPage() {
@@ -1129,25 +1137,30 @@ function transfersPage(tabRaw = 'players') {
 }
 
 function peopleTabs(active) {
-  return `<nav class="competition-tabs"><a href="#/people/presidents" class="${active === 'presidents' ? 'active' : ''}">Presidents</a><a href="#/people/coaches" class="${active === 'coaches' ? 'active' : ''}">Coaches</a><a href="#/people/players/overview" class="${active === 'players' ? 'active' : ''}">Players</a></nav>`;
+  return `<nav class="competition-tabs"><a href="#/people/presidents" class="${active === 'presidents' ? 'active' : ''}">Presidents</a><a href="#/people/coaches/overview" class="${active === 'coaches' ? 'active' : ''}">Coaches</a><a href="#/people/players/overview" class="${active === 'players' ? 'active' : ''}">Players</a></nav>`;
 }
 
 function playerTabs(active) {
   return `<nav class="sub-tabs player-index-tabs">${PLAYER_TABS.map((tab) => `<a href="#/people/players/${tab}" class="${active === tab ? 'active' : ''}">${tab === 'overview' ? 'Player Pool' : 'Statistics'}</a>`).join('')}</nav>`;
 }
 
+function coachTabs(active) {
+  return `<nav class="sub-tabs player-index-tabs"><a href="#/people/coaches/overview" class="${active === 'overview' ? 'active' : ''}">Coach Pool</a><a href="#/people/coaches/statistics" class="${active === 'statistics' ? 'active' : ''}">Statistics</a></nav>`;
+}
+
 function playersPage(tabRaw = 'overview') {
   const tab = PLAYER_TABS.includes(tabRaw) ? tabRaw : 'overview';
   const activePlayers = state.players.filter((player) => player.status === 'active');
-  if (tab === 'statistics') return `${pageHead('PEOPLE', 'Players', 'Compare active footballers by rarity, current club, ability and career production.')}${peopleTabs('players')}${playerTabs(tab)}${playerStatisticsTable(activePlayers)}`;
+  if (tab === 'statistics') return `${pageHead('PEOPLE', 'Players', 'Compare active and retired footballers by origin, current team region, competition and career production.')}${peopleTabs('players')}${playerTabs(tab)}${playerStatisticsTable(state.players)}`;
   const filtered = activePlayers.filter((player) => {
     const term = playerSearch.trim().toLowerCase();
     return (!term || player.name.toLowerCase().includes(term) || clubById(player.clubId)?.name.toLowerCase().includes(term))
-      && matchesRegion(player.nationality)
+      && matchesRegion(player.nationality, peopleOriginRegionFilter)
+      && (peopleTeamRegionFilter === 'ALL' || (player.clubId && COUNTRY_META[clubById(player.clubId)?.country]?.region === peopleTeamRegionFilter))
       && (playerPositionFilter === 'ALL' || player.position === playerPositionFilter)
       && (playerCareerFilter === 'ALL' || (playerCareerFilter === 'NEW' ? player.debutSeason === state.season : player.careerYear + 1 === Number(playerCareerFilter)));
   }).sort((a, b) => b.rating - a.rating || STAR_RARITIES[b.rarity].rank - STAR_RARITIES[a.rarity].rank);
-  return `${pageHead('PEOPLE', 'Players', 'Every player has a rarity, position, tactical role, contract and pre-generated career path.')}${peopleTabs('players')}${playerTabs(tab)}<section class="panel"><div class="filter-toolbar"><label>Search<input id="player-search" type="search" value="${esc(playerSearch)}" placeholder="Player or club"></label><label>Region<select id="people-region-filter">${regionOptions(peopleRegionFilter)}</select></label><label>Position<select id="player-position-filter"><option value="ALL">All positions</option>${['GK', 'DF', 'MF', 'FW'].map((position) => `<option value="${position}" ${playerPositionFilter === position ? 'selected' : ''}>${position}</option>`).join('')}</select></label><label>Career<select id="player-career-filter"><option value="ALL">All career years</option><option value="NEW" ${playerCareerFilter === 'NEW' ? 'selected' : ''}>Debuted this season</option>${Array.from({length: 13}, (_, index) => index + 1).map((year) => `<option value="${year}" ${String(playerCareerFilter) === String(year) ? 'selected' : ''}>Career year ${year}</option>`).join('')}</select></label><span>${fmt(filtered.length)} active players</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>Club</th><th>Nation</th><th>Pos</th><th>Role</th><th>Rarity</th><th>Career</th><th>Debut</th><th>Age</th><th>Rating</th><th>Market value</th><th>Contract</th></tr></thead><tbody>${filtered.slice(0, 500).map((player) => `<tr><td>${playerLink(player.id)}</td><td>${player.clubId ? teamLink(player.clubId) : '<span class="free-agent">Free agent</span>'}</td><td>${flag(player.nationality)}</td><td>${player.position}</td><td>${esc(player.roleLabel)}</td><td>${rarityBadge(player.rarity)}</td><td><strong>Y${player.careerYear + 1}</strong></td><td>${player.debutSeason || state.season - player.careerYear}</td><td>${state.season - player.birthYear}</td><td><strong>${player.rating}</strong></td><td><strong>${money(player.marketValue)}</strong></td><td>${player.contractYears ? `${player.contractYears} yr` : 'Free'}</td></tr>`).join('')}</tbody></table></div></section>`;
+  return `${pageHead('PEOPLE', 'Players', 'Every player has a rarity, position, tactical role, contract and pre-generated career path.')}${peopleTabs('players')}${playerTabs(tab)}<section class="panel"><div class="filter-toolbar"><label>Search<input id="player-search" type="search" value="${esc(playerSearch)}" placeholder="Player or club"></label><label>Continent (origin)<select id="people-origin-region-filter">${regionOptions(peopleOriginRegionFilter)}</select></label><label>Continent (team)<select id="people-team-region-filter">${regionOptions(peopleTeamRegionFilter)}</select></label><label>Position<select id="player-position-filter"><option value="ALL">All positions</option>${['GK', 'DF', 'MF', 'FW'].map((position) => `<option value="${position}" ${playerPositionFilter === position ? 'selected' : ''}>${position}</option>`).join('')}</select></label><label>Career<select id="player-career-filter"><option value="ALL">All career years</option><option value="NEW" ${playerCareerFilter === 'NEW' ? 'selected' : ''}>Debuted this season</option>${Array.from({length: 13}, (_, index) => index + 1).map((year) => `<option value="${year}" ${String(playerCareerFilter) === String(year) ? 'selected' : ''}>Career year ${year}</option>`).join('')}</select></label><span>${fmt(filtered.length)} active players</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>Club</th><th>Nation</th><th>Pos</th><th>Role</th><th>Rarity</th><th>Career</th><th>Debut</th><th>Age</th><th>Rating</th><th>Market value</th><th>Contract</th></tr></thead><tbody>${filtered.slice(0, 500).map((player) => `<tr><td>${playerLink(player.id)}</td><td>${player.clubId ? teamLink(player.clubId) : '<span class="free-agent">Free agent</span>'}</td><td>${flag(player.nationality)}</td><td>${player.position}</td><td>${esc(player.roleLabel)}</td><td>${rarityBadge(player.rarity)}</td><td><strong>Y${player.careerYear + 1}</strong></td><td>${player.debutSeason || state.season - player.careerYear}</td><td>${state.season - player.birthYear}</td><td><strong>${player.rating}</strong></td><td><strong>${money(player.marketValue)}</strong></td><td>${player.contractYears ? `${player.contractYears} yr` : 'Free'}</td></tr>`).join('')}</tbody></table></div></section>`;
 }
 
 function playerStatisticsTable(activePlayers) {
@@ -1160,6 +1173,7 @@ function playerStatisticsTable(activePlayers) {
   const rowsSource = [...state.history.playerSeasons, ...Object.values(state.current.playerStats || {})];
   for (const row of rowsSource) {
     if (!ids.has(row.playerId)) continue;
+    if (playerStatsCompetition !== 'ALL' && row.competitionId !== playerStatsCompetition) continue;
     if (playerStatsScope !== 'all' && (playerStatsScope === 'international') !== Boolean(row.isInternational)) continue;
     const item = ensure(row.playerId);
     item.games += row.apps || 0; item.goals += row.goals || 0; item.assists += row.assists || 0; item.cleanSheets += row.cleanSheets || 0;
@@ -1167,33 +1181,71 @@ function playerStatisticsTable(activePlayers) {
   }
   for (const honour of state.history.honours) {
     if (!ids.has(honour.playerId)) continue;
+    if (playerStatsCompetition !== 'ALL' && honour.competitionId !== playerStatsCompetition) continue;
     if (playerStatsScope !== 'all' && (playerStatsScope === 'international') !== Boolean(honour.isInternational)) continue;
     ensure(honour.playerId).titles += 1;
   }
-  const rows = activePlayers.filter((player) => matchesRegion(player.nationality) && (playerPositionFilter === 'ALL' || player.position === playerPositionFilter)).map((player) => {
+  const rows = activePlayers.filter((player) => matchesRegion(player.nationality, peopleOriginRegionFilter) && (peopleTeamRegionFilter === 'ALL' || (player.clubId && COUNTRY_META[clubById(player.clubId)?.country]?.region === peopleTeamRegionFilter)) && (playerPositionFilter === 'ALL' || player.position === playerPositionFilter)).map((player) => {
     const value = ensure(player.id);
     return { player, totals: { ...value, averageRating: value.games ? value.ratingWeighted / value.games : 0 } };
   });
   rows.sort((a, b) => playerStatsSort === 'rating' ? b.totals.averageRating - a.totals.averageRating || b.totals.games - a.totals.games : (b.totals[playerStatsSort] || 0) - (a.totals[playerStatsSort] || 0) || b.player.rating - a.player.rating);
-  return `<section class="panel"><div class="filter-toolbar"><label>Region<select id="people-region-filter">${regionOptions(peopleRegionFilter)}</select></label><label>Position<select id="player-position-filter"><option value="ALL">All positions</option>${['GK','DF','MF','FW'].map((position) => `<option value="${position}" ${playerPositionFilter === position ? 'selected' : ''}>${position}</option>`).join('')}</select></label><label>Scope<select id="player-stats-scope"><option value="club" ${playerStatsScope === 'club' ? 'selected' : ''}>Club football</option><option value="international" ${playerStatsScope === 'international' ? 'selected' : ''}>International football</option><option value="all" ${playerStatsScope === 'all' ? 'selected' : ''}>Combined</option></select></label><label>Sort by<select id="player-stats-sort">${[['goals','Goals'],['games','Games'],['assists','Assists'],['cleanSheets','Clean sheets'],['rating','Average score'],['titles','Titles']].map(([value,label]) => `<option value="${value}" ${playerStatsSort === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><span>Top 50 shown</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Player</th><th>Position</th><th>Club</th><th>Games</th><th>Goals</th><th>Assists</th><th>Clean sheets</th><th>Average score</th><th>Total titles</th></tr></thead><tbody>${rows.slice(0, 50).map(({ player, totals }, index) => `<tr><td>${index + 1}</td><td>${playerLink(player.id)}</td><td>${player.position}</td><td>${player.clubId ? teamLink(player.clubId) : 'Free agent'}</td><td>${totals.games}</td><td><strong>${totals.goals}</strong></td><td>${totals.assists}</td><td>${totals.cleanSheets}</td><td>${totals.games ? totals.averageRating.toFixed(2) : '—'}</td><td><strong>${totals.titles}</strong></td></tr>`).join('')}</tbody></table></div></section>`;
+  return `<section class="panel"><div class="filter-toolbar"><label>Continent (origin)<select id="people-origin-region-filter">${regionOptions(peopleOriginRegionFilter)}</select></label><label>Continent (team)<select id="people-team-region-filter">${regionOptions(peopleTeamRegionFilter)}</select></label><label>Position<select id="player-position-filter"><option value="ALL">All positions</option>${['GK','DF','MF','FW'].map((position) => `<option value="${position}" ${playerPositionFilter === position ? 'selected' : ''}>${position}</option>`).join('')}</select></label><label>Competition<select id="player-stats-competition">${universalCompetitionOptions(playerStatsCompetition, true)}</select></label><label>Scope<select id="player-stats-scope"><option value="club" ${playerStatsScope === 'club' ? 'selected' : ''}>Club football</option><option value="international" ${playerStatsScope === 'international' ? 'selected' : ''}>International football</option><option value="all" ${playerStatsScope === 'all' ? 'selected' : ''}>Combined</option></select></label><label>Sort by<select id="player-stats-sort">${[['goals','Goals'],['games','Games'],['assists','Assists'],['cleanSheets','Clean sheets'],['rating','Average score'],['titles','Titles']].map(([value,label]) => `<option value="${value}" ${playerStatsSort === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><span>Top 50 shown</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Player</th><th>Position</th><th>Club</th><th>Games</th><th>Goals</th><th>Assists</th><th>Clean sheets</th><th>Average score</th><th>Total titles</th></tr></thead><tbody>${rows.slice(0, 50).map(({ player, totals }, index) => `<tr><td>${index + 1}</td><td>${playerLink(player.id)}</td><td>${player.position}</td><td>${player.clubId ? teamLink(player.clubId) : player.status === 'retired' ? '<span class="muted">Retired</span>' : 'Free agent'}</td><td>${totals.games}</td><td><strong>${totals.goals}</strong></td><td>${totals.assists}</td><td>${totals.cleanSheets}</td><td>${totals.games ? totals.averageRating.toFixed(2) : '—'}</td><td><strong>${totals.titles}</strong></td></tr>`).join('')}</tbody></table></div></section>`;
 }
 
 
 function presidentsPeoplePage() {
-  const rows = [...(state.owners || [])].filter((owner) => matchesRegion(owner.nationality)).sort((a, b) => (b.quality || 0) - (a.quality || 0) || (STAFF_RARITIES[b.rarity]?.rank || 0) - (STAFF_RARITIES[a.rarity]?.rank || 0));
+  const rows = [...(state.owners || [])].filter((owner) => matchesRegion(owner.nationality, peopleOriginRegionFilter) && (peopleTeamRegionFilter === 'ALL' || (owner.clubId && COUNTRY_META[clubById(owner.clubId)?.country]?.region === peopleTeamRegionFilter))).sort((a, b) => (b.quality || 0) - (a.quality || 0) || (STAFF_RARITIES[b.rarity]?.rank || 0) - (STAFF_RARITIES[a.rarity]?.rank || 0));
   return `${pageHead('PEOPLE', 'Presidents', 'Club leadership changes finances, negotiations, patience and academy development over long fixed tenures.')}${peopleTabs('presidents')}
-    <section class="panel"><div class="filter-toolbar"><label>Region<select id="people-region-filter">${regionOptions(peopleRegionFilter)}</select></label><span>${fmt(rows.filter((owner) => owner.clubId).length)} active presidents · ${fmt(rows.length)} historical people retained</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>President</th><th>Nationality</th><th>Rarity</th><th>Quality</th><th>Profile</th><th>Current club</th><th>Years remaining</th></tr></thead><tbody>${rows.slice(0, 250).map((owner, index) => `<tr><td>${index + 1}</td><td><strong>${esc(owner.name)}</strong></td><td>${flag(owner.nationality)}</td><td>${staffRarityBadge(owner.rarity)}</td><td><strong>${owner.quality || '—'}/100</strong></td><td>${esc(OWNER_PROFILES[owner.profile]?.label || owner.profileLabel || '—')}</td><td>${owner.clubId ? teamLink(owner.clubId) : '<span class="muted">Former president</span>'}</td><td>${owner.clubId ? (owner.yearsRemaining ?? '—') : '—'}</td></tr>`).join('')}</tbody></table></div></section>`;
+    <section class="panel"><div class="filter-toolbar"><label>Continent (origin)<select id="people-origin-region-filter">${regionOptions(peopleOriginRegionFilter)}</select></label><label>Continent (team)<select id="people-team-region-filter">${regionOptions(peopleTeamRegionFilter)}</select></label><span>${fmt(rows.filter((owner) => owner.clubId).length)} active presidents · ${fmt(rows.length)} historical people retained</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>President</th><th>Nationality</th><th>Rarity</th><th>Quality</th><th>Profile</th><th>Current club</th><th>Years remaining</th></tr></thead><tbody>${rows.slice(0, 250).map((owner, index) => `<tr><td>${index + 1}</td><td><strong>${esc(owner.name)}</strong></td><td>${flag(owner.nationality)}</td><td>${staffRarityBadge(owner.rarity)}</td><td><strong>${owner.quality || '—'}/100</strong></td><td>${esc(OWNER_PROFILES[owner.profile]?.label || owner.profileLabel || '—')}</td><td>${owner.clubId ? teamLink(owner.clubId) : '<span class="muted">Former president</span>'}</td><td>${owner.clubId ? (owner.yearsRemaining ?? '—') : '—'}</td></tr>`).join('')}</tbody></table></div></section>`;
 }
 
-function coachesPeoplePage() {
-  const rows = [...(state.coaches || [])].filter((coach) => matchesRegion(coach.nationality)).sort((a, b) => (b.quality || 0) - (a.quality || 0) || (STAFF_RARITIES[b.rarity]?.rank || 0) - (STAFF_RARITIES[a.rarity]?.rank || 0));
-  return `${pageHead('PEOPLE', 'Coaches', 'Browse the current coaching market by rarity, quality, tactical identity and current appointment.')}${peopleTabs('coaches')}
-    <section class="panel"><div class="filter-toolbar"><label>Region<select id="people-region-filter">${regionOptions(peopleRegionFilter)}</select></label><span>${fmt(rows.filter((coach) => coach.clubId || coach.nationalTeamId).length)} employed · ${fmt(rows.filter((coach) => !coach.clubId && !coach.nationalTeamId).length)} free agents</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Coach</th><th>Nationality</th><th>Rarity</th><th>Quality</th><th>Style</th><th>Current job</th><th>Years in role</th></tr></thead><tbody>${rows.slice(0, 250).map((coach, index) => `<tr><td>${index + 1}</td><td>${coachLink(coach.id)}</td><td>${flag(coach.nationality)}</td><td>${staffRarityBadge(coach.rarity)}</td><td><strong>${coach.quality || '—'}/100</strong></td><td>${esc(COACH_PROFILES[coach.profile]?.label || coach.profileLabel || '—')}</td><td>${coachJob(coach)}</td><td>${coach.seasonsInRole || 0}</td></tr>`).join('')}</tbody></table></div></section>`;
+function coachStatisticsTable() {
+  const totals = new Map();
+  const ensure = (id) => {
+    if (!totals.has(id)) totals.set(id, { games: 0, wins: 0, draws: 0, losses: 0, gf: 0, ga: 0, cleanSheets: 0, titles: 0 });
+    return totals.get(id);
+  };
+  const source = [...(state.history.coachCompetitionSeasons || []), ...Object.values(state.current.coachStats || {})];
+  for (const row of source) {
+    if (coachStatsCompetition !== 'ALL' && row.competitionId !== coachStatsCompetition) continue;
+    if (coachStatsScope !== 'all' && (coachStatsScope === 'international') !== Boolean(row.isInternational)) continue;
+    const item = ensure(row.coachId);
+    for (const field of ['games','wins','draws','losses','gf','ga','cleanSheets','titles']) item[field] += row[field] || 0;
+  }
+  const rows = (state.coaches || []).filter((coach) =>
+    matchesRegion(coach.nationality, peopleOriginRegionFilter)
+    && (peopleTeamRegionFilter === 'ALL'
+      || (coach.clubId && COUNTRY_META[clubById(coach.clubId)?.country]?.region === peopleTeamRegionFilter)
+      || (coach.nationalTeamId && nationalById(coach.nationalTeamId)?.region === peopleTeamRegionFilter))
+  ).map((coach) => {
+    const stat = ensure(coach.id);
+    return { coach, ...stat, winPct: stat.games ? stat.wins / stat.games : 0, concededPerGame: stat.games ? stat.ga / stat.games : 999 };
+  });
+  const sorters = {
+    titles: (a,b) => b.titles-a.titles || b.wins-a.wins,
+    games: (a,b) => b.games-a.games || b.wins-a.wins,
+    wins: (a,b) => b.wins-a.wins || b.games-a.games,
+    winPct: (a,b) => (b.games >= 10 ? b.winPct : -1) - (a.games >= 10 ? a.winPct : -1) || b.games-a.games,
+    goals: (a,b) => b.gf-a.gf || b.games-a.games,
+    conceded: (a,b) => (a.games >= 10 ? a.concededPerGame : 999) - (b.games >= 10 ? b.concededPerGame : 999) || b.games-a.games
+  };
+  rows.sort(sorters[coachStatsSort] || sorters.titles);
+  return `<section class="panel"><div class="filter-toolbar"><label>Continent (origin)<select id="people-origin-region-filter">${regionOptions(peopleOriginRegionFilter)}</select></label><label>Continent (team)<select id="people-team-region-filter">${regionOptions(peopleTeamRegionFilter)}</select></label><label>Competition<select id="coach-stats-competition">${universalCompetitionOptions(coachStatsCompetition, true)}</select></label><label>Scope<select id="coach-stats-scope"><option value="all" ${coachStatsScope === 'all' ? 'selected' : ''}>Club + international</option><option value="club" ${coachStatsScope === 'club' ? 'selected' : ''}>Club only</option><option value="international" ${coachStatsScope === 'international' ? 'selected' : ''}>International only</option></select></label><label>Sort by<select id="coach-stats-sort">${[['titles','Titles'],['games','Games'],['wins','Wins'],['winPct','Win percentage'],['goals','Goals scored'],['conceded','Fewest conceded / game']].map(([value,label]) => `<option value="${value}" ${coachStatsSort === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><span>Top 50 shown</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Coach</th><th>Rarity</th><th>Current job</th><th>Games</th><th>Wins</th><th>Win %</th><th>GF</th><th>GA</th><th>CS</th><th>Titles</th></tr></thead><tbody>${rows.slice(0,50).map((row,index) => `<tr><td>${index+1}</td><td>${coachLink(row.coach.id)}</td><td>${staffRarityBadge(row.coach.rarity)}</td><td>${coachJob(row.coach)}</td><td>${row.games}</td><td><strong>${row.wins}</strong></td><td>${row.games ? `${(row.winPct*100).toFixed(1)}%` : '—'}</td><td>${row.gf}</td><td>${row.ga}</td><td>${row.cleanSheets}</td><td><strong>${row.titles}</strong></td></tr>`).join('') || '<tr><td colspan="11">No coach records match these filters.</td></tr>'}</tbody></table></div></section>`;
+}
+
+function coachesPeoplePage(tabRaw = 'overview') {
+  const tab = tabRaw === 'statistics' ? 'statistics' : 'overview';
+  const heading = `${pageHead('PEOPLE', 'Coaches', 'Browse the coaching world by rarity, quality, tactical identity, appointments and competition record.')}${peopleTabs('coaches')}${coachTabs(tab)}`;
+  if (tab === 'statistics') return `${heading}${coachStatisticsTable()}`;
+  const rows = [...(state.coaches || [])].filter((coach) => matchesRegion(coach.nationality, peopleOriginRegionFilter) && (peopleTeamRegionFilter === 'ALL' || (coach.clubId && COUNTRY_META[clubById(coach.clubId)?.country]?.region === peopleTeamRegionFilter) || (coach.nationalTeamId && nationalById(coach.nationalTeamId)?.region === peopleTeamRegionFilter))).sort((a, b) => (b.quality || 0) - (a.quality || 0) || (STAFF_RARITIES[b.rarity]?.rank || 0) - (STAFF_RARITIES[a.rarity]?.rank || 0));
+  return `${heading}
+    <section class="panel"><div class="filter-toolbar"><label>Continent (origin)<select id="people-origin-region-filter">${regionOptions(peopleOriginRegionFilter)}</select></label><label>Continent (team)<select id="people-team-region-filter">${regionOptions(peopleTeamRegionFilter)}</select></label><span>${fmt(rows.filter((coach) => coach.clubId || coach.nationalTeamId).length)} employed · ${fmt(rows.filter((coach) => !coach.clubId && !coach.nationalTeamId).length)} free agents</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Coach</th><th>Nationality</th><th>Rarity</th><th>Quality</th><th>Style</th><th>Current job</th><th>Years in role</th></tr></thead><tbody>${rows.slice(0, 250).map((coach, index) => `<tr><td>${index + 1}</td><td>${coachLink(coach.id)}</td><td>${flag(coach.nationality)}</td><td>${staffRarityBadge(coach.rarity)}</td><td><strong>${coach.quality || '—'}/100</strong></td><td>${esc(COACH_PROFILES[coach.profile]?.label || coach.profileLabel || '—')}</td><td>${coachJob(coach)}</td><td>${coach.seasonsInRole || 0}</td></tr>`).join('')}</tbody></table></div></section>`;
 }
 
 function peoplePage(type = 'players', tab = 'overview') {
   if (type === 'presidents') return presidentsPeoplePage();
-  if (type === 'coaches') return coachesPeoplePage();
+  if (type === 'coaches') return coachesPeoplePage(tab);
   return playersPage(tab || 'overview');
 }
 
@@ -1382,27 +1434,15 @@ function aggregateCoachAlmanac(scope = 'all') {
 }
 
 function almanacPage(sectionRaw = 'champions') {
-  const allowed = ['champions', 'teams', 'players', 'coaches'];
+  const allowed = ['champions', 'teams'];
   const section = allowed.includes(sectionRaw) ? sectionRaw : 'champions';
-  const tabs = `<nav class="competition-tabs"><a href="#/almanac/champions" class="${section === 'champions' ? 'active' : ''}">Champions</a><a href="#/almanac/teams" class="${section === 'teams' ? 'active' : ''}">Teams</a><a href="#/almanac/players" class="${section === 'players' ? 'active' : ''}">Players</a><a href="#/almanac/coaches" class="${section === 'coaches' ? 'active' : ''}">Coaches</a></nav>`;
+  const tabs = `<nav class="competition-tabs"><a href="#/almanac/champions" class="${section === 'champions' ? 'active' : ''}">Champions</a><a href="#/almanac/teams" class="${section === 'teams' ? 'active' : ''}">Teams</a></nav>`;
   const regionControl = `<label>Region<select id="almanac-region-filter">${regionOptions(almanacRegionFilter)}</select></label>`;
   if (section === 'teams') {
     const sorters = { titles:(a,b)=>b.titles-a.titles||b.wins-a.wins, games:(a,b)=>b.games-a.games, wins:(a,b)=>b.wins-a.wins, winPct:(a,b)=>b.winPct-a.winPct||b.games-a.games, goals:(a,b)=>b.gf-a.gf, cleanSheets:(a,b)=>(b.cleanSheets||0)-(a.cleanSheets||0) };
     const rows = aggregateTeamAlmanac().filter((row)=>{ const country=row.international?nationalById(row.teamId)?.name:clubById(row.teamId)?.country; return almanacRegionFilter==='ALL'||COUNTRY_META[country]?.region===almanacRegionFilter; }).sort(sorters[almanacTeamSort]||sorters.titles).slice(0,150);
     const controls=`<div class="filter-toolbar">${regionControl}<label>Rank by<select id="almanac-team-sort">${[['titles','Total honors'],['games','Games'],['wins','Wins'],['winPct','Win percentage'],['goals','Goals scored']].map(([v,l])=>`<option value="${v}" ${almanacTeamSort===v?'selected':''}>${l}</option>`).join('')}</select></label><span>Top 150</span></div>`;
     return `${pageHead('PERMANENT HISTORY', 'Team Almanac', 'Compare club and national-team records across the entire universe.')}${tabs}<section class="panel">${controls}<div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Team</th><th>Region</th><th>Current competition</th><th>Games</th><th>Wins</th><th>Win %</th><th>GF</th><th>GA</th><th>Domestic</th><th>Continental</th><th>International</th><th>Total honors</th></tr></thead><tbody>${rows.map((row,index)=>{const club=row.international?null:clubById(row.teamId);const country=row.international?nationalById(row.teamId)?.name:club?.country;return `<tr><td>${index+1}</td><td>${teamLink(row.teamId,row.international)}</td><td>${esc(COUNTRY_META[country]?.region||'—')}</td><td>${row.international?'International football':esc(competitionLabel(club?.leagueId)||club?.country||'—')}</td><td>${row.games}</td><td><strong>${row.wins}</strong></td><td>${row.games?`${(row.winPct*100).toFixed(1)}%`:'—'}</td><td>${row.gf}</td><td>${row.ga}</td><td>${row.domesticTitles}</td><td>${row.continentalTitles}</td><td>${row.internationalTitles}</td><td><strong>${row.titles}</strong></td></tr>`;}).join('')}</tbody></table></div></section>`;
-  }
-  if (section === 'players') {
-    const sorters={totalHonours:(a,b)=>b.totalHonours-a.totalHonours||b.goals-a.goals,games:(a,b)=>b.games-a.games,goals:(a,b)=>b.goals-a.goals,assists:(a,b)=>b.assists-a.assists,cleanSheets:(a,b)=>b.cleanSheets-a.cleanSheets,rating:(a,b)=>b.averageRating-a.averageRating||b.games-a.games,awards:(a,b)=>b.individualAwards-a.individualAwards};
-    const rows=aggregatePlayerAlmanac().filter((row)=>{const p=playerById(row.playerId);return p&&matchesRegion(p.nationality,almanacRegionFilter);}).sort(sorters[almanacPlayerSort]||sorters.totalHonours).slice(0,150);
-    const controls=`<div class="filter-toolbar">${regionControl}<label>Rank by<select id="almanac-player-sort">${[['totalHonours','Total honors'],['games','Games'],['goals','Goals'],['assists','Assists'],['cleanSheets','Clean sheets'],['rating','Average rating'],['awards','Individual awards']].map(([v,l])=>`<option value="${v}" ${almanacPlayerSort===v?'selected':''}>${l}</option>`).join('')}</select></label><span>Top 150</span></div>`;
-    return `${pageHead('PERMANENT HISTORY','Player Almanac','Filter every career by region and rank it by production, ratings or honors.')}${tabs}<section class="panel">${controls}<div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Player</th><th>Region</th><th>Current club</th><th>Games</th><th>Goals</th><th>Assists</th><th>Clean sheets</th><th>Avg rating</th><th>Team honors</th><th>Individual awards</th><th>Total honors</th></tr></thead><tbody>${rows.map((row,index)=>{const player=playerById(row.playerId);return `<tr><td>${index+1}</td><td>${playerLink(row.playerId)}</td><td>${esc(regionForNationality(player?.nationality))}</td><td>${player?.clubId?teamLink(player.clubId):'<span class="muted">Retired / free</span>'}</td><td>${row.games}</td><td><strong>${row.goals}</strong></td><td>${row.assists}</td><td>${row.cleanSheets}</td><td>${row.games?row.averageRating.toFixed(2):'—'}</td><td>${row.teamHonours}</td><td>${row.individualAwards}</td><td><strong>${row.totalHonours}</strong></td></tr>`;}).join('')}</tbody></table></div></section>`;
-  }
-  if (section === 'coaches') {
-    const sorters={games:(a,b)=>b.games-a.games,wins:(a,b)=>b.wins-a.wins||b.games-a.games,winPct:(a,b)=>b.winPct-a.winPct||b.games-a.games,goals:(a,b)=>b.gf-a.gf||b.wins-a.wins,titles:(a,b)=>b.titles-a.titles||b.wins-a.wins};
-    const rows=aggregateCoachAlmanac(coachStatsScope).filter((row)=>{const c=coachById(row.coachId);return c&&matchesRegion(c.nationality,almanacRegionFilter);}).sort(sorters[almanacCoachSort]||sorters.titles).slice(0,150);
-    const controls=`<div class="filter-toolbar">${regionControl}<label>Scope<select id="coach-stats-scope">${[['all','Club + international'],['club','Club only'],['international','International only']].map(([v,l])=>`<option value="${v}" ${coachStatsScope===v?'selected':''}>${l}</option>`).join('')}</select></label><label>Rank by<select id="almanac-coach-sort">${[['titles','Titles'],['games','Games'],['wins','Wins'],['winPct','Win percentage'],['goals','Goals scored']].map(([v,l])=>`<option value="${v}" ${almanacCoachSort===v?'selected':''}>${l}</option>`).join('')}</select></label><span>Top 150</span></div>`;
-    return `${pageHead('PERMANENT HISTORY','Coach Almanac','Filter managerial history by region, scope and career achievement.')}${tabs}<section class="panel">${controls}<div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Coach</th><th>Region</th><th>Current job</th><th>Rarity</th><th>Games</th><th>Wins</th><th>Win %</th><th>GF</th><th>GA</th><th>Total honors</th></tr></thead><tbody>${rows.map((row,index)=>{const coach=coachById(row.coachId);return `<tr><td>${index+1}</td><td>${coachLink(row.coachId)}</td><td>${esc(regionForNationality(coach?.nationality))}</td><td>${coachJob(coach)}</td><td>${coach?staffRarityBadge(coach.rarity):'—'}</td><td>${row.games}</td><td><strong>${row.wins}</strong></td><td>${row.games?`${(row.winPct*100).toFixed(1)}%`:'—'}</td><td>${row.gf}</td><td>${row.ga}</td><td><strong>${row.titles}</strong></td></tr>`;}).join('')}</tbody></table></div></section>`;
   }
   return `${pageHead('PERMANENT HISTORY','Champions','Every completed competition remains preserved with its winning team and coach.')}${tabs}<section class="almanac-hero"><div><span class="eyebrow">ARCHIVE SCALE</span><h2>${fmt(state.history.playerSeasons.length)} player-season rows</h2><p>${fmt(state.history.clubSeasons.length)} club-season summaries · ${fmt(state.history.awards.length)} award records · ${fmt(state.history.coachSeasons?.length||0)} coach-job seasons</p></div><div class="archive-seal">▤</div></section><section class="panel section-gap"><div class="archive-list">${[...state.history.champions].reverse().slice(0,200).map((champion)=>`<div class="archive-row"><strong>${champion.seasonLabel}</strong><span>${esc(champion.competitionName)}</span><div class="archive-winner-cell">${teamLink(champion.winnerId,champion.isInternational)}${champion.coachId?`<small>Coach: ${coachLink(champion.coachId)}</small>`:''}</div></div>`).join('')||'<div class="empty-state">No archived champions.</div>'}</div></section>`;
 }
@@ -1629,6 +1669,8 @@ function bind() {
   }
   const position = document.getElementById('player-position-filter');
   if (position) position.addEventListener('change', (event) => { playerPositionFilter = event.target.value; render(); });
+  const playerCompetition = document.getElementById('player-stats-competition');
+  if (playerCompetition) playerCompetition.addEventListener('change', (event) => { playerStatsCompetition = event.target.value; render(); });
   const scope = document.getElementById('player-stats-scope');
   if (scope) scope.addEventListener('change', (event) => { playerStatsScope = event.target.value; render(); });
   const sort = document.getElementById('player-stats-sort');
@@ -1639,12 +1681,16 @@ function bind() {
   if (competitionSort) competitionSort.addEventListener('change', (event) => { competitionStatsSort = event.target.value; render(); });
   const competitionCoachSort = document.getElementById('competition-coach-stats-sort');
   if (competitionCoachSort) competitionCoachSort.addEventListener('change', (event) => { competitionCoachStatsSort = event.target.value; render(); });
+  const coachCompetition = document.getElementById('coach-stats-competition');
+  if (coachCompetition) coachCompetition.addEventListener('change', (event) => { coachStatsCompetition = event.target.value; render(); });
   const coachScope = document.getElementById('coach-stats-scope');
   if (coachScope) coachScope.addEventListener('change', (event) => { coachStatsScope = event.target.value; render(); });
   const coachSort = document.getElementById('coach-stats-sort');
   if (coachSort) coachSort.addEventListener('change', (event) => { coachStatsSort = event.target.value; render(); });
-  const peopleRegion = document.getElementById('people-region-filter');
-  if (peopleRegion) peopleRegion.addEventListener('change', (event) => { peopleRegionFilter = event.target.value; render(); });
+  const peopleOriginRegion = document.getElementById('people-origin-region-filter');
+  if (peopleOriginRegion) peopleOriginRegion.addEventListener('change', (event) => { peopleOriginRegionFilter = event.target.value; render(); });
+  const peopleTeamRegion = document.getElementById('people-team-region-filter');
+  if (peopleTeamRegion) peopleTeamRegion.addEventListener('change', (event) => { peopleTeamRegionFilter = event.target.value; render(); });
   const almanacRegion = document.getElementById('almanac-region-filter');
   if (almanacRegion) almanacRegion.addEventListener('change', (event) => { almanacRegionFilter = event.target.value; render(); });
   const almanacTeam = document.getElementById('almanac-team-sort');

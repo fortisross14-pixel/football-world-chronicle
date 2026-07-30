@@ -1,3 +1,15 @@
+# v0.18.0 — Goalkeeper balance and elite talent migration
+
+- Reduced goalkeeper prevalence in elite transfers through dedicated position caps and buyer-demand weighting.
+- Rebalanced match ratings so a team clean sheet no longer gives every goalkeeper an automatic top-player score.
+- Added position normalization to open competition MVP, Ballon d’Or and Kopa races while preserving position-specific awards.
+- Corrected Man of the Match selection to use the simulated match rating rather than the player’s permanent ability rating.
+- Reworked market values and introduced rarity/position ceilings; elite outfield players remain expensive but are no longer valued above $350m.
+- Added global-star migration pressure: prime Generational and Legendary players outside elite European clubs seek a move when continental progress stalls.
+- Recent Libertadores or other major continental success creates loyalty and can delay that move.
+- Added deterministic `market-balance` regression covering goalkeeper transfer/award rates and a Flamengo-to-Europe superstar scenario.
+- No Neon schema changes required.
+
 # v0.14.0 — Regional filters and universal rankings
 
 - Added region filters to People for players, coaches, and presidents.

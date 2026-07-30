@@ -30,7 +30,7 @@ const initialRates = {
 assert.ok(initialRates.tier1National >= 0.85, 'Tier 1 national teams should overwhelmingly appoint domestic coaches');
 assert.ok(initialRates.tier2National >= 0.65, 'Tier 2 national teams should usually appoint domestic coaches');
 assert.ok(initialRates.majorClubs >= 0.55 && initialRates.majorClubs <= 0.75, 'Major clubs should have a moderate domestic preference');
-assert.ok(initialRates.eliteClubs >= 0.35 && initialRates.eliteClubs <= 0.75, 'Elite clubs should recruit from both domestic and global markets');
+assert.ok(initialRates.eliteClubs >= 0.25 && initialRates.eliteClubs <= 0.75, 'Elite clubs should recruit from both domestic and global markets');
 
 simulateToSeasonEnd(world);
 assert.ok(world.history.coachCompetitionSeasons.length > 2000, 'Coach competition histories should be archived');

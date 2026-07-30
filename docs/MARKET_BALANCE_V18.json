@@ -1,0 +1,51 @@
+{
+  "seasons": 2,
+  "activePlayerPositions": {
+    "GK": 1449,
+    "MF": 2039,
+    "FW": 1199,
+    "DF": 2903
+  },
+  "transfers": {
+    "total": 601,
+    "byPosition": {
+      "GK": 46,
+      "MF": 121,
+      "FW": 315,
+      "DF": 119
+    },
+    "goalkeeperRate": 0.077,
+    "eliteTotal": 25,
+    "eliteByPosition": {
+      "GK": 3,
+      "MF": 9,
+      "FW": 5,
+      "DF": 8
+    },
+    "eliteGoalkeeperRate": 0.12
+  },
+  "openAwards": {
+    "total": 376,
+    "byPosition": {
+      "MF": 182,
+      "FW": 98,
+      "GK": 17,
+      "DF": 79
+    },
+    "goalkeeperRate": 0.045,
+    "competitionMvpTotal": 364,
+    "competitionMvpByPosition": {
+      "MF": 176,
+      "FW": 93,
+      "GK": 16,
+      "DF": 79
+    },
+    "competitionMvpGoalkeeperRate": 0.044
+  },
+  "superstarMigration": {
+    "moved": true,
+    "destination": "Manchester City",
+    "destinationConfederation": "Europe",
+    "fee": 155.5
+  }
+}
