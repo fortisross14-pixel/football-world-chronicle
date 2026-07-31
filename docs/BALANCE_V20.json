@@ -1,0 +1,48 @@
+{
+  "majorLeagueTest": {
+    "seeds": 6,
+    "editions": 30,
+    "favoriteChampionRate": 0.667,
+    "topThreeChampionRate": 0.967,
+    "averageFavoriteFinish": 1.77,
+    "favoriteFinishesBelowFifth": 0
+  },
+  "majorTournamentTest": {
+    "seeds": 8,
+    "editions": 24,
+    "uclTopFiveChampionRate": 0.75,
+    "libertadoresTopFiveChampionRate": 1.0,
+    "worldCupTopFiveChampionRate": 0.75,
+    "overallTopFiveChampionRate": 0.833
+  },
+  "superstarMinorLeagueScenario": {
+    "description": "90-rated Legend striker plus an 86-rated teammate at Molde",
+    "seeds": 5,
+    "leagueFinishes": [1, 2, 2, 3, 1],
+    "scorerRanks": [2, 1, 1, 1, 1],
+    "titleRate": 0.4,
+    "topThreeFinishRate": 1.0,
+    "topScorerRate": 0.8,
+    "topThreeScorerRate": 1.0
+  },
+  "coachFocusScenario": {
+    "description": "Equal 86-strength clubs, equal 84-rated squads, equal 90-quality Legend adaptive coaches; only focus differs",
+    "seeds": 6,
+    "regularityAverageLeaguePoints": 93.67,
+    "tournamentAverageLeaguePoints": 89.33,
+    "regularityFinishedAhead": 5,
+    "regularityCupFinalAppearances": 2,
+    "tournamentCupFinalAppearances": 4
+  },
+  "ballonDorDiversity": {
+    "seeds": 6,
+    "allThreeFromSameClub": 0,
+    "podiumsUsingOnlyTwoClubs": 1,
+    "podiumsUsingThreeClubs": 5
+  },
+  "competitionAwardOverlap": {
+    "competitions": 180,
+    "topScorerAlsoMvp": 47,
+    "rate": 0.261
+  }
+}

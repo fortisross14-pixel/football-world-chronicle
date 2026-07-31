@@ -1,3 +1,14 @@
+# v0.20.0 — Competitive hierarchy, coach focus and award diversity
+
+- Added nonlinear elite-player impact so exceptional stars materially elevate secondary clubs and dominate weak-league scoring races more credibly.
+- Increased the influence of named squads and coach quality without eliminating one-match surprises.
+- Limited continental dynasty pressure to major continental matches instead of weakening reigning champions throughout their domestic league season.
+- Added Tournament, Regularity and Balanced coach focuses, with competition-context bonuses and visible UI labels.
+- Added deterministic upgrade logic for existing coaches and raised the save data revision to 12.
+- Added Ballon d’Or club-diversity logic: repeated candidates from one club receive diminishing support based on whether the club won one trophy, a double or a treble-level season.
+- Added `balance-v20` regression and detailed deterministic report.
+- No Neon schema changes required.
+
 # v0.19.1 — Faster season rollover
 
 - Optimized the annual coaching market by precomputing recent coach-title values once per rollover.

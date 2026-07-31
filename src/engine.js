@@ -13,7 +13,8 @@ import {
   CONTINENTAL_DEFINITIONS,
   STAFF_RARITIES,
   OWNER_PROFILES,
-  COACH_PROFILES
+  COACH_PROFILES,
+  COACH_FOCUSES
 } from './data.js';
 import { REAL_WORLD_STARS } from './real-stars.js';
 
@@ -47,6 +48,7 @@ function getRuntimeCache(state) {
   if (cache) return cache;
   const clubById = new Map((state.clubs || []).map((club) => [club.id, club]));
   const playerById = new Map((state.players || []).map((player) => [player.id, player]));
+  const coachById = new Map((state.coaches || []).map((coach) => [coach.id, coach]));
   const nationalById = new Map((state.nationalTeams || []).map((team) => [team.id, team]));
   const clubPlayers = new Map();
   const nationalPlayers = new Map();
@@ -67,6 +69,7 @@ function getRuntimeCache(state) {
   cache = {
     clubById,
     playerById,
+    coachById,
     nationalById,
     clubLineups: new Map([...clubPlayers].map(([id, players]) => [id, selectLineup(players, 7)])),
     nationalLineups: new Map([...nationalPlayers].map(([id, players]) => [id, selectLineup(players, 8)])),
@@ -538,6 +541,42 @@ function chooseStaffRarity(state, nationality = null, type = 'coach') {
   })[0];
 }
 
+function stableStringRoll(value = '') {
+  let hash = 2166136261;
+  for (let index = 0; index < String(value).length; index += 1) {
+    hash ^= String(value).charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967295;
+}
+
+function coachFocusWeights(profile) {
+  if (profile === 'tournament_expert') return { tournament: 0.76, balanced: 0.20, regularity: 0.04 };
+  if (['possession', 'pressing', 'youth_developer'].includes(profile)) return { regularity: 0.58, balanced: 0.34, tournament: 0.08 };
+  if (['counter_attack', 'adaptive', 'pragmatist'].includes(profile)) return { tournament: 0.34, balanced: 0.50, regularity: 0.16 };
+  if (['defensive_rock', 'motivator'].includes(profile)) return { regularity: 0.32, balanced: 0.50, tournament: 0.18 };
+  return { balanced: 0.48, regularity: 0.30, tournament: 0.22 };
+}
+
+function selectCoachFocusFromRoll(profile, roll) {
+  const weights = coachFocusWeights(profile);
+  let cumulative = 0;
+  for (const focus of ['tournament', 'regularity', 'balanced']) {
+    cumulative += weights[focus] || 0;
+    if (roll <= cumulative) return focus;
+  }
+  return 'balanced';
+}
+
+function chooseCoachFocus(state, profile) {
+  return selectCoachFocusFromRoll(profile, random(state));
+}
+
+function inferCoachFocus(coach) {
+  if (COACH_FOCUSES[coach?.focus]) return coach.focus;
+  return selectCoachFocusFromRoll(coach?.profile, stableStringRoll(coach?.id || coach?.name || 'coach'));
+}
+
 function createStaffMember(state, type, nationality, assignment = {}) {
   const rarity = chooseStaffRarity(state, nationality, type);
   const profiles = type === 'owner' ? OWNER_PROFILES : COACH_PROFILES;
@@ -553,6 +592,7 @@ function createStaffMember(state, type, nationality, assignment = {}) {
     quality: clamp(qualityBase + randomInt(state, -2, 2), 60, 99),
     profile,
     profileLabel: profiles[profile].label,
+    focus: type === 'coach' ? chooseCoachFocus(state, profile) : null,
     seasonsInRole: randomInt(state, 0, 7),
     yearsRemaining: type === 'owner' ? ownerTermYears(state) : null,
     appointmentSeason: state.season,
@@ -1118,7 +1158,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 11,
+    dataRevision: 12,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -1185,10 +1225,10 @@ function getOwner(state, clubId) {
 function getCoach(state, teamId, isInternational = false) {
   if (isInternational) {
     const team = state.nationalTeams.find((item) => item.id === teamId);
-    return state.coaches?.find((coach) => coach.id === team?.coachId) || null;
+    return getRuntimeCache(state).coachById.get(team?.coachId) || state.coaches?.find((coach) => coach.id === team?.coachId) || null;
   }
   const club = getClub(state, teamId);
-  return state.coaches?.find((coach) => coach.id === club?.coachId) || null;
+  return getRuntimeCache(state).coachById.get(club?.coachId) || state.coaches?.find((coach) => coach.id === club?.coachId) || null;
 }
 
 function nationalCoachDomesticPreference(team) {
@@ -1237,6 +1277,7 @@ function recordCoachResult(state, coach, competitionId, teamId, isInternational,
 }
 
 function assignCoachToClub(state, coach, club) {
+  coach.focus = inferCoachFocus(coach);
   coach.clubId = club.id;
   coach.nationalTeamId = null;
   coach.seasonsInRole = 0;
@@ -1247,6 +1288,7 @@ function assignCoachToClub(state, coach, club) {
 }
 
 function assignCoachToNation(state, coach, team) {
+  coach.focus = inferCoachFocus(coach);
   coach.nationalTeamId = team.id;
   coach.clubId = null;
   coach.seasonsInRole = 0;
@@ -1269,11 +1311,40 @@ function tacticalModifiers(state, teamId, isInternational = false) {
   const scale = (value) => 1 + (value - 1) * impact;
   return {
     coach: entity?.coachId ? { id: entity.coachId, quality: entity.coachQuality || 66 } : null,
+    focus: entity?.coachId ? inferCoachFocus(getCoach(state, teamId, isInternational)) : 'balanced',
     attack: scale(profile.attack),
     defence: scale(profile.defence),
     midfield: scale(profile.midfield),
     development: scale(profile.development)
   };
+}
+
+function coachContextBonus(state, teamId, isInternational, competitionId, stage, knockout) {
+  const coach = getCoach(state, teamId, isInternational);
+  if (!coach) return 0;
+  const focus = inferCoachFocus(coach);
+  const isLeague = !isInternational && Boolean(state.current.leagues?.[competitionId]);
+  const highStakes = knockout || /Round of 16|Quarter|Semi|Final/i.test(stage || '');
+  const context = isLeague ? 'league' : highStakes ? 'knockout' : 'tournament';
+  const coefficients = {
+    tournament: { league: -0.45, tournament: 1.75, knockout: 3.45 },
+    regularity: { league: 3.15, tournament: 0.72, knockout: 0.18 },
+    balanced: { league: 1.55, tournament: 1.38, knockout: 1.62 }
+  };
+  const qualityScale = clamp(((coach.quality || 65) - 60) / 35, 0.12, 1.15);
+  const rarityScale = 0.74 + Math.min(1.8, staffImpact(coach)) * 0.29;
+  let bonus = (coefficients[focus]?.[context] ?? coefficients.balanced[context]) * qualityScale * rarityScale;
+  if (coach.profile === 'tournament_expert' && context === 'knockout') bonus += 0.65 * qualityScale;
+  if (['possession', 'pressing'].includes(coach.profile) && context === 'league') bonus += 0.38 * qualityScale;
+  if (coach.profile === 'adaptive') bonus += 0.22 * qualityScale;
+  return bonus;
+}
+
+function continentalDynastyPressure(state, teamId, competitionId) {
+  const definition = CONTINENTAL_DEFINITIONS.find((item) => item.id === competitionId);
+  if (!definition || definition.level !== 1) return 0;
+  const titles = getRuntimeCache(state).recentContinentalTitles.get(teamId) || 0;
+  return Math.min(1.35, titles * 0.34 + Math.max(0, titles - 1) * 0.18);
 }
 
 function getTeamName(state, id, isInternational = false) {
@@ -1292,12 +1363,17 @@ function roleData(player) {
 
 function goalWeight(player) {
   const base = player.position === 'FW' ? 9 : player.position === 'MF' ? 4 : player.position === 'DF' ? 1.1 : 0.08;
-  return base * roleData(player).goal * (0.35 + player.rating / 95);
+  const quality = clamp((player.rating - 54) / 46, 0.08, 1.05);
+  const qualityMultiplier = 0.30 + quality ** 1.72 * 1.42;
+  const rarityMultiplier = 1 + Math.max(0, (STAR_RARITIES[player.rarity]?.rank || 1) - 3) * 0.055;
+  return base * roleData(player).goal * qualityMultiplier * rarityMultiplier;
 }
 
 function assistWeight(player) {
   const base = player.position === 'MF' ? 8 : player.position === 'FW' ? 5.2 : player.position === 'DF' ? 2.1 : 0.15;
-  return base * roleData(player).assist * (0.35 + player.rating / 95);
+  const quality = clamp((player.rating - 54) / 46, 0.08, 1.05);
+  const qualityMultiplier = 0.34 + quality ** 1.55 * 1.26;
+  return base * roleData(player).assist * qualityMultiplier;
 }
 
 function selectLineup(players, limit = 7) {
@@ -1336,6 +1412,30 @@ function ensurePlayerStat(state, playerId, competitionId, teamId, isInternationa
   return state.current.playerStats[key];
 }
 
+function starImpactForLineup(lineup, unit = 'overall') {
+  if (!lineup.length) return 0;
+  const unitFactors = {
+    overall: { GK: 0.78, DF: 0.88, MF: 1.0, FW: 1.05 },
+    attack: { GK: 0.04, DF: 0.18, MF: 0.72, FW: 1.35 },
+    midfield: { GK: 0.05, DF: 0.42, MF: 1.28, FW: 0.50 },
+    defence: { GK: 1.28, DF: 1.08, MF: 0.34, FW: 0.08 }
+  }[unit] || { GK: 1, DF: 1, MF: 1, FW: 1 };
+  const impact = lineup.reduce((sum, player) => {
+    const surplus = Math.max(0, player.rating - 79);
+    if (!surplus) return sum;
+    const rarityFactor = {
+      generational: 1.22,
+      legend: 1.12,
+      epic: 1.02,
+      rare: 0.86,
+      uncommon: 0.68,
+      common: 0.52
+    }[player.rarity] || 0.7;
+    return sum + surplus ** 1.17 * 0.105 * rarityFactor * (unitFactors[player.position] || 1);
+  }, 0);
+  return Math.min(unit === 'overall' ? 7.2 : 8.4, impact);
+}
+
 function addPlayerLog(state, playerId, entry) {
   if (!state.current.playerMatchLogs[playerId]) state.current.playerMatchLogs[playerId] = [];
   state.current.playerMatchLogs[playerId].push(entry);
@@ -1353,15 +1453,14 @@ function calculateTeamStrength(state, teamId, isInternational) {
     const unitBonus = player.position === 'FW' ? tactics.attack : player.position === 'MF' ? tactics.midfield : tactics.defence;
     return sum + (player.rating + defensiveBonus) * unitBonus;
   }, 0) / lineup.length;
-  const namedInfluence = isInternational ? Math.min(0.62, 0.22 + lineup.length * 0.05) : 0.42;
+  const namedInfluence = isInternational ? Math.min(0.64, 0.27 + lineup.length * 0.052) : Math.min(0.52, 0.34 + lineup.length * 0.025);
   const form = isInternational
     ? getRuntimeCache(state).nationalById.get(teamId)?.form || 0
     : getClub(state, teamId)?.form || 0;
-  const coachBonus = tactics.coach ? (tactics.coach.quality - 65) * 0.045 : 0;
+  const coachBonus = tactics.coach ? (tactics.coach.quality - 65) * 0.07 : 0;
   const ownerBonus = isInternational ? 0 : (getClub(state, teamId)?.ownerSportingBonus || 0);
-  const recentContinentalTitles = isInternational ? 0 : (getRuntimeCache(state).recentContinentalTitles.get(teamId) || 0);
-  const dynastyPressure = recentContinentalTitles * 0.65 + Math.max(0, recentContinentalTitles - 1) * 1.0;
-  return base * (1 - namedInfluence) + weighted * namedInfluence + form + coachBonus + ownerBonus - dynastyPressure;
+  const starImpact = starImpactForLineup(lineup, 'overall');
+  return base * (1 - namedInfluence) + weighted * namedInfluence + form + coachBonus + ownerBonus + starImpact;
 }
 
 function calculateUnitStrength(state, teamId, isInternational, unit) {
@@ -1373,7 +1472,7 @@ function calculateUnitStrength(state, teamId, isInternational, unit) {
   const players = lineup.filter((player) => positionSet.includes(player.position));
   const average = players.length ? players.reduce((sum, player) => sum + player.rating, 0) / players.length : base;
   const multiplier = unit === 'attack' ? tactics.attack : unit === 'midfield' ? tactics.midfield : tactics.defence;
-  return base * 0.55 + average * 0.45 * multiplier;
+  return base * 0.53 + average * 0.47 * multiplier + starImpactForLineup(lineup, unit);
 }
 
 function resolveDraw(state, homeId, awayId, homeGoals, awayGoals, isInternational) {
@@ -1436,12 +1535,16 @@ function simulateMatch(state, {
 }) {
   const homeFavoriteBonus = tournamentFavoriteBonus(state, competitionId, homeId, isInternational);
   const awayFavoriteBonus = tournamentFavoriteBonus(state, competitionId, awayId, isInternational);
-  const homeStrength = calculateTeamStrength(state, homeId, isInternational) + homeFavoriteBonus + (neutral ? 0 : 2.0);
-  const awayStrength = calculateTeamStrength(state, awayId, isInternational) + awayFavoriteBonus;
-  const homeAttack = calculateUnitStrength(state, homeId, isInternational, 'attack') + homeFavoriteBonus * 0.72;
-  const awayAttack = calculateUnitStrength(state, awayId, isInternational, 'attack') + awayFavoriteBonus * 0.72;
-  const homeDefence = calculateUnitStrength(state, homeId, isInternational, 'defence') + homeFavoriteBonus * 0.72;
-  const awayDefence = calculateUnitStrength(state, awayId, isInternational, 'defence') + awayFavoriteBonus * 0.72;
+  const homeCoachContext = coachContextBonus(state, homeId, isInternational, competitionId, stage, knockout);
+  const awayCoachContext = coachContextBonus(state, awayId, isInternational, competitionId, stage, knockout);
+  const homeDynastyPressure = isInternational ? 0 : continentalDynastyPressure(state, homeId, competitionId);
+  const awayDynastyPressure = isInternational ? 0 : continentalDynastyPressure(state, awayId, competitionId);
+  const homeStrength = calculateTeamStrength(state, homeId, isInternational) + homeFavoriteBonus + homeCoachContext - homeDynastyPressure + (neutral ? 0 : 2.0);
+  const awayStrength = calculateTeamStrength(state, awayId, isInternational) + awayFavoriteBonus + awayCoachContext - awayDynastyPressure;
+  const homeAttack = calculateUnitStrength(state, homeId, isInternational, 'attack') + homeFavoriteBonus * 0.72 + homeCoachContext * 0.56 - homeDynastyPressure * 0.45;
+  const awayAttack = calculateUnitStrength(state, awayId, isInternational, 'attack') + awayFavoriteBonus * 0.72 + awayCoachContext * 0.56 - awayDynastyPressure * 0.45;
+  const homeDefence = calculateUnitStrength(state, homeId, isInternational, 'defence') + homeFavoriteBonus * 0.72 + homeCoachContext * 0.56 - homeDynastyPressure * 0.45;
+  const awayDefence = calculateUnitStrength(state, awayId, isInternational, 'defence') + awayFavoriteBonus * 0.72 + awayCoachContext * 0.56 - awayDynastyPressure * 0.45;
   const difference = homeStrength - awayStrength;
   // Quality gaps should matter across a full competition without making upsets impossible.
   // High-stakes knockout matches expose squad and coaching differences a little more;
@@ -1509,7 +1612,7 @@ function simulateMatch(state, {
       // Goals and assists matter, but do not define the whole performance. A brace
       // can rescue a mediocre display without automatically producing a 9+ rating.
       rating += contribution.goals * 0.28 + contribution.assists * 0.24;
-      rating += (player.rating - 70) / 115;
+      rating += (player.rating - 70) / 82;
       rating += { GK: -0.08, DF: -0.03, MF: 0.08, FW: 0.05 }[player.position] || 0;
       if (winnerSide === side || resolution?.winnerId === teamId) rating += 0.26;
       if (winnerSide !== 'draw' && winnerSide !== side && !resolution) rating -= 0.22;
@@ -1707,14 +1810,16 @@ function distributeSummaryPlayerStats(state, league, row) {
   const assistShares = lineup.map((player) => ({ player, weight: assistWeight(player) }));
   const goals = Object.fromEntries(lineup.map((player) => [player.id, 0]));
   const assists = Object.fromEntries(lineup.map((player) => [player.id, 0]));
-  const namedGoals = Math.round(row.gf * (lineup.length >= 7 ? 0.7 : 0.56));
+  const elitePeak = Math.max(...lineup.map((player) => player.rating), 70);
+  const namedShare = Math.min(0.78, (lineup.length >= 7 ? 0.70 : 0.56) + Math.max(0, elitePeak - 84) * 0.012);
+  const namedGoals = Math.round(row.gf * namedShare);
   for (let index = 0; index < namedGoals; index += 1) goals[weightedPick(state, goalShares, (item) => item.weight).player.id] += 1;
   for (let index = 0; index < Math.round(namedGoals * 0.7); index += 1) assists[weightedPick(state, assistShares, (item) => item.weight).player.id] += 1;
   const finish = sortTable(league.table).findIndex((item) => item.teamId === row.teamId) + 1;
   lineup.forEach((player) => {
     const stat = ensurePlayerStat(state, player.id, league.id, row.teamId, false);
     const playerApps = Math.max(6, apps - randomInt(state, 0, 2));
-    const averageRating = clamp(6.1 + (league.table.length + 1 - finish) * 0.08 + (player.rating - 65) / 60 + random(state) * 0.45, 5.8, 8.6);
+    const averageRating = clamp(6.0 + (league.table.length + 1 - finish) * 0.075 + (player.rating - 65) / 42 + random(state) * 0.38, 5.8, 8.75);
     stat.apps += playerApps;
     stat.starts += playerApps;
     stat.goals += goals[player.id] || 0;
@@ -1729,10 +1834,10 @@ function simulateSummaryLeagues(state) {
   for (const league of Object.values(state.current.leagues).filter((item) => item.tier === 'summary' && !item.completed)) {
     const rounds = roundRobin(league.table.map((row) => row.teamId), true);
     rounds.forEach((round) => round.forEach(({ homeId, awayId }) => {
-      const homeStrength = calculateTeamStrength(state, homeId, false) + 1.6;
-      const awayStrength = calculateTeamStrength(state, awayId, false);
-      const homeGoals = poisson(state, clamp(1.2 + (homeStrength - awayStrength) / 27, 0.2, 3.1));
-      const awayGoals = poisson(state, clamp(0.95 + (awayStrength - homeStrength) / 29, 0.15, 2.8));
+      const homeStrength = calculateTeamStrength(state, homeId, false) + coachContextBonus(state, homeId, false, league.id, 'League season', false) + 1.6;
+      const awayStrength = calculateTeamStrength(state, awayId, false) + coachContextBonus(state, awayId, false, league.id, 'League season', false);
+      const homeGoals = poisson(state, clamp(1.2 + (homeStrength - awayStrength) / 23.5, 0.18, 3.35));
+      const awayGoals = poisson(state, clamp(0.95 + (awayStrength - homeStrength) / 25.5, 0.14, 3.0));
       updateTable(league.table, homeId, awayId, homeGoals, awayGoals);
     }));
     league.table.forEach((row) => {
@@ -1756,8 +1861,9 @@ function simulateSummaryLeagues(state) {
     const cup = state.current.domesticCups[`CUP-${league.id}`];
     if (cup && !cup.championId) {
       const clubs = sorted.map((row) => getClub(state, row.teamId)).filter(Boolean);
-      const winner = weightedPick(state, clubs, (club) => Math.max(1, club.strength ** 2));
-      const finalist = weightedPick(state, clubs.filter((club) => club.id !== winner?.id), (club) => Math.max(1, club.strength ** 2));
+      const cupPower = (club) => Math.max(1, (calculateTeamStrength(state, club.id, false) + coachContextBonus(state, club.id, false, cup.id, 'Final', true)) ** 2.4);
+      const winner = weightedPick(state, clubs, cupPower);
+      const finalist = weightedPick(state, clubs.filter((club) => club.id !== winner?.id), cupPower);
       cup.championId = winner?.id || league.championId;
       cup.finalistId = finalist?.id || sorted[1]?.teamId || null;
       cup.stage = 'Complete';
@@ -2243,12 +2349,12 @@ function competitionMvpScore(state, stat, competitionId) {
   const finalist = stat.teamId === outcome.finalistId;
   const finalRating = finalMatchRating(state, stat.playerId, competitionId);
   const positional = player?.position === 'GK'
-    ? stat.cleanSheets * 0.10
+    ? stat.cleanSheets * 0.06
     : player?.position === 'DF'
-      ? stat.cleanSheets * 0.08 + stat.assists * 0.08
+      ? stat.cleanSheets * 0.05 + stat.assists * 0.06
       : player?.position === 'MF'
-        ? stat.assists * 0.14 + stat.goals * 0.05
-        : stat.assists * 0.07 + stat.goals * 0.07;
+        ? stat.assists * 0.10 + stat.goals * 0.025
+        : stat.assists * 0.04 + stat.goals * 0.015;
   const outcomeBonus = won ? 8.5 : finalist ? 3.5 : 0;
   const finalBonus = finalRating >= 8 ? (finalRating - 7.5) * (won ? 4.2 : 2.2) : 0;
   return performanceValue(stat) * 5.2 * openAwardPositionWeight(player?.position) + outcomeBonus + finalBonus + positional;
@@ -2270,6 +2376,67 @@ function calculateCompetitionAwards(state, competitionId, competitionName) {
   award(state, `${competitionName} Best Defender`, defender?.playerId, competitionId, 1, 'best_defender');
   award(state, `${competitionName} Best Midfielder`, midfielder?.playerId, competitionId, 1, 'best_midfielder');
   award(state, `${competitionName} Best Forward`, forward?.playerId, competitionId, 1, 'best_forward');
+}
+
+function clubSeasonAchievementDepth(state, clubId) {
+  if (!clubId) return 0;
+  let depth = 0;
+  for (const league of Object.values(state.current.leagues || {})) {
+    const championId = league.championId || sortTable(league.table || [])[0]?.teamId;
+    if (championId !== clubId) continue;
+    depth += ['ESP1', 'ENG1', 'ITA1', 'GER1', 'FRA1'].includes(league.id) ? 1.15 : 0.82;
+  }
+  for (const cup of Object.values(state.current.domesticCups || {})) {
+    if (cup.championId === clubId) depth += 0.62;
+  }
+  if (state.current.supercup?.championId === clubId) depth += 0.22;
+  for (const competition of Object.values(state.current.continentalCompetitions || {})) {
+    if (competition.championId !== clubId) continue;
+    const definition = CONTINENTAL_DEFINITIONS.find((item) => item.id === competition.id);
+    depth += definition?.level === 1 ? 1.42 : definition?.level === 2 ? 0.72 : 0.46;
+  }
+  return depth;
+}
+
+function ballonClubMultiplier(state, candidate, selected, depthByClub) {
+  const clubId = candidate.primaryClubId;
+  if (!clubId) return 1;
+  const alreadySelected = selected.filter((item) => item.primaryClubId === clubId).length;
+  if (!alreadySelected) return 1;
+  const depth = depthByClub.get(clubId) ?? clubSeasonAchievementDepth(state, clubId);
+  depthByClub.set(clubId, depth);
+  const firstRepeat = depth >= 2.65 ? 0.92 : depth >= 1.95 ? 0.78 : depth >= 1.25 ? 0.57 : 0.46;
+  if (alreadySelected === 1) return firstRepeat;
+  return depth >= 2.65 ? 0.73 : depth >= 1.95 ? 0.52 : 0.31;
+}
+
+function diversifyBallonRanking(state, candidates) {
+  const remaining = candidates.slice(0, 48);
+  const selected = [];
+  const depthByClub = new Map();
+  while (remaining.length && selected.length < 12) {
+    let bestIndex = 0;
+    let bestAdjusted = -Infinity;
+    remaining.forEach((candidate, index) => {
+      const adjusted = candidate.score * ballonClubMultiplier(state, candidate, selected, depthByClub);
+      if (adjusted > bestAdjusted) {
+        bestAdjusted = adjusted;
+        bestIndex = index;
+      }
+    });
+    const [winner] = remaining.splice(bestIndex, 1);
+    selected.push({
+      ...winner,
+      selectionScore: bestAdjusted,
+      components: {
+        ...winner.components,
+        rawScore: Number(winner.score.toFixed(2)),
+        teamDiversityScore: Number(bestAdjusted.toFixed(2))
+      }
+    });
+  }
+  const selectedIds = new Set(selected.map((candidate) => candidate.playerId));
+  return [...selected, ...candidates.filter((candidate) => !selectedIds.has(candidate.playerId))];
 }
 
 
@@ -2297,7 +2464,7 @@ function buildAnnualAwardRace(state) {
     : (state.current.archivedPlayerStats || []);
   for (const stat of annualStats) {
     if (!stat.apps) continue;
-    const item = byPlayer.get(stat.playerId) || { playerId: stat.playerId, apps: 0, goals: 0, assists: 0, ratingWeighted: 0, weightedGoals: 0, weightedAssists: 0, leagueGoals: 0, leagueWeightedGoals: 0, competitionScore: 0, eliteApps: 0 };
+    const item = byPlayer.get(stat.playerId) || { playerId: stat.playerId, apps: 0, goals: 0, assists: 0, ratingWeighted: 0, weightedGoals: 0, weightedAssists: 0, leagueGoals: 0, leagueWeightedGoals: 0, competitionScore: 0, eliteApps: 0, clubApps: {} };
     const w = weight(stat.competitionId, stat.isInternational);
     item.apps += stat.apps;
     item.goals += stat.goals;
@@ -2310,6 +2477,7 @@ function buildAnnualAwardRace(state) {
       item.leagueGoals += stat.goals;
       item.leagueWeightedGoals += stat.goals * w;
     }
+    if (!stat.isInternational && stat.teamId) item.clubApps[stat.teamId] = (item.clubApps[stat.teamId] || 0) + stat.apps;
     item.competitionScore += Math.max(0, stat.averageRating - 6.0) * stat.apps * w;
     item.competitionScore += (stat.goals * 0.11 + stat.assists * 0.10 + stat.cleanSheets * 0.035) * w;
     if (w >= 1.5) item.eliteApps += stat.apps;
@@ -2334,7 +2502,8 @@ function buildAnnualAwardRace(state) {
       .reduce((sum, log) => sum + Math.max(0, (log.rating || 0) - 7.0) * (log.isInternational ? 4.5 : 3.2), 0);
     const score = item.competitionScore * openAwardPositionWeight(player?.position) + trophies + finalImpact + average * 0.9 + Math.min(3, item.eliteApps * 0.03) + (player?.fame || 0) * 0.025;
     const components = { apps: item.apps, goals: item.goals, assists: item.assists, weightedGoals: Number(item.weightedGoals.toFixed(2)), averageRating: Number(average.toFixed(2)), performanceScore: Number(item.competitionScore.toFixed(1)), trophyBonus: Number(trophies.toFixed(1)), finalImpact: Number(finalImpact.toFixed(1)), score: Number(score.toFixed(2)) };
-    return { ...item, average, score, components, age: state.season + 1 - (player?.birthYear || state.season) };
+    const primaryClubId = Object.entries(item.clubApps || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || player?.clubId || null;
+    return { ...item, primaryClubId, average, score, components, age: state.season + 1 - (player?.birthYear || state.season) };
   }).filter((candidate) => candidate.apps >= 5).sort((a, b) => b.score - a.score);
   const goldenBoot = candidates
     .filter((candidate) => candidate.leagueGoals > 0)
@@ -2354,7 +2523,7 @@ function buildAnnualAwardRace(state) {
     const score = candidate.score + (player?.baseQuality || 60) * 0.55 + Math.max(0, (player?.careerLength || 10) - (player?.careerYear || 0)) * 0.4;
     return { ...candidate, score, components: { ...candidate.components, potentialBonus: Number(((player?.baseQuality || 60) * 0.55).toFixed(1)), score: Number(score.toFixed(2)) } };
   }).sort((a, b) => b.score - a.score);
-  return { ballonDor: candidates, goldenBoot, kopa };
+  return { ballonDor: diversifyBallonRanking(state, candidates), goldenBoot, kopa };
 }
 
 function calculateAwards(state) {
@@ -3714,6 +3883,11 @@ export function upgradeWorld(state) {
     state.players ||= [];
     state.pendingSeasonStars ||= [];
     state.dataRevision = 11;
+    invalidateRuntimeCache(state);
+  }
+  if (state.dataRevision < 12) {
+    for (const coach of state.coaches || []) coach.focus = inferCoachFocus(coach);
+    state.dataRevision = 12;
     invalidateRuntimeCache(state);
   }
   return state;

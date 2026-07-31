@@ -1394,6 +1394,21 @@ export const COACH_PROFILES = {
   pragmatist: { label: 'Pragmatist', attack: 1.01, defence: 1.09, midfield: 1.03, development: 1.0, description: 'Prioritizes results and minimizes tactical weaknesses.' }
 };
 
+export const COACH_FOCUSES = {
+  tournament: {
+    label: 'Tournament',
+    description: 'Peaks in knockout rounds, finals and short international tournaments.'
+  },
+  regularity: {
+    label: 'Regularity',
+    description: 'Builds repeatable weekly performance and converts squad quality into league points.'
+  },
+  balanced: {
+    label: 'Balanced',
+    description: 'Performs reliably in leagues while retaining strong knockout adaptability.'
+  }
+};
+
 export const CONTINENTAL_DEFINITIONS = [
   { id: 'UCL', name: 'European Champions League', confederation: 'Europe', level: 1, teams: 32 },
   { id: 'UEL', name: 'Europa League', confederation: 'Europe', level: 2, teams: 32 },

@@ -1,7 +1,19 @@
-# Football World Chronicle — v0.19.1
+# Football World Chronicle — v0.20
 
 A browser-first football universe simulator with 137 domestic systems, continental club football, international cycles, long player careers, transfers, club staff, historical records and optional Neon cloud saves.
 
+
+
+## v0.20 competitive hierarchy and coach focus
+
+- Elite-player influence is now nonlinear: a 90+ star in a secondary league materially changes team strength and receives a much larger share of that team’s goals.
+- Strong squads are substantially more consistent across 34–38 league matches, while cups and finals retain more variance.
+- Removed the global league penalty previously attached to recent continental dynasties; a small pressure remains only inside major continental competitions.
+- Coaches now have a second identity: **Tournament**, **Regularity**, or **Balanced**. It is visible in People, profiles, team pages and coach-transfer news.
+- Regularity coaches convert quality into league points; Tournament coaches provide their biggest edge in knockout rounds and finals; Balanced coaches contribute in both.
+- Ballon d’Or selection now applies club-level diminishing returns. A single trophy normally supports one podium candidate; doubles can support two, and treble-level seasons can occasionally support three.
+- Existing saves upgrade automatically to data revision 12. No Neon changes are required.
+- See `docs/BALANCE_V20.md` and run `npm run balance-v20` for the new regression scenario.
 
 
 ## v0.19 historical icons, competition overview and peak eras
@@ -41,7 +53,7 @@ The repository is ready for the existing GitHub → Vercel workflow.
 
 1. Confirm the Vercel project has `DATABASE_URL`.
 2. Confirm Neon contains `cloud_saves` from `database/cloud-save.sql`.
-3. Replace the repository files with v0.19.
+3. Replace the repository files with v0.20.
 4. Push to GitHub and let Vercel deploy.
 5. Open the game and press **Save**.
 
