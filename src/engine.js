@@ -15,6 +15,7 @@ import {
   OWNER_PROFILES,
   COACH_PROFILES
 } from './data.js';
+import { REAL_WORLD_STARS } from './real-stars.js';
 
 const COUNTRY_TO_CODE = Object.fromEntries(
   Object.entries(COUNTRY_META).map(([country, meta]) => [country, meta.code])
@@ -348,6 +349,140 @@ function createPlayer(state, {
   };
 }
 
+
+function roleTemplate(position, roleId) {
+  return ROLE_DEFINITIONS[position]?.find((role) => role.id === roleId) || ROLE_DEFINITIONS[position]?.[0];
+}
+
+function availableRealWorldStars(state, rarity) {
+  const used = new Set((state.players || []).map((player) => player.realWorldId).filter(Boolean));
+  return REAL_WORLD_STARS.filter((star) => star.rarity === rarity && !used.has(star.id));
+}
+
+function activeRealWorldCount(state, rarity) {
+  return (state.players || []).filter((player) => player.status === 'active' && player.rarity === rarity && player.realWorldId).length;
+}
+
+function shouldSpawnRealWorldStar(state, rarity) {
+  if (!availableRealWorldStars(state, rarity).length) return false;
+  const active = activeRealWorldCount(state, rarity);
+  if (rarity === 'generational') {
+    if (active === 0) return true;
+    if (active >= 2) return false;
+    return random(state) < 0.5;
+  }
+  if (rarity === 'legend') {
+    if (active < 5) return true;
+    if (active >= 7) return false;
+    return random(state) < 0.5;
+  }
+  if (rarity === 'epic') {
+    if (active < 9) return true;
+    if (active >= 12) return false;
+    return random(state) < 0.45;
+  }
+  return false;
+}
+
+function resolveRealWorldClub(state, clubs, template) {
+  const byName = template.startClubName
+    ? clubs.find((club) => club.name.localeCompare(template.startClubName, undefined, { sensitivity: 'base' }) === 0)
+    : null;
+  if (byName) return byName;
+  const sameCountry = clubs.filter((club) => club.country === template.startCountry);
+  if (sameCountry.length) return pick(state, sameCountry);
+  const nationalityCountry = teamById(template.nationality)?.name;
+  const nationalClubs = clubs.filter((club) => club.country === nationalityCountry);
+  return nationalClubs.length ? pick(state, nationalClubs) : pick(state, clubs);
+}
+
+function createRealWorldPlayer(state, template, { club = null, careerYear = 0, debutSeason = state.season } = {}) {
+  const type = CAREER_TYPES[template.careerType] ? template.careerType : 'stable_prime';
+  const length = clamp(template.careerLength || 11, 8, 13);
+  const curve = careerCurve(type, length);
+  const initialCareerYear = clamp(careerYear, 0, length - 1);
+  const role = roleTemplate(template.position, template.role);
+  const baseQuality = clamp(template.baseQuality, STAR_RARITIES[template.rarity].min, STAR_RARITIES[template.rarity].max);
+  const rating = clamp(Math.round(baseQuality * (curve[initialCareerYear] ?? 0.9)), 51, 100);
+  const age = 18 + initialCareerYear;
+  const value = calculateMarketValueRaw(baseQuality, template.rarity, age, template.position);
+  const id = `real-${template.id}-${state.nextPlayerId}`;
+  state.nextPlayerId += 1;
+  state.usedNames ||= {};
+  state.usedNames[template.nationality] ||= {};
+  state.usedNames[template.nationality][template.name] = 1;
+  return {
+    id,
+    name: template.name,
+    clubId: club?.id || null,
+    nationality: template.nationality,
+    birthYear: debutSeason - age,
+    position: template.position,
+    role: role.id,
+    roleLabel: role.label,
+    rarity: template.rarity,
+    baseQuality,
+    rating,
+    careerLengthType: length <= 9 ? 'short' : length <= 11 ? 'medium' : 'long',
+    careerLength: length,
+    careerType: type,
+    careerMultipliers: curve,
+    careerYear: initialCareerYear,
+    debutSeason: debutSeason - initialCareerYear,
+    fame: clamp(Math.round((baseQuality - 52) * 2.0 + randomInt(state, 4, 14)), 20, 100),
+    status: 'active',
+    isNationalSpecialist: false,
+    contractYears: club ? randomInt(state, 2, 5) : 0,
+    salary: club ? Math.max(0.3, Number((value * (0.045 + random(state) * 0.025)).toFixed(1))) : 0,
+    happiness: randomInt(state, 62, 94),
+    marketValue: value,
+    transferListed: false,
+    realWorld: true,
+    realWorldId: template.id,
+    realWorldStartingClub: template.startClubName,
+    realWorldStartingCountry: template.startCountry,
+    // Historical icons always complete their first visible season at their
+    // curated starting club before becoming part of the normal transfer market.
+    transferProtectedUntilSeason: debutSeason + 1
+  };
+}
+
+function replaceInitialPlayerWithRealStar(state, players, clubs, placeholder, template) {
+  const originalClub = clubs.find((club) => club.id === placeholder.clubId) || null;
+  const target = resolveRealWorldClub(state, clubs, template) || originalClub;
+  if (target && originalClub && target.id !== originalClub.id) {
+    const displaced = players
+      .filter((player) => player !== placeholder && player.clubId === target.id && !player.realWorldId)
+      .sort((a, b) => STAR_RARITIES[a.rarity].rank - STAR_RARITIES[b.rarity].rank || a.rating - b.rating)[0];
+    if (displaced) displaced.clubId = originalClub.id;
+  }
+  const real = createRealWorldPlayer(state, template, {
+    club: target,
+    careerYear: placeholder.careerYear,
+    debutSeason: state.season
+  });
+  const index = players.indexOf(placeholder);
+  if (index >= 0) players[index] = real;
+  return real;
+}
+
+function applyInitialRealWorldStars(state, players, clubs) {
+  const targets = {
+    generational: randomInt(state, 1, 2),
+    legend: randomInt(state, 5, 7),
+    epic: randomInt(state, 9, 12)
+  };
+  const spawned = [];
+  for (const rarity of ['generational', 'legend', 'epic']) {
+    const templates = shuffle(state, REAL_WORLD_STARS.filter((star) => star.rarity === rarity)).slice(0, targets[rarity]);
+    const placeholders = shuffle(state, players.filter((player) => player.rarity === rarity)).slice(0, templates.length);
+    templates.forEach((template, index) => {
+      if (placeholders[index]) spawned.push(replaceInitialPlayerWithRealStar(state, players, clubs, placeholders[index], template));
+    });
+  }
+  return spawned;
+}
+
 function calculateMarketValueRaw(baseQuality, rarity, age, position = 'MF') {
   const rarityMultiplier = {
     generational: 2.45,
@@ -567,11 +702,13 @@ function createClubsAndPlayers(state) {
     position: slot.position,
     rarity: orderedRarities[index]
   }));
+  applyInitialRealWorldStars(state, players, clubs);
 
   // Veterans of elite rarity normally begin at major clubs. Rookies can emerge almost
   // anywhere: a secondary league, a modest domestic side, or occasionally an elite academy.
   const eliteYoungPlayers = players.filter((player) => ['generational', 'legend', 'epic'].includes(player.rarity) && player.careerYear <= 2);
   for (const player of eliteYoungPlayers) {
+    if (player.realWorldId) continue;
     const target = chooseRookieDestination(state, clubs, player);
     swapPlayerIntoClub(state, players, player, target);
   }
@@ -981,7 +1118,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 10,
+    dataRevision: 11,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -2459,11 +2596,18 @@ function generateReplacementStars(state) {
 
   for (let i = 0; i < totalNew; i += 1) {
     const rarity = eliteIntake[i] || chooseNewRarity(state, counts, totalNew - i);
-    const player = createPlayer(state, { rarity, careerYear: 0, nationalSpecialist: true });
+    const realTemplate = ['generational', 'legend', 'epic'].includes(rarity) && shouldSpawnRealWorldStar(state, rarity)
+      ? pick(state, availableRealWorldStars(state, rarity))
+      : null;
+    const player = realTemplate
+      ? createRealWorldPlayer(state, realTemplate, { careerYear: 0, debutSeason: state.season + 1 })
+      : createPlayer(state, { rarity, careerYear: 0, nationalSpecialist: true });
     player.birthYear = state.season + 1 - 18;
     player.debutSeason = state.season + 1;
     player.happiness = randomInt(state, 64, 92);
-    const target = chooseRookieDestination(state, state.clubs, player);
+    const target = realTemplate
+      ? resolveRealWorldClub(state, state.clubs, realTemplate)
+      : chooseRookieDestination(state, state.clubs, player);
     if (target) {
       player.clubId = target.id;
       player.contractYears = randomInt(state, 2, 5);
@@ -2492,7 +2636,7 @@ function generateReplacementStars(state) {
         importance: rarity === 'generational' ? 'feature' : 'major',
         category: 'New Generation',
         headline: `${player.name} emerges as a ${STAR_RARITIES[rarity].label.toLowerCase()} talent`,
-        body: `${teamById(player.nationality)?.name} prospect ${player.name}, a ${player.roleLabel.toLowerCase()}, begins at ${target?.name || 'free agency'} with ${player.baseQuality} base quality.`,
+        body: `${player.realWorldId ? 'Real-world icon' : `${teamById(player.nationality)?.name} prospect`} ${player.name}, a ${player.roleLabel.toLowerCase()}, begins at ${target?.name || 'free agency'} with ${player.baseQuality} base quality.`,
         entityType: 'player', entityId: player.id
       });
     }
@@ -2655,6 +2799,29 @@ function runCoachMarket(state) {
   const clubVacancies = [];
   const nationalVacancies = [];
 
+  // Cache recent coaching success once per market. Previously each comparison
+  // inside each vacancy sort rescanned the complete coach-season archive. As the
+  // universe accumulated seasons, this made the coaching market much slower than
+  // simulating the season itself.
+  const recentTitlesByCoach = new Map();
+  for (const row of state.history.coachCompetitionSeasons || []) {
+    if (row.season < state.season - 2 || !row.titles) continue;
+    recentTitlesByCoach.set(
+      row.coachId,
+      (recentTitlesByCoach.get(row.coachId) || 0) + row.titles
+    );
+  }
+  const ambitionByCoach = new Map(state.coaches.map((coach) => {
+    const rarity = STAFF_RARITIES[coach.rarity]?.rank || 1;
+    const recentTitles = recentTitlesByCoach.get(coach.id) || 0;
+    const score = coach.quality
+      + rarity * 4
+      + Math.min(8, recentTitles * 3)
+      + Math.max(-4, Math.min(5, coach.performanceScore || 0));
+    return [coach.id, score];
+  }));
+  const ambition = (coach) => ambitionByCoach.get(coach.id) ?? coachAmbitionScore(state, coach);
+
   for (const club of state.clubs.filter((item) => item.division === 1)) {
     const league = state.current.leagues[club.leagueId];
     const table = sortTable(league?.table || []);
@@ -2728,7 +2895,7 @@ function runCoachMarket(state) {
     const pool = useDomestic ? domestic : candidates;
     const destinationScore = team.strength + 12;
     const ranked = [...pool].sort((a, b) => {
-      const score = (coach) => coachAmbitionScore(state, coach) + (coach.nationality === team.id ? 8 : 0) - (coach.clubId ? Math.max(0, clubJobScore(getClub(state, coach.clubId)) - destinationScore) : 0);
+      const score = (coach) => ambition(coach) + (coach.nationality === team.id ? 8 : 0) - (coach.clubId ? Math.max(0, clubJobScore(getClub(state, coach.clubId)) - destinationScore) : 0);
       return score(b) - score(a);
     });
     const coach = ranked.find((candidate) => {
@@ -2768,7 +2935,7 @@ function runCoachMarket(state) {
     const useDomestic = domestic.length && random(state) < clubCoachDomesticPreference(club);
     const pool = useDomestic ? domestic : candidates;
     const ranked = [...pool].sort((a, b) => {
-      const score = (coach) => coachAmbitionScore(state, coach) + (coach.nationality === nationality ? 3 : 0) - (coach.clubId ? Math.max(0, clubJobScore(getClub(state, coach.clubId)) - destinationScore) : 0);
+      const score = (coach) => ambition(coach) + (coach.nationality === nationality ? 3 : 0) - (coach.clubId ? Math.max(0, clubJobScore(getClub(state, coach.clubId)) - destinationScore) : 0);
       return score(b) - score(a);
     });
     const coach = ranked.find((candidate) => {
@@ -3027,6 +3194,7 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
   let moves = 0;
   const candidates = activePlayers
     .filter((player) => ['generational', 'legend', 'epic'].includes(player.rarity))
+    .filter((player) => !player.transferProtectedUntilSeason || state.season >= player.transferProtectedUntilSeason)
     .map((player) => {
       const seller = getClub(state, player.clubId);
       const migrationPressure = eliteMigrationPressure(state, player, seller);
@@ -3122,6 +3290,7 @@ function runTransferMarket(state, initial = false) {
       // position and ambition controls. The ordinary squad market should not create
       // a second uncontrolled wave of high-profile goalkeeper transfers.
       if (['generational', 'legend', 'epic'].includes(player.rarity)) return false;
+      if (player.transferProtectedUntilSeason && state.season < player.transferProtectedUntilSeason) return false;
       if (player.clubId === buyer.id || player.position !== needPosition) return false;
       if (player.rating < minimumUpgrade + (roster.length >= target ? 2 : -3)) return false;
       if (player.clubId) {
@@ -3537,6 +3706,14 @@ export function upgradeWorld(state) {
     }
     state.history.coachMoves ||= [];
     state.dataRevision = 9;
+    invalidateRuntimeCache(state);
+  }
+  if (state.dataRevision < 11) {
+    // Real-world icon templates are introduced only for future rookie slots in
+    // existing universes; archived procedural careers remain untouched.
+    state.players ||= [];
+    state.pendingSeasonStars ||= [];
+    state.dataRevision = 11;
     invalidateRuntimeCache(state);
   }
   return state;

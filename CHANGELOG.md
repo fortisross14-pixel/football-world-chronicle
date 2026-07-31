@@ -1,3 +1,20 @@
+# v0.19.1 — Faster season rollover
+
+- Optimized the annual coaching market by precomputing recent coach-title values once per rollover.
+- Removed repeated full-history scans from every coach-ranking comparison.
+- Reduced deterministic next-season setup from roughly 8.5 seconds to roughly 1.8 seconds on the test machine; mobile improvement will vary.
+- No simulation rules, save format, Neon schema or balance logic changed.
+
+- Corrected FHoF club-era selection to evaluate every consecutive two- and three-season window under the same coach and retain the strongest peak.
+- Added an Overview tab to every domestic, continental and international competition.
+- Replaced Magazine player-performance lists with completed-competition cards showing winner, runner-up, MVP and top scorer.
+- Added 205 curated real-world player templates: 16 Generational, 69 Legend and 120 Epic.
+- Enforced active real-icon bands of 1–2 Generational, 5–7 Legend and 9–12 Epic players while procedural stars continue filling the remaining rarity slots.
+- Historical icons spawn at their curated starting club when available, otherwise at a club in the same country, and are protected from an immediate opening-window transfer.
+- Added historical-icon markers to Preseason and player profiles.
+- Added deterministic `regression-v19` validation.
+- No Neon schema changes required.
+
 # v0.18.0 — Goalkeeper balance and elite talent migration
 
 - Reduced goalkeeper prevalence in elite transfers through dedicated position caps and buyer-demand weighting.
