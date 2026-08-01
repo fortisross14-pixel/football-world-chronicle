@@ -1,6 +1,17 @@
-# Football World Chronicle — v0.20
+# Football World Chronicle — v0.21
 
 A browser-first football universe simulator with 137 domestic systems, continental club football, international cycles, long player careers, transfers, club staff, historical records and optional Neon cloud saves.
+
+
+## v0.21 domestic spawning and preseason lifecycle
+
+- Procedural footballers now start in their nationality's domestic system 90% of the time. The controlled foreign minority represents diaspora, family migration and unusual academy stories.
+- Historical icons remain curated exceptions and still use their real starting club or a same-country fallback.
+- New players are protected through their debut season, so the opening market cannot instantly erase the story of where they emerged.
+- Coaches now have careers, retire and are replaced by a new intake that preserves the coaching world's rarity balance.
+- Magazine → Preseason now shows elite player debuts, elite coach debuts, major-club president changes, player retirements and coach retirements.
+- Existing saves upgrade automatically to data revision 13. No Neon changes are required.
+- Run `npm run regression-v21` for the lifecycle check; see `docs/SPAWNING_V21.md` for the aggregate spawning test.
 
 
 
@@ -53,7 +64,7 @@ The repository is ready for the existing GitHub → Vercel workflow.
 
 1. Confirm the Vercel project has `DATABASE_URL`.
 2. Confirm Neon contains `cloud_saves` from `database/cloud-save.sql`.
-3. Replace the repository files with v0.20.
+3. Replace the repository files with v0.21.
 4. Push to GitHub and let Vercel deploy.
 5. Open the game and press **Save**.
 

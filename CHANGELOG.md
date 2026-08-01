@@ -1,3 +1,14 @@
+# v0.21.0 — Domestic spawning and preseason lifecycle
+
+- Procedural players now begin in their country of origin 90% of the time; the remaining 10% represents diaspora and unusual academy paths.
+- Curated historical icons retain their real starting-club logic and same-country fallback.
+- Protected all newly spawned players through their first visible season so later rookie generation or the opening transfer market cannot instantly relocate them.
+- Added coach career length, career year, retirement and replacement-coach generation.
+- Expanded Magazine → Preseason with top new coaches, major-club president changes, player retirements and coach retirements.
+- Added structured save fields for new coaches, retirements and owner changes, with automatic revision-13 migration.
+- Added `regression-v21` and a five-seed spawning validation.
+- No Neon schema changes required.
+
 # v0.20.0 — Competitive hierarchy, coach focus and award diversity
 
 - Added nonlinear elite-player impact so exceptional stars materially elevate secondary clubs and dominate weak-league scoring races more credibly.

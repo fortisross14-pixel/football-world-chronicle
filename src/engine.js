@@ -252,10 +252,9 @@ function chooseNationality(state, rarity, preferredCountry = null) {
   const preferredId = COUNTRY_TO_CODE[preferredCountry];
   const preferred = preferredId ? teamById(preferredId) : null;
   const eligible = NATIONAL_TEAMS.filter((team) => eligibleNationalityTiers(rarity).includes(team.tier));
-  if (preferred && eligible.includes(preferred)) {
-    const keepHomeChance = rarity === 'generational' ? 0.45 : rarity === 'legend' ? 0.52 : 0.68;
-    if (random(state) < keepHomeChance) return preferred.id;
-  }
+  // Clubs develop mostly domestic players. Roughly one in ten academy or youth
+  // entrants represents a migration, diaspora or family exception.
+  if (preferred && eligible.includes(preferred) && random(state) < 0.9) return preferred.id;
   return weightedPick(state, eligible, (team) => nationalityWeight(team, rarity))?.id || 'esp';
 }
 
@@ -348,7 +347,9 @@ function createPlayer(state, {
     salary: club ? Math.max(0.3, Number((value * (0.045 + random(state) * 0.03)).toFixed(1))) : 0,
     happiness: randomInt(state, 48, 92),
     marketValue: value,
-    transferListed: false
+    transferListed: false,
+    spawnClubId: club?.id || null,
+    transferProtectedUntilSeason: initialCareerYear === 0 ? state.season + 1 : null
   };
 }
 
@@ -578,26 +579,34 @@ function inferCoachFocus(coach) {
 }
 
 function createStaffMember(state, type, nationality, assignment = {}) {
-  const rarity = chooseStaffRarity(state, nationality, type);
+  const rarity = assignment.rarity || chooseStaffRarity(state, nationality, type);
   const profiles = type === 'owner' ? OWNER_PROFILES : COACH_PROFILES;
-  const profile = pick(state, Object.keys(profiles));
+  const profile = assignment.profile || pick(state, Object.keys(profiles));
   const qualityBase = { generational: 96, legend: 92, epic: 87, rare: 81, uncommon: 74, common: 66 }[rarity];
-  const name = uniqueName(state, nationality || 'eng');
+  const name = assignment.name || uniqueName(state, nationality || 'eng');
+  const coachCareerLength = type === 'coach' ? (assignment.careerLength || randomInt(state, 17, 27)) : null;
+  const coachCareerYear = type === 'coach'
+    ? clamp(assignment.careerYear ?? randomInt(state, 0, Math.min(14, coachCareerLength - 4)), 0, coachCareerLength - 1)
+    : null;
   return {
     id: `${type}-${slug(name)}-${state.nextStaffId++}`,
     type,
     name,
     nationality: nationality || 'eng',
     rarity,
-    quality: clamp(qualityBase + randomInt(state, -2, 2), 60, 99),
+    quality: clamp(assignment.quality ?? (qualityBase + randomInt(state, -2, 2)), 60, 99),
     profile,
     profileLabel: profiles[profile].label,
-    focus: type === 'coach' ? chooseCoachFocus(state, profile) : null,
-    seasonsInRole: randomInt(state, 0, 7),
-    yearsRemaining: type === 'owner' ? ownerTermYears(state) : null,
-    appointmentSeason: state.season,
-    performanceScore: 0,
-    trophies: 0,
+    focus: type === 'coach' ? (assignment.focus || chooseCoachFocus(state, profile)) : null,
+    seasonsInRole: assignment.seasonsInRole ?? randomInt(state, 0, 7),
+    yearsRemaining: type === 'owner' ? (assignment.yearsRemaining ?? ownerTermYears(state)) : null,
+    appointmentSeason: assignment.appointmentSeason ?? state.season,
+    performanceScore: assignment.performanceScore ?? 0,
+    trophies: assignment.trophies ?? 0,
+    status: type === 'coach' ? (assignment.status || 'active') : undefined,
+    careerYear: coachCareerYear,
+    careerLength: coachCareerLength,
+    debutSeason: type === 'coach' ? (assignment.debutSeason ?? (state.season - coachCareerYear)) : undefined,
     ...assignment
   };
 }
@@ -631,6 +640,7 @@ function applyOwnerToClub(state, owner, club, preserveFinances = true) {
 
 function processOwnerTurnover(state) {
   state.pendingSeasonNews ||= [];
+  state.pendingOwnerChanges ||= [];
   for (const club of state.clubs) {
     const owner = state.owners.find((item) => item.id === club.ownerId);
     if (!owner) continue;
@@ -648,6 +658,14 @@ function processOwnerTurnover(state) {
     });
     state.owners.push(replacement);
     applyOwnerToClub(state, replacement, club, true);
+    if ((club.reputation || 0) >= 80) {
+      state.pendingOwnerChanges.push({
+        season: state.season + 1,
+        clubId: club.id,
+        formerOwnerId: owner.id,
+        ownerId: replacement.id
+      });
+    }
     state.pendingSeasonNews.push({
       id: `news-${state.season + 1}-owner-${club.id}`,
       week: 0,
@@ -679,7 +697,16 @@ function rookieClubWeight(player, club, eliteDestination = false) {
 function chooseRookieDestination(state, clubs, player) {
   const eliteChance = player.rarity === 'generational' ? 0.28 : player.rarity === 'legend' ? 0.22 : 0.16;
   const eliteDestination = random(state) < eliteChance;
-  const candidates = clubs.filter((club) => club.division === 1 && (eliteDestination ? club.reputation >= 80 : club.reputation < 84));
+  const nationName = teamById(player.nationality)?.name;
+  const topDivision = clubs.filter((club) => club.division === 1);
+  const domestic = nationName ? topDivision.filter((club) => club.country === nationName) : [];
+  const foreign = nationName ? topDivision.filter((club) => club.country !== nationName) : topDivision;
+  // Ninety percent of procedural players begin inside their own domestic system.
+  // The remaining ten percent cover diaspora, family migration and unusual academy paths.
+  const homeSpawn = domestic.length > 0 && random(state) < 0.9;
+  const geographicPool = homeSpawn ? domestic : (foreign.length ? foreign : domestic);
+  const band = geographicPool.filter((club) => eliteDestination ? club.reputation >= 80 : club.reputation < 84);
+  const candidates = band.length ? band : geographicPool;
   return weightedPick(state, candidates, (club) => rookieClubWeight(player, club, eliteDestination)) || pick(state, candidates) || null;
 }
 
@@ -824,6 +851,14 @@ function initializeStaff(state) {
   }
   state.owners = owners;
   state.coaches = coaches;
+  state.targetActiveCoaches = coaches.length;
+  state.coachRarityTargets = coaches.reduce((counts, coach) => {
+    counts[coach.rarity] = (counts[coach.rarity] || 0) + 1;
+    return counts;
+  }, {});
+  state.pendingSeasonCoaches = coaches
+    .filter((coach) => coach.careerYear === 0 && ['generational', 'legend', 'epic'].includes(coach.rarity))
+    .map((coach) => ({ coachId: coach.id, season: state.season }));
 }
 
 function initializeLeagueState(state) {
@@ -1140,6 +1175,9 @@ function newCurrentSeason(state) {
     transfers: [],
     staffMoves: [],
     newStars: [...(state.pendingSeasonStars || [])],
+    newCoaches: [...(state.pendingSeasonCoaches || [])],
+    retirements: [...(state.pendingSeasonRetirements || [])],
+    ownerChanges: [...(state.pendingOwnerChanges || [])],
     news: [
       ...(state.pendingSeasonNews || []),
       {
@@ -1158,7 +1196,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 12,
+    dataRevision: 13,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -1173,6 +1211,9 @@ export function createWorld(seed = Date.now() % 2147483647) {
     coaches: [],
     pendingSeasonNews: [],
     pendingSeasonStars: [],
+    pendingSeasonCoaches: [],
+    pendingSeasonRetirements: [],
+    pendingOwnerChanges: [],
     internationalCycle: { worldCupQualified: [], regionalQualified: {} },
     current: null,
     history: {
@@ -1202,6 +1243,9 @@ export function createWorld(seed = Date.now() % 2147483647) {
   initializeStaff(state);
   state.current = newCurrentSeason(state);
   state.pendingSeasonStars = [];
+  state.pendingSeasonCoaches = [];
+  state.pendingSeasonRetirements = [];
+  state.pendingOwnerChanges = [];
   runTransferMarket(state, true);
   addPreseasonMagazine(state);
   invalidateRuntimeCache(state);
@@ -2779,10 +2823,16 @@ function generateReplacementStars(state) {
       : chooseRookieDestination(state, state.clubs, player);
     if (target) {
       player.clubId = target.id;
+      player.spawnClubId = target.id;
+      player.transferProtectedUntilSeason = state.season + 2;
       player.contractYears = randomInt(state, 2, 5);
       player.salary = Number((player.marketValue * (0.038 + random(state) * 0.022)).toFixed(1));
       const displaced = state.players
-        .filter((candidate) => candidate.status === 'active' && candidate.clubId === target.id)
+        .filter((candidate) => candidate.status === 'active'
+          && candidate.clubId === target.id
+          && candidate.id !== player.id
+          && (candidate.debutSeason ?? state.season) < state.season + 1
+          && (!candidate.transferProtectedUntilSeason || candidate.transferProtectedUntilSeason <= state.season + 1))
         .sort((a, b) => STAR_RARITIES[a.rarity].rank - STAR_RARITIES[b.rarity].rank || a.rating - b.rating)[0];
       if (displaced && !['generational', 'legend', 'epic'].includes(displaced.rarity)) {
         displaced.clubId = null;
@@ -2791,6 +2841,7 @@ function generateReplacementStars(state) {
       }
     } else {
       player.clubId = null;
+      player.spawnClubId = null;
       player.contractYears = 0;
       player.salary = 0;
     }
@@ -2822,6 +2873,138 @@ function generateReplacementStars(state) {
     player.clubId = null;
     player.contractYears = 0;
   });
+}
+
+function activeCoachRarityCounts(state) {
+  return (state.coaches || [])
+    .filter((coach) => coach.status !== 'retired')
+    .reduce((counts, coach) => {
+      counts[coach.rarity] = (counts[coach.rarity] || 0) + 1;
+      return counts;
+    }, {});
+}
+
+function chooseReplacementCoachRarity(state, counts) {
+  const targets = state.coachRarityTargets || {};
+  const deficits = Object.keys(STAFF_RARITIES)
+    .map((rarity) => ({ rarity, deficit: Math.max(0, (targets[rarity] || 0) - (counts[rarity] || 0)) }))
+    .filter((row) => row.deficit > 0)
+    .sort((a, b) => {
+      const rankGap = (STAFF_RARITIES[b.rarity]?.rank || 0) - (STAFF_RARITIES[a.rarity]?.rank || 0);
+      return rankGap || b.deficit - a.deficit;
+    });
+  if (deficits.length) return deficits[0].rarity;
+  return chooseStaffRarity(state, null, 'coach');
+}
+
+function chooseCoachNationalityForRarity(state, rarity) {
+  return weightedPick(state, NATIONAL_TEAMS, (team) => {
+    const byTier = rarity === 'generational'
+      ? { 1: 14, 2: 2.2, 3: 0.08, 4: 0.01 }
+      : rarity === 'legend'
+        ? { 1: 7, 2: 3.2, 3: 0.45, 4: 0.05 }
+        : rarity === 'epic'
+          ? { 1: 3.5, 2: 2.4, 3: 1.1, 4: 0.35 }
+          : { 1: 1.8, 2: 1.45, 3: 1.15, 4: 0.9 };
+    return byTier[team.tier] || 0.5;
+  })?.id || 'eng';
+}
+
+function processCoachLifecycle(state) {
+  state.pendingSeasonCoaches ||= [];
+  state.pendingSeasonRetirements ||= [];
+  state.pendingSeasonNews ||= [];
+  state.history.coachMoves ||= [];
+  let retiredCount = 0;
+
+  for (const coach of state.coaches || []) {
+    if (coach.status === 'retired') continue;
+    coach.careerLength ||= randomInt(state, 17, 27);
+    coach.careerYear = Math.max(0, Number(coach.careerYear || 0) + 1);
+    coach.debutSeason ??= state.season - coach.careerYear + 1;
+    if (coach.careerYear < coach.careerLength) continue;
+
+    const formerClubId = coach.clubId || null;
+    const formerNationalTeamId = coach.nationalTeamId || null;
+    if (formerClubId) {
+      const club = getClub(state, formerClubId);
+      if (club) {
+        club.coachId = null;
+        club.coachProfile = null;
+        club.coachRarity = null;
+        club.coachQuality = null;
+      }
+    }
+    if (formerNationalTeamId) {
+      const team = state.nationalTeams.find((item) => item.id === formerNationalTeamId);
+      if (team) {
+        team.coachId = null;
+        team.coachProfile = null;
+        team.coachRarity = null;
+        team.coachQuality = null;
+      }
+    }
+    coach.clubId = null;
+    coach.nationalTeamId = null;
+    coach.status = 'retired';
+    coach.retirementSeason = state.season;
+    retiredCount += 1;
+    state.history.coachMoves.push({
+      season: state.season,
+      coachId: coach.id,
+      fromClubId: formerClubId,
+      fromNationalTeamId: formerNationalTeamId,
+      reason: 'retired'
+    });
+    state.pendingSeasonRetirements.push({
+      type: 'coach',
+      coachId: coach.id,
+      formerClubId,
+      formerNationalTeamId,
+      rarity: coach.rarity,
+      season: state.season + 1
+    });
+    if (['generational', 'legend', 'epic'].includes(coach.rarity)) {
+      state.pendingSeasonNews.push({
+        id: `news-${state.season + 1}-coach-retirement-${coach.id}`,
+        week: 0,
+        importance: ['generational', 'legend'].includes(coach.rarity) ? 'major' : 'digest',
+        category: 'Retirements',
+        headline: `${coach.name} retires from coaching`,
+        body: `${STAFF_RARITIES[coach.rarity].label} ${COACH_PROFILES[coach.profile]?.label.toLowerCase() || 'coach'} ends a ${coach.careerYear}-season career with ${coach.trophies || 0} trophies.`
+      });
+    }
+  }
+
+  const target = state.targetActiveCoaches || (state.coaches || []).filter((coach) => coach.status !== 'retired').length + retiredCount;
+  const counts = activeCoachRarityCounts(state);
+  const activeCount = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  const intake = Math.max(retiredCount, target - activeCount);
+  for (let index = 0; index < intake; index += 1) {
+    const rarity = chooseReplacementCoachRarity(state, counts);
+    const nationality = chooseCoachNationalityForRarity(state, rarity);
+    const coach = createStaffMember(state, 'coach', nationality, {
+      rarity,
+      careerYear: 0,
+      appointmentSeason: state.season + 1,
+      debutSeason: state.season + 1,
+      seasonsInRole: 0,
+      status: 'active'
+    });
+    state.coaches.push(coach);
+    counts[rarity] = (counts[rarity] || 0) + 1;
+    if (['generational', 'legend', 'epic'].includes(rarity)) {
+      state.pendingSeasonCoaches.push({ coachId: coach.id, rarity, season: state.season + 1 });
+      state.pendingSeasonNews.unshift({
+        id: `news-${state.season + 1}-new-coach-${coach.id}`,
+        week: 0,
+        importance: rarity === 'generational' ? 'feature' : 'major',
+        category: 'New Coaches',
+        headline: `${coach.name} enters the coaching world`,
+        body: `${STAFF_RARITIES[rarity].label} ${COACH_PROFILES[coach.profile].label.toLowerCase()} from ${teamById(nationality)?.name || nationality} begins as a free agent with ${coach.quality} quality.`
+      });
+    }
+  }
 }
 
 function refreshClubStrength(state, club) {
@@ -2980,7 +3163,7 @@ function runCoachMarket(state) {
       (recentTitlesByCoach.get(row.coachId) || 0) + row.titles
     );
   }
-  const ambitionByCoach = new Map(state.coaches.map((coach) => {
+  const ambitionByCoach = new Map(state.coaches.filter((coach) => coach.status !== 'retired').map((coach) => {
     const rarity = STAFF_RARITIES[coach.rarity]?.rank || 1;
     const recentTitles = recentTitlesByCoach.get(coach.id) || 0;
     const score = coach.quality
@@ -3052,10 +3235,10 @@ function runCoachMarket(state) {
 
   // National federations recruit first. Major nations can approach successful domestic coaches already employed by clubs.
   nationalVacancies.sort((a, b) => b.strength - a.strength).forEach((team) => {
-    let candidates = state.coaches.filter((coach) => !coach.nationalTeamId && (coach.nationality === team.id || team.tier >= 3));
+    let candidates = state.coaches.filter((coach) => coach.status !== 'retired' && !coach.nationalTeamId && (coach.nationality === team.id || team.tier >= 3));
     let domestic = candidates.filter((coach) => coach.nationality === team.id);
     if (!domestic.length) {
-      const generated = createStaffMember(state, 'coach', team.id);
+      const generated = createStaffMember(state, 'coach', team.id, { careerYear: 0, debutSeason: state.season + 1, appointmentSeason: state.season + 1, status: 'active' });
       state.coaches.push(generated);
       candidates.push(generated);
       domestic = [generated];
@@ -3099,7 +3282,7 @@ function runCoachMarket(state) {
     handled.add(club.id);
     const nationality = COUNTRY_TO_CODE[club.country] || null;
     const destinationScore = clubJobScore(club);
-    const candidates = state.coaches.filter((coach) => !coach.nationalTeamId && coach.clubId !== club.id);
+    const candidates = state.coaches.filter((coach) => coach.status !== 'retired' && !coach.nationalTeamId && coach.clubId !== club.id);
     const domestic = candidates.filter((coach) => coach.nationality === nationality);
     const useDomestic = domestic.length && random(state) < clubCoachDomesticPreference(club);
     const pool = useDomestic ? domestic : candidates;
@@ -3133,7 +3316,7 @@ function runCoachMarket(state) {
     });
   }
 
-  state.coaches.forEach((coach) => { if (coach.clubId || coach.nationalTeamId) coach.seasonsInRole = (coach.seasonsInRole || 0) + 1; });
+  state.coaches.forEach((coach) => { if (coach.status !== 'retired' && (coach.clubId || coach.nationalTeamId)) coach.seasonsInRole = (coach.seasonsInRole || 0) + 1; });
 }
 
 function addPreseasonMagazine(state) {
@@ -3173,6 +3356,8 @@ function addPreseasonMagazine(state) {
 function evolveWorld(state) {
   processPromotionRelegation(state);
   processOwnerTurnover(state);
+  processCoachLifecycle(state);
+  invalidateRuntimeCache(state);
   runCoachMarket(state);
   for (const club of state.clubs) {
     const leagueFinish = state.history.clubSeasons.find(
@@ -3200,8 +3385,31 @@ function evolveWorld(state) {
     player.contractYears = Math.max(0, (player.contractYears || 0) - 1);
     player.careerYear += 1;
     if (player.careerYear >= player.careerLength) {
+      const formerClubId = player.clubId || null;
       player.status = 'retired';
+      player.retirementSeason = state.season;
       player.clubId = null;
+      player.contractYears = 0;
+      player.salary = 0;
+      state.pendingSeasonRetirements ||= [];
+      state.pendingSeasonRetirements.push({
+        type: 'player',
+        playerId: player.id,
+        formerClubId,
+        rarity: player.rarity,
+        season: state.season + 1
+      });
+      if (['generational', 'legend', 'epic'].includes(player.rarity)) {
+        state.pendingSeasonNews ||= [];
+        state.pendingSeasonNews.unshift({
+          id: `news-${state.season + 1}-player-retirement-${player.id}`,
+          week: 0,
+          importance: player.rarity === 'generational' ? 'feature' : 'major',
+          category: 'Retirements',
+          headline: `${player.name} retires from football`,
+          body: `${STAR_RARITIES[player.rarity].label} ${player.roleLabel.toLowerCase()} ends a ${player.careerLength}-season career${formerClubId ? ` after his final campaign with ${getClub(state, formerClubId)?.name || 'his club'}` : ''}.`
+        });
+      }
       continue;
     }
     const multiplier = player.careerMultipliers[player.careerYear] ?? 0.85;
@@ -3561,6 +3769,9 @@ export function startNextSeason(state) {
   state.season += 1;
   state.current = newCurrentSeason(state);
   state.pendingSeasonStars = [];
+  state.pendingSeasonCoaches = [];
+  state.pendingSeasonRetirements = [];
+  state.pendingOwnerChanges = [];
   runTransferMarket(state, false);
   addPreseasonMagazine(state);
   return state;
@@ -3856,9 +4067,9 @@ export function upgradeWorld(state) {
       const mustRepair = team.tier <= 2 && currentCoach?.nationality !== team.id;
       const shouldRepairTier3 = team.tier === 3 && currentCoach?.nationality !== team.id && random(state) < 0.72;
       if (!mustRepair && !shouldRepairTier3) continue;
-      let domestic = state.coaches.find((coach) => coach.nationality === team.id && !coach.clubId && !coach.nationalTeamId);
+      let domestic = state.coaches.find((coach) => coach.status !== 'retired' && coach.nationality === team.id && !coach.clubId && !coach.nationalTeamId);
       if (!domestic) {
-        domestic = createStaffMember(state, 'coach', team.id);
+        domestic = createStaffMember(state, 'coach', team.id, { careerYear: 0, debutSeason: state.season, appointmentSeason: state.season, status: 'active' });
         state.coaches.push(domestic);
       }
       if (currentCoach) currentCoach.nationalTeamId = null;
@@ -3888,6 +4099,31 @@ export function upgradeWorld(state) {
   if (state.dataRevision < 12) {
     for (const coach of state.coaches || []) coach.focus = inferCoachFocus(coach);
     state.dataRevision = 12;
+    invalidateRuntimeCache(state);
+  }
+  if (state.dataRevision < 13) {
+    state.pendingSeasonCoaches ||= [];
+    state.pendingSeasonRetirements ||= [];
+    state.pendingOwnerChanges ||= [];
+    if (state.current) {
+      state.current.newCoaches ||= [];
+      state.current.retirements ||= [];
+      state.current.ownerChanges ||= [];
+    }
+    for (const coach of state.coaches || []) {
+      coach.status ||= 'active';
+      coach.careerLength ||= 17 + Math.floor(stableStringRoll(`${coach.id}-length`) * 11);
+      coach.careerYear = Number.isFinite(coach.careerYear)
+        ? coach.careerYear
+        : Math.min(coach.careerLength - 2, Math.floor(stableStringRoll(`${coach.id}-year`) * 15));
+      coach.debutSeason ??= state.season - coach.careerYear;
+    }
+    state.targetActiveCoaches ||= (state.coaches || []).filter((coach) => coach.status !== 'retired').length;
+    state.coachRarityTargets ||= (state.coaches || []).filter((coach) => coach.status !== 'retired').reduce((counts, coach) => {
+      counts[coach.rarity] = (counts[coach.rarity] || 0) + 1;
+      return counts;
+    }, {});
+    state.dataRevision = 13;
     invalidateRuntimeCache(state);
   }
   return state;
