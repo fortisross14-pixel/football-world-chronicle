@@ -37,6 +37,30 @@ const INTERNATIONAL_FINAL_SIZES = {
   Oceania: 8
 };
 
+const COACH_CAREER_TYPES = {
+  prodigy: { label: 'Prodigy', multipliers: [0.94, 0.99, 1.02, 1.02, 1.01, 0.99, 0.96, 0.93, 0.90, 0.89] },
+  early_peak: { label: 'Early Peak', multipliers: [0.98, 1.02, 1.02, 1.00, 0.97, 0.94, 0.92, 0.90, 0.89] },
+  steady_growth: { label: 'Steady Growth', multipliers: [0.90, 0.93, 0.96, 0.99, 1.01, 1.02, 1.02, 1.01, 0.99, 0.96, 0.93, 0.90] },
+  late_bloomer: { label: 'Late Bloomer', multipliers: [0.89, 0.90, 0.92, 0.95, 0.98, 1.00, 1.02, 1.02, 1.01, 0.99, 0.96, 0.93, 0.90] },
+  stable_prime: { label: 'Stable Prime', multipliers: [0.94, 0.97, 0.99, 1.00, 1.01, 1.01, 1.00, 0.99, 0.97, 0.95, 0.92, 0.90] },
+  long_peak: { label: 'Long Peak', multipliers: [0.91, 0.95, 0.98, 1.00, 1.02, 1.02, 1.02, 1.01, 1.00, 0.98, 0.96, 0.93, 0.90, 0.89] },
+  volatile: { label: 'Volatile', multipliers: [0.92, 1.00, 0.95, 1.02, 0.94, 1.01, 0.93, 0.99, 0.92, 0.96, 0.90, 0.89] },
+  veteran_master: { label: 'Veteran Master', multipliers: [0.89, 0.91, 0.94, 0.97, 0.99, 1.00, 1.01, 1.02, 1.02, 1.01, 1.00, 0.98, 0.96, 0.94, 0.92, 0.90, 0.89] }
+};
+
+const SUPER_CUP_NAMES = {
+  ESP1: 'Spanish Super Cup', ENG1: 'Community Shield', ITA1: 'Supercoppa Italiana',
+  GER1: 'DFL-Supercup', FRA1: 'Trophée des Champions', POR1: 'Supertaça Cândido de Oliveira',
+  NED1: 'Johan Cruyff Shield', TUR1: 'Turkish Super Cup', BRA1: 'Supercopa do Brasil',
+  ARG1: 'Supercopa Argentina', MEX1: 'Campeón de Campeones', USA1: 'MLS Champions Cup',
+  KSA1: 'Saudi Super Cup', JPN1: 'Japanese Super Cup', MAR1: 'Moroccan Super Cup', EGY1: 'Egyptian Super Cup'
+};
+
+const GLOBAL_CLUB_COMPETITIONS = {
+  CWC: { id: 'CWC', name: 'FIFA Club World Cup', confederation: 'World', level: 0, global: true },
+  ICUP: { id: 'ICUP', name: 'FIFA Intercontinental Cup', confederation: 'World', level: 0, global: true }
+};
+
 const RUNTIME_CACHE = new WeakMap();
 
 function invalidateRuntimeCache(state) {
@@ -578,17 +602,63 @@ function inferCoachFocus(coach) {
   return selectCoachFocusFromRoll(coach?.profile, stableStringRoll(coach?.id || coach?.name || 'coach'));
 }
 
+function coachCareerLength(state) {
+  const roll = random(state);
+  if (roll < 0.18) return randomInt(state, 8, 10);
+  if (roll < 0.58) return randomInt(state, 11, 14);
+  return randomInt(state, 15, 18);
+}
+
+function coachCareerType(state, profile = null) {
+  const choices = Object.keys(COACH_CAREER_TYPES);
+  if (profile === 'youth_developer') return weightedPick(state, choices, (key) => ['late_bloomer','steady_growth','veteran_master'].includes(key) ? 3 : 1);
+  if (profile === 'tournament_expert') return weightedPick(state, choices, (key) => ['early_peak','volatile','stable_prime'].includes(key) ? 2.4 : 1);
+  return pick(state, choices);
+}
+
+function coachCareerMultiplier(coach, careerYear = coach?.careerYear || 0) {
+  const type = COACH_CAREER_TYPES[coach?.careerType] || COACH_CAREER_TYPES.stable_prime;
+  const curve = type.multipliers;
+  if (!curve.length) return 1;
+  if (careerYear <= 0) return curve[0];
+  if (careerYear >= (coach?.careerLength || curve.length) - 1) return curve[curve.length - 1];
+  const normalized = careerYear / Math.max(1, (coach?.careerLength || curve.length) - 1);
+  const index = normalized * (curve.length - 1);
+  const low = Math.floor(index);
+  const high = Math.min(curve.length - 1, Math.ceil(index));
+  const blend = index - low;
+  return curve[low] * (1 - blend) + curve[high] * blend;
+}
+
+function refreshCoachQuality(state, coach) {
+  if (!coach || coach.status === 'retired') return;
+  coach.baseQuality ||= coach.quality || 66;
+  coach.careerType ||= Object.keys(COACH_CAREER_TYPES)[Math.floor(stableStringRoll(`${coach.id}-curve`) * Object.keys(COACH_CAREER_TYPES).length)] || 'stable_prime';
+  coach.careerMultipliers = Array.from({ length: coach.careerLength || 10 }, (_, year) => Number(coachCareerMultiplier(coach, year).toFixed(3)));
+  const multiplier = coach.careerMultipliers[Math.min(coach.careerMultipliers.length - 1, coach.careerYear || 0)] || coachCareerMultiplier(coach);
+  coach.currentMultiplier = Number(multiplier.toFixed(3));
+  coach.quality = clamp(Math.round(coach.baseQuality * multiplier), 58, 99);
+  if (coach.clubId) {
+    const club = getClub(state, coach.clubId);
+    if (club) club.coachQuality = coach.quality;
+  }
+  if (coach.nationalTeamId) {
+    const team = state.nationalTeams?.find((item) => item.id === coach.nationalTeamId);
+    if (team) team.coachQuality = coach.quality;
+  }
+}
+
 function createStaffMember(state, type, nationality, assignment = {}) {
   const rarity = assignment.rarity || chooseStaffRarity(state, nationality, type);
   const profiles = type === 'owner' ? OWNER_PROFILES : COACH_PROFILES;
   const profile = assignment.profile || pick(state, Object.keys(profiles));
   const qualityBase = { generational: 96, legend: 92, epic: 87, rare: 81, uncommon: 74, common: 66 }[rarity];
   const name = assignment.name || uniqueName(state, nationality || 'eng');
-  const coachCareerLength = type === 'coach' ? (assignment.careerLength || randomInt(state, 17, 27)) : null;
+  const coachCareerLengthValue = type === 'coach' ? (assignment.careerLength || coachCareerLength(state)) : null;
   const coachCareerYear = type === 'coach'
-    ? clamp(assignment.careerYear ?? randomInt(state, 0, Math.min(14, coachCareerLength - 4)), 0, coachCareerLength - 1)
+    ? clamp(assignment.careerYear ?? randomInt(state, 0, Math.max(0, Math.min(10, coachCareerLengthValue - 3))), 0, coachCareerLengthValue - 1)
     : null;
-  return {
+  const staff = {
     id: `${type}-${slug(name)}-${state.nextStaffId++}`,
     type,
     name,
@@ -605,10 +675,20 @@ function createStaffMember(state, type, nationality, assignment = {}) {
     trophies: assignment.trophies ?? 0,
     status: type === 'coach' ? (assignment.status || 'active') : undefined,
     careerYear: coachCareerYear,
-    careerLength: coachCareerLength,
+    careerLength: coachCareerLengthValue,
+    careerType: type === 'coach' ? (assignment.careerType || coachCareerType(state, profile)) : undefined,
+    baseQuality: type === 'coach' ? (assignment.baseQuality ?? assignment.quality ?? clamp(qualityBase + randomInt(state, -2, 2), 60, 99)) : undefined,
     debutSeason: type === 'coach' ? (assignment.debutSeason ?? (state.season - coachCareerYear)) : undefined,
     ...assignment
   };
+  if (type === 'coach') {
+    staff.baseQuality ||= staff.quality;
+    staff.careerType ||= coachCareerType(state, profile);
+    staff.careerMultipliers = Array.from({ length: staff.careerLength || 10 }, (_, year) => Number(coachCareerMultiplier(staff, year).toFixed(3)));
+    staff.currentMultiplier = staff.careerMultipliers[Math.min(staff.careerMultipliers.length - 1, staff.careerYear || 0)] || 1;
+    staff.quality = clamp(Math.round(staff.baseQuality * staff.currentMultiplier), 58, 99);
+  }
+  return staff;
 }
 
 
@@ -996,6 +1076,10 @@ function initializeChampions(state) {
   return initializeContinentalCompetitions(state).UCL;
 }
 
+function previousChampion(state, competitionId) {
+  return [...(state.history?.champions || [])].reverse().find((entry) => entry.competitionId === competitionId)?.winnerId || null;
+}
+
 function initializeCups(state) {
   const domesticCups = {};
   for (const league of LEAGUE_DEFINITIONS) {
@@ -1013,23 +1097,33 @@ function initializeCups(state) {
       rounds: []
     };
   }
-  const spanish = state.clubs
-    .filter((club) => club.country === 'Spain' && club.division === 1)
-    .sort((a, b) => b.strength - a.strength)
-    .slice(0, 4)
-    .map((club) => club.id);
-  return {
-    domesticCups,
-    supercup: {
-      id: 'SUPERCUP',
-      name: 'Spanish Super Cup',
-      active: spanish,
-      stage: 'Semi-finals',
+  const superCups = {};
+  for (const league of LEAGUE_DEFINITIONS.filter((item) => SUPER_CUP_NAMES[item.id])) {
+    const clubs = state.clubs.filter((club) => club.leagueId === league.id && club.division === 1).sort((a, b) => b.strength - a.strength);
+    const leagueWinner = previousChampion(state, league.id) || clubs[0]?.id;
+    const cupWinner = previousChampion(state, `CUP-${league.id}`) || clubs.find((club) => club.id !== leagueWinner)?.id;
+    let active = [leagueWinner, cupWinner].filter(Boolean);
+    if (league.id === 'ESP1') {
+      const priorRunnerUp = [...(state.history?.champions || [])].reverse().find((entry) => entry.competitionId === league.id)?.runnerUpId;
+      const cupRunnerUp = [...(state.history?.champions || [])].reverse().find((entry) => entry.competitionId === `CUP-${league.id}`)?.runnerUpId;
+      active = [...new Set([leagueWinner, cupWinner, priorRunnerUp, cupRunnerUp, ...clubs.map((club) => club.id)])].slice(0, 4);
+    } else if (active.length < 2 || active[0] === active[1]) {
+      active = [leagueWinner, clubs.find((club) => club.id !== leagueWinner)?.id].filter(Boolean);
+    }
+    const id = `SC-${league.id}`;
+    superCups[id] = {
+      id,
+      leagueId: league.id,
+      country: league.country,
+      name: SUPER_CUP_NAMES[league.id],
+      active,
+      stage: active.length > 2 ? 'Semi-finals' : 'Final',
       championId: null,
       finalistId: null,
       rounds: []
-    }
-  };
+    };
+  }
+  return { domesticCups, superCups, supercup: superCups['SC-ESP1'] };
 }
 
 function regionalCompetitionId(region, qualifier) {
@@ -1087,6 +1181,106 @@ function makeInternationalCompetition(state, {
     qualifiedIds: [],
     completed: false,
     recap: null
+  };
+}
+
+
+function recentConfederationChampions(state, confederation, seasons = 4) {
+  const premier = CONTINENTAL_DEFINITIONS.find((item) => item.confederation === confederation && item.level === 1);
+  if (!premier) return [];
+  return [...(state.history.champions || [])]
+    .filter((entry) => entry.competitionId === premier.id && entry.season >= state.season - seasons)
+    .sort((a, b) => b.season - a.season)
+    .map((entry) => entry.winnerId)
+    .filter(Boolean);
+}
+
+function clubWorldRanking(state, club) {
+  const recent = (state.history.clubCompetitionSeasons || []).filter((row) => row.teamId === club.id && row.season >= state.season - 4);
+  const weighted = recent.reduce((sum, row) => {
+    const definition = CONTINENTAL_DEFINITIONS.find((item) => item.id === row.competitionId);
+    const weight = definition?.level === 1 ? 3.2 : definition?.level === 2 ? 1.7 : 0.8;
+    return sum + (row.wins || 0) * weight + (row.apps || 0) * 0.25 * weight;
+  }, 0);
+  const titles = (state.history.champions || []).filter((row) => row.winnerId === club.id && row.season >= state.season - 4 && CONTINENTAL_DEFINITIONS.some((item) => item.id === row.competitionId && item.level === 1)).length;
+  return weighted + titles * 60 + (club.reputation || 60) * 1.5 + (club.strength || 60);
+}
+
+function selectClubWorldCupTeams(state) {
+  const slots = { Europe: 12, 'South America': 6, Asia: 4, Africa: 4, 'North America': 4, Oceania: 1 };
+  const selected = [];
+  const selectedSet = new Set();
+  for (const [confederation, count] of Object.entries(slots)) {
+    const pool = state.clubs.filter((club) => club.confederation === confederation && club.division === 1);
+    const champions = recentConfederationChampions(state, confederation, 4);
+    const countryCounts = new Map();
+    const add = (club, championPath = false) => {
+      if (!club || selectedSet.has(club.id)) return false;
+      const countryCount = countryCounts.get(club.country) || 0;
+      if (!championPath && countryCount >= 2) return false;
+      selected.push(club.id); selectedSet.add(club.id); countryCounts.set(club.country, countryCount + 1); return true;
+    };
+    champions.forEach((id) => add(pool.find((club) => club.id === id), true));
+    [...pool].sort((a, b) => clubWorldRanking(state, b) - clubWorldRanking(state, a)).forEach((club) => {
+      if (selected.filter((id) => getClub(state, id)?.confederation === confederation).length < count) add(club, false);
+    });
+  }
+  const host = state.clubs.filter((club) => club.country === 'United States' && club.division === 1).sort((a, b) => clubWorldRanking(state, b) - clubWorldRanking(state, a))[0];
+  if (host && !selectedSet.has(host.id)) selected.push(host.id);
+  const fill = state.clubs.filter((club) => club.division === 1 && !selectedSet.has(club.id)).sort((a, b) => clubWorldRanking(state, b) - clubWorldRanking(state, a));
+  while (selected.length < 32 && fill.length) selected.push(fill.shift().id);
+  return selected.slice(0, 32);
+}
+
+function latestPremierContinentalWinner(state, confederation) {
+  const definition = CONTINENTAL_DEFINITIONS.find((item) => item.confederation === confederation && item.level === 1);
+  return definition ? previousChampion(state, definition.id) : null;
+}
+
+function initializeGlobalClubCompetitions(state) {
+  const cycle = state.season % 4;
+  if (cycle === 0) {
+    const ids = selectClubWorldCupTeams(state);
+    return {
+      CWC: {
+        ...GLOBAL_CLUB_COMPETITIONS.CWC,
+        editionYear: state.season + 1,
+        stage: 'Group Stage',
+        groups: buildGroups(state, ids, 8, false),
+        groupWeeks: [39, 40, 41],
+        knockoutWeeks: [43, 45, 47, 49],
+        knockout: null,
+        championId: null,
+        finalistId: null,
+        completed: false,
+        kind: 'finals'
+      }
+    };
+  }
+  const champions = {
+    Europe: latestPremierContinentalWinner(state, 'Europe'),
+    'South America': latestPremierContinentalWinner(state, 'South America'),
+    Asia: latestPremierContinentalWinner(state, 'Asia'),
+    Africa: latestPremierContinentalWinner(state, 'Africa'),
+    'North America': latestPremierContinentalWinner(state, 'North America'),
+    Oceania: latestPremierContinentalWinner(state, 'Oceania')
+  };
+  const fallback = (region) => state.clubs.filter((club) => club.confederation === region && club.division === 1).sort((a, b) => clubWorldRanking(state, b) - clubWorldRanking(state, a))[0]?.id;
+  Object.keys(champions).forEach((region) => { champions[region] ||= fallback(region); });
+  const ids = Object.values(champions).filter(Boolean);
+  return {
+    ICUP: {
+      ...GLOBAL_CLUB_COMPETITIONS.ICUP,
+      editionYear: state.season + 1,
+      stage: 'Quarter-finals',
+      active: ids,
+      seeds: champions,
+      rounds: [],
+      championId: null,
+      finalistId: null,
+      completed: false,
+      kind: 'knockout'
+    }
   };
 }
 
@@ -1155,6 +1349,7 @@ function newCurrentSeason(state) {
   const cups = initializeCups(state);
   const continentalCompetitions = initializeContinentalCompetitions(state);
   const internationalCompetitions = initializeInternationalCompetitions(state);
+  const globalClubCompetitions = initializeGlobalClubCompetitions(state);
   return {
     season: state.season,
     seasonLabel: formatSeason(state.season),
@@ -1163,8 +1358,10 @@ function newCurrentSeason(state) {
     leagues,
     domesticCups: cups.domesticCups,
     copa: cups.domesticCups['CUP-ESP1'],
+    superCups: cups.superCups,
     supercup: cups.supercup,
     continentalCompetitions,
+    globalClubCompetitions,
     champions: continentalCompetitions.UCL,
     internationalCompetitions,
     international: Object.values(internationalCompetitions)[0] || null,
@@ -1186,7 +1383,7 @@ function newCurrentSeason(state) {
         importance: 'feature',
         category: 'World',
         headline: `${formatSeason(state.season)} football world opens`,
-        body: `${internationalCycleLabel(state.season)} joins 137 domestic systems, eleven continental club competitions and a new transfer window.`
+        body: `${internationalCycleLabel(state.season)} joins 137 domestic systems, global club football, continental competitions and a new transfer window.`
       }
     ],
     completed: false
@@ -1196,7 +1393,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 13,
+    dataRevision: 14,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -1371,8 +1568,8 @@ function coachContextBonus(state, teamId, isInternational, competitionId, stage,
   const highStakes = knockout || /Round of 16|Quarter|Semi|Final/i.test(stage || '');
   const context = isLeague ? 'league' : highStakes ? 'knockout' : 'tournament';
   const coefficients = {
-    tournament: { league: -0.45, tournament: 1.75, knockout: 3.45 },
-    regularity: { league: 3.15, tournament: 0.72, knockout: 0.18 },
+    tournament: { league: -0.75, tournament: 1.75, knockout: 3.45 },
+    regularity: { league: 4.05, tournament: 0.72, knockout: 0.18 },
     balanced: { league: 1.55, tournament: 1.38, knockout: 1.62 }
   };
   const qualityScale = clamp(((coach.quality || 65) - 60) / 35, 0.12, 1.15);
@@ -1549,10 +1746,13 @@ function tournamentFavoriteBonus(state, competitionId, teamId, isInternational) 
   const continentalDefinition = CONTINENTAL_DEFINITIONS.find((definition) => definition.id === competitionId);
   const isMajorContinental = continentalDefinition?.level === 1;
   const isMajorInternational = ['WC', 'EURO', 'COPA', 'AFCON', 'ASIACUP', 'GOLDCUP', 'OFC'].includes(competitionId);
-  if (!isMajorContinental && !isMajorInternational) return 0;
-  const competition = isInternational
-    ? state.current.internationalCompetitions?.[competitionId]
-    : state.current.continentalCompetitions?.[competitionId];
+  const isMajorGlobal = competitionId === 'CWC';
+  if (!isMajorContinental && !isMajorInternational && !isMajorGlobal) return 0;
+  const competition = isMajorGlobal
+    ? state.current.globalClubCompetitions?.[competitionId]
+    : isInternational
+      ? state.current.internationalCompetitions?.[competitionId]
+      : state.current.continentalCompetitions?.[competitionId];
   const ids = [...new Set((competition?.groups || []).flatMap((group) => group.teamIds || []))];
   if (!ids.length) return 0;
   if (!Array.isArray(competition.favoriteRanking) || competition.favoriteRanking.length !== ids.length || competition.favoriteRanking.some((id) => !ids.includes(id))) {
@@ -2002,34 +2202,92 @@ function simulateDomesticCups(state, week) {
   Object.values(state.current.domesticCups).filter((cup) => cup.tier !== 'summary').forEach((cup) => simulateDomesticCupRound(state, cup, week));
 }
 
-function simulateSuperCup(state, week) {
-  const cup = state.current.supercup;
-  if (cup.championId) return;
-  const stage = cup.active.length === 4 ? 'Semi-final' : 'Final';
+function simulateSuperCupCompetition(state, cup, week) {
+  if (!cup || cup.championId || cup.active.length < 2) return;
+  const stage = cup.active.length > 2 ? 'Semi-final' : 'Final';
   const pairs = pairTeams(state, cup.active);
   const winners = [];
   const matchIds = [];
   pairs.forEach(([homeId, awayId]) => {
+    if (!awayId) { winners.push(homeId); return; }
     const match = simulateMatch(state, {
-      homeId,
-      awayId,
-      competitionId: 'SUPERCUP',
-      competitionName: cup.name,
-      week,
-      stage,
-      knockout: true,
-      neutral: true
+      homeId, awayId, competitionId: cup.id, competitionName: cup.name, week,
+      stage, knockout: true, neutral: true
     });
-    winners.push(match.winnerId);
-    matchIds.push(match.id);
+    winners.push(match.winnerId); matchIds.push(match.id);
     if (stage === 'Final') cup.finalistId = match.winnerId === homeId ? awayId : homeId;
   });
   cup.rounds.push({ week, stage, matchIds });
   cup.active = winners;
+  if (winners.length === 1) { cup.championId = winners[0]; cup.stage = 'Complete'; cup.completed = true; }
+  else cup.stage = 'Final';
+}
+
+function simulateSuperCups(state, week) {
+  Object.values(state.current.superCups || {}).forEach((cup) => simulateSuperCupCompetition(state, cup, week));
+}
+
+function simulateIntercontinentalCup(state, comp, week) {
+  if (!comp || comp.completed) return;
+  const seeds = comp.seeds || {};
+  if (week === 40 && !comp.rounds.length) {
+    const pairs = [[seeds.Asia, seeds.Oceania], [seeds.Africa, seeds['North America']]].filter((pair) => pair.every(Boolean));
+    const winners = []; const matchIds = [];
+    pairs.forEach(([homeId, awayId]) => { const match = simulateMatch(state,{homeId,awayId,competitionId:comp.id,competitionName:comp.name,week,stage:'Quarter-final',knockout:true,neutral:true}); winners.push(match.winnerId); matchIds.push(match.id); });
+    comp.rounds.push({ week, stage:'Quarter-final', matchIds }); comp.quarterWinners = winners; comp.stage='Semi-finals';
+  } else if (week === 43 && comp.rounds.length === 1) {
+    const pairs = [[seeds.Europe, comp.quarterWinners?.[0]], [seeds['South America'], comp.quarterWinners?.[1]]].filter((pair)=>pair.every(Boolean));
+    const winners=[]; const matchIds=[];
+    pairs.forEach(([homeId,awayId])=>{const match=simulateMatch(state,{homeId,awayId,competitionId:comp.id,competitionName:comp.name,week,stage:'Semi-final',knockout:true,neutral:true});winners.push(match.winnerId);matchIds.push(match.id);});
+    comp.rounds.push({week,stage:'Semi-final',matchIds});comp.finalists=winners;comp.stage='Final';
+  } else if (week === 46 && comp.rounds.length === 2 && comp.finalists?.length === 2) {
+    const [homeId,awayId]=comp.finalists; const match=simulateMatch(state,{homeId,awayId,competitionId:comp.id,competitionName:comp.name,week,stage:'Final',knockout:true,neutral:true});
+    comp.championId=match.winnerId;comp.finalistId=match.winnerId===homeId?awayId:homeId;comp.rounds.push({week,stage:'Final',matchIds:[match.id]});comp.stage='Complete';comp.completed=true;
+  }
+}
+
+function simulateGlobalClubKnockout(state, comp, week) {
+  if (comp.championId || !comp.knockout?.active?.length) return;
+  const active = comp.knockout.active;
+  const stage = active.length === 16 ? 'Round of 16' : active.length === 8 ? 'Quarter-final' : active.length === 4 ? 'Semi-final' : 'Final';
+  const pairs = comp.knockout.openingPairs?.length ? comp.knockout.openingPairs : pairTeams(state, active);
+  comp.knockout.openingPairs = null;
+  const winners = [];
+  const matchIds = [];
+  let finalMatch = null;
+  pairs.forEach(([homeId, awayId]) => {
+    if (!awayId) { winners.push(homeId); return; }
+    const match = simulateMatch(state, { homeId, awayId, competitionId: comp.id, competitionName: comp.name, week, stage, knockout: true, neutral: true });
+    winners.push(match.winnerId); matchIds.push(match.id);
+    if (stage === 'Final') { finalMatch = match; comp.finalistId = match.winnerId === homeId ? awayId : homeId; }
+  });
+  comp.knockout.rounds.push({ stage, matchIds });
+  comp.knockout.active = winners;
   if (winners.length === 1) {
-    cup.championId = winners[0];
-    cup.stage = 'Complete';
-  } else cup.stage = 'Final';
+    comp.championId = winners[0]; comp.stage = 'Complete'; comp.completed = true;
+    const stats = statsForCompetition(state, comp.id);
+    const topScorer = chooseBestPlayer(stats, (stat) => stat.goals * 100 + stat.assists + stat.averageRating);
+    const mvp = chooseBestPlayer(stats, (stat) => competitionMvpScore(state, stat, comp.id));
+    comp.recap = { finalMatchId: finalMatch?.id || null, mvpId: mvp?.playerId || null, topScorerId: topScorer?.playerId || null, topScorerGoals: topScorer?.goals || 0 };
+    state.current.news.unshift({ id: `news-${state.season}-${comp.id}-champion`, week, importance: 'feature', category: 'Global Club Football', storyType: 'result', relevance: 94, headline: `${getClub(state, comp.championId)?.name || 'A club'} win ${comp.name}!`, body: `${getClub(state, comp.championId)?.name || 'The champions'} defeat ${getClub(state, comp.finalistId)?.name || 'the finalists'}${finalMatch ? ` ${finalMatch.homeGoals}-${finalMatch.awayGoals}` : ''} in the final.${mvp ? ` ${getPlayer(state, mvp.playerId)?.name} is player of the tournament.` : ''}` });
+  } else {
+    comp.knockout.round = winners.length === 8 ? 'Quarter-final' : winners.length === 4 ? 'Semi-final' : 'Final';
+    comp.stage = comp.knockout.round === 'Quarter-final' ? 'Quarter-finals' : `${comp.knockout.round}s`;
+  }
+}
+
+function simulateGlobalClubCalendar(state, week) {
+  const cwc = state.current.globalClubCompetitions?.CWC;
+  if (cwc) {
+    const groupIndex = (cwc.groupWeeks || []).indexOf(week);
+    if (groupIndex >= 0) {
+      simulateGroupRound(state, cwc, cwc.id, cwc.name, week, groupIndex, false);
+      if (week === cwc.groupWeeks[cwc.groupWeeks.length - 1]) prepareInternationalKnockout(state, cwc);
+    }
+    if ((cwc.knockoutWeeks || []).includes(week)) simulateGlobalClubKnockout(state, cwc, week);
+  }
+  const icup = state.current.globalClubCompetitions?.ICUP;
+  if (icup && [40,43,46].includes(week)) simulateIntercontinentalCup(state, icup, week);
 }
 
 function simulateGroupRound(state, competition, competitionId, competitionName, week, roundIndex, isInternational) {
@@ -2165,7 +2423,7 @@ function finalizeQualifiers(state, comp) {
 }
 
 function prepareInternationalKnockout(state, comp) {
-  const desired = comp.id === 'WC' ? 16 : Math.min(8, 2 ** Math.floor(Math.log2(Math.max(2, comp.groups.length * 2))));
+  const desired = ['WC', 'CWC'].includes(comp.id) ? 16 : Math.min(8, 2 ** Math.floor(Math.log2(Math.max(2, comp.groups.length * 2))));
   const sortedGroups = comp.groups.map((group) => sortTable(group.table));
   const top = sortedGroups.flatMap((rows, groupIndex) => rows.slice(0, 2).map((row, index) => ({ ...row, groupId: comp.groups[groupIndex].id, groupPosition: index + 1 })));
   const qualifiers = top
@@ -2292,7 +2550,7 @@ export function simulateNextWeek(state) {
   advanceDate(state, 7);
   simulateLeagueWeek(state, week);
 
-  if (week === 1 || week === 2) simulateSuperCup(state, week);
+  if (week === 1 || week === 2) simulateSuperCups(state, week);
   if ([5, 11, 17, 24, 31].includes(week)) simulateDomesticCups(state, week);
 
   const continentalGroupWeeks = [4, 7, 10, 13, 16, 19];
@@ -2311,6 +2569,7 @@ export function simulateNextWeek(state) {
   if (week === 36) simulateSummaryLeagues(state);
 
   simulateInternationalCalendar(state, week);
+  simulateGlobalClubCalendar(state, week);
   addWeeklyDigest(state, week, before);
   if (week >= 52) closeSeason(state);
   return state;
@@ -2360,11 +2619,11 @@ function getCompetitionOutcome(state, competitionId) {
     const comp = state.current.domesticCups[competitionId];
     return { championId: comp.championId || null, finalistId: comp.finalistId || null };
   }
-  if (competitionId === 'SUPERCUP') {
-    const comp = state.current.supercup || {};
+  if (state.current.superCups?.[competitionId]) {
+    const comp = state.current.superCups[competitionId];
     return { championId: comp.championId || null, finalistId: comp.finalistId || null };
   }
-  const comp = state.current.continentalCompetitions?.[competitionId] || state.current.internationalCompetitions?.[competitionId];
+  const comp = state.current.globalClubCompetitions?.[competitionId] || state.current.continentalCompetitions?.[competitionId] || state.current.internationalCompetitions?.[competitionId];
   return { championId: comp?.championId || null, finalistId: comp?.finalistId || null };
 }
 
@@ -2433,7 +2692,8 @@ function clubSeasonAchievementDepth(state, clubId) {
   for (const cup of Object.values(state.current.domesticCups || {})) {
     if (cup.championId === clubId) depth += 0.62;
   }
-  if (state.current.supercup?.championId === clubId) depth += 0.22;
+  if (Object.values(state.current.superCups || {}).some((cup) => cup.championId === clubId)) depth += 0.22;
+  if (Object.values(state.current.globalClubCompetitions || {}).some((competition) => competition.championId === clubId)) depth += 0.65;
   for (const competition of Object.values(state.current.continentalCompetitions || {})) {
     if (competition.championId !== clubId) continue;
     const definition = CONTINENTAL_DEFINITIONS.find((item) => item.id === competition.id);
@@ -2573,7 +2833,8 @@ function buildAnnualAwardRace(state) {
 function calculateAwards(state) {
   for (const league of Object.values(state.current.leagues)) calculateCompetitionAwards(state, league.id, league.name);
   for (const cup of Object.values(state.current.domesticCups)) calculateCompetitionAwards(state, cup.id, cup.name);
-  calculateCompetitionAwards(state, 'SUPERCUP', state.current.supercup.name);
+  for (const superCup of Object.values(state.current.superCups || {})) calculateCompetitionAwards(state, superCup.id, superCup.name);
+  for (const globalCompetition of Object.values(state.current.globalClubCompetitions || {})) calculateCompetitionAwards(state, globalCompetition.id, globalCompetition.name);
   for (const competition of Object.values(state.current.continentalCompetitions || {})) calculateCompetitionAwards(state, competition.id, competition.name);
   for (const competition of Object.values(state.current.internationalCompetitions || {})) calculateCompetitionAwards(state, competition.id, competition.name);
 
@@ -2757,8 +3018,11 @@ function archiveSeason(state) {
   for (const cup of Object.values(state.current.domesticCups)) {
     registerChampion(state, cup.id, cup.name, cup.championId, cup.finalistId);
   }
-  registerChampion(state, 'SUPERCUP', state.current.supercup.name, state.current.supercup.championId, state.current.supercup.finalistId);
+  for (const superCup of Object.values(state.current.superCups || {})) registerChampion(state, superCup.id, superCup.name, superCup.championId, superCup.finalistId);
   for (const competition of Object.values(state.current.continentalCompetitions || {})) {
+    registerChampion(state, competition.id, competition.name, competition.championId, competition.finalistId);
+  }
+  for (const competition of Object.values(state.current.globalClubCompetitions || {})) {
     registerChampion(state, competition.id, competition.name, competition.championId, competition.finalistId);
   }
   for (const comp of Object.values(state.current.internationalCompetitions || {})) {
@@ -2919,9 +3183,12 @@ function processCoachLifecycle(state) {
 
   for (const coach of state.coaches || []) {
     if (coach.status === 'retired') continue;
-    coach.careerLength ||= randomInt(state, 17, 27);
+    coach.careerLength ||= coachCareerLength(state);
+    coach.careerType ||= coachCareerType(state, coach.profile);
+    coach.baseQuality ||= coach.quality || 66;
     coach.careerYear = Math.max(0, Number(coach.careerYear || 0) + 1);
     coach.debutSeason ??= state.season - coach.careerYear + 1;
+    refreshCoachQuality(state, coach);
     if (coach.careerYear < coach.careerLength) continue;
 
     const formerClubId = coach.clubId || null;
@@ -3001,7 +3268,7 @@ function processCoachLifecycle(state) {
         importance: rarity === 'generational' ? 'feature' : 'major',
         category: 'New Coaches',
         headline: `${coach.name} enters the coaching world`,
-        body: `${STAFF_RARITIES[rarity].label} ${COACH_PROFILES[coach.profile].label.toLowerCase()} from ${teamById(nationality)?.name || nationality} begins as a free agent with ${coach.quality} quality.`
+        body: `${STAFF_RARITIES[rarity].label} ${COACH_PROFILES[coach.profile].label.toLowerCase()} from ${teamById(nationality)?.name || nationality} begins as a free agent with ${coach.quality} quality, a ${COACH_CAREER_TYPES[coach.careerType]?.label || 'balanced'} development curve and an expected ${coach.careerLength}-season career.`
       });
     }
   }
@@ -3181,15 +3448,25 @@ function runCoachMarket(state) {
     const peerClubs = table.map((row) => getClub(state, row.teamId)).filter(Boolean).sort((a, b) => b.reputation - a.reputation);
     const expected = peerClubs.findIndex((item) => item.id === club.id) + 1;
     const patience = club.ownerPatience || 1;
-    const failure = actual && expected && actual - expected >= Math.max(4, Math.round(6 * patience));
+    const seasonTitles = (state.history.champions || []).filter((row) => row.season === state.season && row.winnerId === club.id && !row.isInternational);
+    const majorTitleIds = new Set([club.leagueId, 'UCL', 'UEL', 'UECL', 'LIB', 'SUD', 'CCC', 'ACL', 'CAFCL', 'OCL', 'CWC', 'ICUP']);
+    const majorTitles = seasonTitles.filter((row) => majorTitleIds.has(row.competitionId));
+    const noTitles = seasonTitles.length === 0;
+    const eliteNoTitleDismissal = club.reputation >= 90 && noTitles;
+    const ambitiousNoTitleDismissal = club.reputation >= 86 && noTitles && (actual > 3 || random(state) < clamp(0.72 / patience, 0.35, 0.95));
+    const failure = actual && expected && actual - expected >= Math.max(club.reputation >= 88 ? 2 : 4, Math.round((club.reputation >= 88 ? 3.5 : 6) * patience));
+    const majorDrought = club.reputation >= 88 && majorTitles.length === 0 && actual > 2 && random(state) < clamp(0.48 / patience, 0.22, 0.82);
     const eliteUpgrade = club.reputation >= 84 && (club.coachQuality || 65) < 78 && random(state) < 0.18;
     const randomDismissal = random(state) < 0.012 / patience;
-    if ((failure || eliteUpgrade || randomDismissal) && club.coachId) {
+    const dismissReason = eliteNoTitleDismissal ? 'dismissed after a trophyless season' : ambitiousNoTitleDismissal ? 'dismissed after failing club expectations' : failure ? 'dismissed for league underperformance' : majorDrought ? 'dismissed after missing major objectives' : eliteUpgrade ? 'elite upgrade' : 'board change';
+    if ((eliteNoTitleDismissal || ambitiousNoTitleDismissal || failure || majorDrought || eliteUpgrade || randomDismissal) && club.coachId) {
       const coach = getCoach(state, club.id, false);
       if (coach) {
         coach.clubId = null;
         coach.performanceScore = actual ? expected - actual : -2;
-        state.history.coachMoves.push({ season: state.season, coachId: coach.id, fromClubId: club.id, toClubId: null, reason: failure ? 'dismissed' : eliteUpgrade ? 'elite upgrade' : 'board change' });
+        state.history.coachMoves.push({ season: state.season, coachId: coach.id, fromClubId: club.id, toClubId: null, reason: dismissReason });
+        state.pendingSeasonNews ||= [];
+        if (club.reputation >= 84) state.pendingSeasonNews.unshift({ id:`news-${state.season+1}-coach-fired-${club.id}`, week:0, importance:club.reputation>=90?'major':'digest', category:'Coaching Market', headline:`${club.name} dismiss ${coach.name}`, body:`${coach.name} leaves after ${dismissReason.replace('dismissed ', '')}. ${club.name} begin the search for a replacement.` });
       }
       club.coachId = null;
       club.coachProfile = null;
@@ -3716,9 +3993,9 @@ function closeSeason(state) {
   const goldenBoot = state.history.awards.find(
     (item) => item.season === state.season && item.category === 'golden_boot' && item.rank === 1
   );
-  const flagshipIds = new Set(['UCL', 'UEL', 'UECL', 'LIB', 'SUD', 'CCC', 'ACL', 'CAFCL', 'OCL']);
+  const flagshipIds = new Set(['CWC', 'ICUP', 'UCL', 'UEL', 'UECL', 'LIB', 'SUD', 'CCC', 'ACL', 'CAFCL', 'OCL']);
   const competitionWinners = [
-    ...Object.values(state.current.continentalCompetitions || {})
+    ...[...Object.values(state.current.globalClubCompetitions || {}), ...Object.values(state.current.continentalCompetitions || {})]
       .filter((competition) => flagshipIds.has(competition.id) && competition.championId)
       .map((competition) => ({ competitionId: competition.id, competitionName: competition.name, winnerId: competition.championId, isInternational: false })),
     ...Object.values(state.current.internationalCompetitions || {})
@@ -3833,10 +4110,11 @@ export function getEntityName(state, id, isInternational = false) {
 export function getCompetitionName(state, competitionId) {
   if (state.current.leagues[competitionId]) return state.current.leagues[competitionId].name;
   if (state.current.domesticCups?.[competitionId]) return state.current.domesticCups[competitionId].name;
+  if (state.current.superCups?.[competitionId]) return state.current.superCups[competitionId].name;
+  if (state.current.globalClubCompetitions?.[competitionId]) return state.current.globalClubCompetitions[competitionId].name;
   if (state.current.continentalCompetitions?.[competitionId]) return state.current.continentalCompetitions[competitionId].name;
   if (state.current.internationalCompetitions?.[competitionId]) return state.current.internationalCompetitions[competitionId].name;
   const map = {
-    SUPERCUP: state.current.supercup.name,
     UCL: state.current.champions.name,
     GLOBAL: 'World Football',
     ...INTERNATIONAL_COMPETITION_NAMES
@@ -4124,6 +4402,24 @@ export function upgradeWorld(state) {
       return counts;
     }, {});
     state.dataRevision = 13;
+    invalidateRuntimeCache(state);
+  }
+  if (state.dataRevision < 14) {
+    state.current.superCups ||= state.current.supercup ? { 'SC-ESP1': { ...state.current.supercup, id: 'SC-ESP1', leagueId: 'ESP1', country: 'Spain' } } : {};
+    state.current.supercup = state.current.superCups['SC-ESP1'] || state.current.supercup;
+    state.current.globalClubCompetitions ||= initializeGlobalClubCompetitions(state);
+    for (const coach of state.coaches || []) {
+      coach.status ||= 'active';
+      const oldLength = Number(coach.careerLength || 18);
+      const newLength = 8 + Math.floor(stableStringRoll(`${coach.id}-v22-length`) * 11);
+      const progress = oldLength > 1 ? Math.max(0, Number(coach.careerYear || 0)) / (oldLength - 1) : 0;
+      coach.careerLength = newLength;
+      coach.careerYear = Math.min(newLength - 1, Math.round(progress * (newLength - 1)));
+      coach.careerType ||= Object.keys(COACH_CAREER_TYPES)[Math.floor(stableStringRoll(`${coach.id}-v22-curve`) * Object.keys(COACH_CAREER_TYPES).length)] || 'stable_prime';
+      coach.baseQuality ||= Math.round((coach.quality || 66) / Math.max(0.89, coachCareerMultiplier(coach)));
+      refreshCoachQuality(state, coach);
+    }
+    state.dataRevision = 14;
     invalidateRuntimeCache(state);
   }
   return state;

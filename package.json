@@ -1,6 +1,6 @@
 {
   "name": "football-world-chronicle",
-  "version": "0.21.0",
+  "version": "0.22.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,7 +14,8 @@
     "market-balance": "node scripts/market-balance-v18.mjs",
     "regression-v19": "node scripts/regression-v19.mjs",
     "balance-v20": "node scripts/balance-v20.mjs",
-    "regression-v21": "node scripts/regression-v21.mjs"
+    "regression-v21": "node scripts/regression-v21.mjs",
+    "regression-v22": "node scripts/regression-v22.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.0",

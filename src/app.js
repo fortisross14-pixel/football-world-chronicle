@@ -60,6 +60,10 @@ let almanacPlayerSort = 'totalHonours';
 let almanacCoachSort = 'titles';
 let magazineRankingCompetition = 'UCL';
 let magazineRankingMetric = 'general';
+let comparatorType = 'players';
+let comparatorIds = [];
+let countryTab = 'overview';
+let hallCache = { signature: '', data: null };
 
 const DB_NAME = 'football-world-chronicle-v4';
 const DB_STORE = 'worlds';
@@ -347,13 +351,13 @@ function countryNav(country, currentRoute) {
   const active = (currentRoute.page === 'country' && countryRoute === country)
     || (currentRoute.page === 'league' && currentRoute.id === league.id)
     || (currentRoute.page === 'competition' && currentRoute.id === cup)
-    || (currentRoute.page === 'competition' && currentRoute.id === 'SUPERCUP' && country === 'Spain');
+    || (currentRoute.page === 'competition' && currentRoute.id === `SC-${league.id}`);
   return `<details class="country-nav" ${active ? 'open' : ''}>
     <summary>${flag(country)}<b>${esc(country)}</b><i>›</i></summary>
-    ${navLink(`#/country/${encodeURIComponent(country)}`, 'Overview', 'region', currentRoute.page === 'country' && countryRoute === country, true)}
+    ${navLink(`#/country/${encodeURIComponent(country)}/overview`, 'Country', 'region', currentRoute.page === 'country' && countryRoute === country, true)}
     ${navLink(`#/league/${league.id}/overview`, league.name, 'trophy', currentRoute.page === 'league' && currentRoute.id === league.id, true)}
     ${navLink(`#/competition/${cup}/overview`, league.cupName, 'trophy', currentRoute.page === 'competition' && currentRoute.id === cup, true)}
-    ${country === 'Spain' ? navLink('#/competition/SUPERCUP/overview', 'Spanish Super Cup', 'trophy', currentRoute.page === 'competition' && currentRoute.id === 'SUPERCUP', true) : ''}
+    ${state.current.superCups?.[`SC-${league.id}`] ? navLink(`#/competition/SC-${league.id}/overview`, state.current.superCups[`SC-${league.id}`].name, 'trophy', currentRoute.page === 'competition' && currentRoute.id === `SC-${league.id}`, true) : ''}
   </details>`;
 }
 
@@ -379,6 +383,10 @@ function sidebar(currentRoute) {
       ${navLink('#/transfers', 'Transfer Market', 'transfer', currentRoute.page === 'transfers')}
       ${internationalNav(currentRoute)}
       ${REGION_ORDER.map((region) => navLink(`#/region/${encodeURIComponent(region)}`, region, 'region', currentRoute.page === 'region' && decodeURIComponent(currentRoute.id || '') === region)).join('')}
+      <details class="country-nav" ${currentRoute.page === 'competition' && state.current.globalClubCompetitions?.[currentRoute.id] ? 'open' : ''}>
+        <summary><span class="nav-globe">◎</span><b>Global clubs</b><i>›</i></summary>
+        ${Object.values(state.current.globalClubCompetitions || {}).map((competition) => navLink(`#/competition/${competition.id}/overview`, competition.name, 'trophy', currentRoute.page === 'competition' && currentRoute.id === competition.id, true)).join('')}
+      </details>
       <details class="country-nav" ${currentRoute.page === 'competition' && state.current.continentalCompetitions?.[currentRoute.id] ? 'open' : ''}>
         <summary><span class="nav-globe">◆</span><b>Continental clubs</b><i>›</i></summary>
         ${CONTINENTAL_DEFINITIONS.map((competition) => navLink(`#/competition/${competition.id}/overview`, competition.name, 'trophy', currentRoute.page === 'competition' && currentRoute.id === competition.id, true)).join('')}
@@ -457,14 +465,15 @@ function tabs(base, active = 'overview') {
 }
 
 function descriptor(id) {
-  if (state.current.leagues[id]) return { id, type: 'league', name: state.current.leagues[id].name, country: state.current.leagues[id].country, object: state.current.leagues[id] };
-  if (state.current.domesticCups[id]) return { id, type: 'cup', name: state.current.domesticCups[id].name, country: state.current.domesticCups[id].country, object: state.current.domesticCups[id] };
-  if (id === 'SUPERCUP') return { id, type: 'cup', name: state.current.supercup.name, country: 'Spain', object: state.current.supercup };
-  if (state.current.continentalCompetitions?.[id]) { const competition = state.current.continentalCompetitions[id]; return { id, type: 'continental', name: competition.name, country: competition.confederation, object: competition }; }
-  const international = state.current.internationalCompetitions?.[id];
-  if (international) return { id, type: 'international', name: international.name, country: international.confederation, object: international };
-  const catalog = INTERNATIONAL_COMPETITION_CATALOG.find((competition) => competition.id === id);
-  if (catalog) return { id, type: 'international', name: catalog.name, country: catalog.confederation, object: { ...catalog, stage: 'Not active this season', groups: [], knockout: null, scheduled: false, inactive: true, completed: false } };
+  const league = state.current.leagues[id];
+  if (league) return { id, type: 'league', name: league.name, country: league.country, object: league };
+  if (state.current.domesticCups?.[id]) { const cup = state.current.domesticCups[id]; return { id, type: 'cup', name: cup.name, country: cup.country, object: cup }; }
+  if (state.current.superCups?.[id]) { const cup = state.current.superCups[id]; return { id, type: 'cup', name: cup.name, country: cup.country, object: cup }; }
+  if (state.current.globalClubCompetitions?.[id]) { const comp = state.current.globalClubCompetitions[id]; return { id, type: 'global', name: comp.name, country: 'World', object: comp }; }
+  if (state.current.continentalCompetitions?.[id]) { const comp = state.current.continentalCompetitions[id]; return { id, type: 'continental', name: comp.name, country: comp.confederation, object: comp }; }
+  if (state.current.internationalCompetitions?.[id]) { const comp = state.current.internationalCompetitions[id]; return { id, type: 'international', name: comp.name, country: comp.confederation, object: comp }; }
+  const catalog = INTERNATIONAL_COMPETITION_CATALOG.find((item) => item.id === id);
+  if (catalog) return { id, type: 'international', name: catalog.name, country: catalog.confederation, object: { id, name: catalog.name, confederation: catalog.confederation, stage: 'Inactive', groups: [], completed: false, inactive: true } };
   return null;
 }
 
@@ -482,7 +491,7 @@ function worldPage() {
   const rarities = getRarityCounts(state);
   const transferCount = state.current.transfers?.length || 0;
   const internationalNames = Object.values(state.current.internationalCompetitions || {}).map((competition) => competition.name).join(', ');
-  return `${pageHead('THE UNIVERSE', 'World football', 'A persistent football history beginning in 2001, with 137 domestic systems, promotion and relegation, eleven continental club tournaments, international football and evolving staff and player careers.')}
+  return `${pageHead('THE UNIVERSE', 'World football', 'A persistent football history beginning in 2001, with 137 domestic systems, promotion and relegation, continental and global club tournaments, international football and evolving staff and player careers.')}
     <section class="hero-panel">
       <div class="hero-copy"><span class="hero-pill">${NATIONAL_TEAMS.length} NATIONAL TEAMS · ${LEAGUE_DEFINITIONS.filter((league) => league.tier === 'detailed').length} FULL LEAGUES · ${LEAGUE_DEFINITIONS.filter((league) => league.tier === 'summary').length} SUMMARY LEAGUES</span><h2>One connected football world, from a weekly league match to the Ballon d'Or.</h2><p>${esc(internationalNames)} run beside domestic and continental football. Current-season match detail is archived into compact permanent statistics every summer.</p><div class="season-progress"><div class="season-progress-fill" style="width:${Math.min(100, Math.round(state.current.week / 52 * 100))}%"></div></div><div class="progress-label"><span>Opening market</span><strong>Week ${state.current.week} of 52</strong><span>Season archive</span></div></div>
       <div class="hero-metrics">${statCard('Clubs', fmt(state.clubs.length), 'Visible football organizations')}${statCard('Active stars', fmt(active), 'Named career players')}${statCard('International teams', fmt(NATIONAL_TEAMS.length), 'Six confederations')}${statCard('Transfers', fmt(transferCount), 'This opening market')}</div>
@@ -517,24 +526,30 @@ function regionPage(regionRaw) {
     }).join('')}</div>`;
 }
 
-function countryPage(raw) {
+function countryPage(raw, tabRaw = 'overview') {
   const country = decodeURIComponent(raw || '');
   const league = leagueCountry(country);
   if (!league) return notFound();
+  const tab = ['overview','teams','history'].includes(tabRaw) ? tabRaw : 'overview';
   const table = getLeagueTable(state, league.id);
   const cup = state.current.domesticCups[`CUP-${league.id}`];
+  const superCup = state.current.superCups?.[`SC-${league.id}`];
   const clubs = state.clubs.filter((club) => club.country === country).sort((a, b) => a.division - b.division || b.strength - a.strength);
-  const topClubs = clubs.filter((club) => club.division === 1);
   const reserveClubs = clubs.filter((club) => club.division === 2);
-  return `${pageHead(`${countryMeta(country)?.region || 'WORLD'} · COUNTRY`, country, `${league.tier === 'detailed' ? `Full ${league.activeCount}-club league with three-up, three-down movement and ${reserveClubs.length} promotion candidates` : `Condensed national system with ${clubs.length} visible leading clubs`}.`)}
-    <div class="country-title-flag">${flag(country, 'lg')}</div>
-    <div class="country-competition-grid">
-      <a class="competition-country-card" href="#/league/${league.id}/overview"><div class="competition-icon">◆</div><div><span>LEAGUE</span><h3>${esc(league.name)}</h3><p>${table[0] ? `${esc(clubById(table[0].teamId)?.name)} lead on ${table[0].points} points` : 'Season ready'}</p></div><b>›</b></a>
-      <a class="competition-country-card" href="#/competition/CUP-${league.id}/overview"><div class="competition-icon">✦</div><div><span>DOMESTIC CUP</span><h3>${esc(league.cupName)}</h3><p>${cup.championId ? `${esc(clubById(cup.championId)?.name)} are champions` : cup.stage}</p></div><b>›</b></a>
-      ${country === 'Spain' ? `<a class="competition-country-card" href="#/competition/SUPERCUP/overview"><div class="competition-icon">★</div><div><span>SUPER CUP</span><h3>Spanish Super Cup</h3><p>${state.current.supercup.stage}</p></div><b>›</b></a>` : ''}
-    </div>
-    <div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><span class="eyebrow">CURRENT TABLE</span><h3>${esc(league.name)}</h3></div><span class="panel-chip">${league.tier === 'summary' ? 'Resolved near season end' : `${topClubs.length} clubs`}</span></div><div class="mini-table">${table.slice(0, 10).map((row, index) => `<div class="mini-table-row"><span class="rank ${index < 4 ? 'qualify' : ''}">${index + 1}</span>${teamLink(row.teamId)}<strong>${row.points}</strong><small>${row.gd >= 0 ? '+' : ''}${row.gd}</small></div>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">GOAL RACE</span><h3>Current leaders</h3></div></div>${leaders(league.id, 'goals')}</section></div>
-    <section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">CLUB DIRECTORY</span><h3>${clubs.length} visible clubs</h3></div></div><div class="club-directory">${clubs.map((club) => `<button class="club-directory-card" data-action="open-club-modal" data-id="${club.id}">${crest(club.id)}<div><strong>${esc(club.name)}</strong><span>${club.division === 1 ? 'Top division' : 'Promotion pool'} · ${esc(club.city)} · Rating ${club.strength} · ${money(club.finances)}</span></div><b>›</b></button>`).join('')}</div></section>`;
+  const tabs = `<nav class="competition-tabs"><a href="#/country/${encodeURIComponent(country)}/overview" class="${tab==='overview'?'active':''}">Overview</a><a href="#/country/${encodeURIComponent(country)}/teams" class="${tab==='teams'?'active':''}">Teams</a><a href="#/country/${encodeURIComponent(country)}/history" class="${tab==='history'?'active':''}">History</a></nav>`;
+  const head = `${pageHead(`${countryMeta(country)?.region || 'WORLD'} · COUNTRY`, country, `${league.tier === 'detailed' ? `Full ${league.activeCount}-club league with promotion and relegation` : `Condensed national system with ${clubs.length} visible leading clubs`}.`)}<div class="country-title-flag">${flag(country, 'lg')}</div>${tabs}`;
+  if (tab === 'teams') return `${head}<section class="panel"><div class="panel-head"><div><span class="eyebrow">CLUB DIRECTORY</span><h3>${clubs.length} visible clubs</h3></div></div><div class="club-directory">${clubs.map((club) => `<button class="club-directory-card" data-action="open-club-modal" data-id="${club.id}">${crest(club.id)}<div><strong>${esc(club.name)}</strong><span>${club.division === 1 ? 'Top division' : 'Promotion pool'} · ${esc(club.city)} · Rating ${club.strength} · ${money(club.finances)}</span></div><b>›</b></button>`).join('')}</div></section>`;
+  if (tab === 'history') {
+    const ids = new Set([league.id, `CUP-${league.id}`, ...(superCup ? [superCup.id] : []), ...(country === 'Spain' ? ['SUPERCUP'] : [])]);
+    const rows = [...(state.history.champions || [])].filter((item) => ids.has(item.competitionId)).sort((a,b)=>b.season-a.season || a.competitionName.localeCompare(b.competitionName));
+    return `${head}<section class="panel"><div class="panel-head"><div><span class="eyebrow">NATIONAL ARCHIVE</span><h3>Titles year by year</h3></div><span class="muted">League, cup and super cup</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Season</th><th>Competition</th><th>Winner</th><th>Runner-up</th></tr></thead><tbody>${rows.map((row)=>`<tr><td><strong>${esc(row.seasonLabel)}</strong></td><td>${esc(row.competitionName)}</td><td>${teamLink(row.winnerId)}</td><td>${row.runnerUpId?teamLink(row.runnerUpId):'—'}</td></tr>`).join('')||'<tr><td colspan="4">No completed national competitions yet.</td></tr>'}</tbody></table></div></section>`;
+  }
+  const competitionCards = [
+    `<a class="competition-country-card" href="#/league/${league.id}/overview"><div class="competition-icon">◆</div><div><span>LEAGUE</span><h3>${esc(league.name)}</h3><p>${table[0] ? `${esc(clubById(table[0].teamId)?.name)} lead on ${table[0].points} points` : 'Season ready'}</p></div><b>›</b></a>`,
+    `<a class="competition-country-card" href="#/competition/CUP-${league.id}/overview"><div class="competition-icon">✦</div><div><span>DOMESTIC CUP</span><h3>${esc(league.cupName)}</h3><p>${cup.championId ? `${esc(clubById(cup.championId)?.name)} are champions` : cup.stage}</p></div><b>›</b></a>`,
+    superCup ? `<a class="competition-country-card" href="#/competition/${superCup.id}/overview"><div class="competition-icon">★</div><div><span>SUPER CUP</span><h3>${esc(superCup.name)}</h3><p>${superCup.championId?`${esc(clubById(superCup.championId)?.name)} are champions`:superCup.stage}</p></div><b>›</b></a>` : ''
+  ].join('');
+  return `${head}<div class="country-competition-grid">${competitionCards}</div><div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><span class="eyebrow">CURRENT LEAGUE</span><h3>${esc(league.name)}</h3></div><span class="panel-chip">${league.tier === 'summary' ? 'Resolved near season end' : `${league.activeCount} clubs`}</span></div><div class="mini-table">${table.slice(0, 6).map((row,index)=>`<div class="mini-table-row"><span class="rank ${index<4?'qualify':''}">${index+1}</span>${teamLink(row.teamId)}<strong>${row.points}</strong><small>${row.gd>=0?'+':''}${row.gd}</small></div>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">DOMESTIC SNAPSHOT</span><h3>Competitions</h3></div></div><div class="country-status-list"><div><span>${esc(league.name)}</span><strong>${table[0]?`${esc(clubById(table[0].teamId)?.name)} lead`:'Ready'}</strong></div><div><span>${esc(league.cupName)}</span><strong>${esc(cup.stage||'Ready')}</strong></div>${superCup?`<div><span>${esc(superCup.name)}</span><strong>${esc(superCup.stage||'Ready')}</strong></div>`:''}</div></section></div>`;
 }
 
 function internationalPage(tabRaw = 'overview') {
@@ -588,7 +603,9 @@ function competitionMatches(id) {
 
 function competitionScheduleWeeks(description) {
   if (description.type === 'league') return Array.from({ length: description.object.rounds?.length || 0 }, (_, index) => index + 1);
-  if (description.type === 'cup') return description.id === 'SUPERCUP' ? [1, 2] : [5, 11, 17, 24, 31];
+  if (description.type === 'cup') return description.id.startsWith('SC-') ? [1, 2] : [5, 11, 17, 24, 31];
+  if (description.id === 'CWC') return [39,40,41,43,45,47,49];
+  if (description.id === 'ICUP') return [40,43,46];
   const object = description.object || {};
   const clubWeeks = description.type === 'continental' ? [4, 7, 10, 13, 16, 19, 22, 24, 27, 29, 32, 34, 38] : [];
   return [...new Set([...(object.groupWeeks || clubWeeks), ...(object.knockoutWeeks || [])])].sort((a, b) => a - b);
@@ -735,8 +752,16 @@ function currentView(description) {
   }
   const object = description.object;
   const isInternational = description.type === 'international';
-  const recap = object.recap ? `<section class="international-recap"><span class="eyebrow">TOURNAMENT RECAP</span><h2>${esc(getEntityName(state, object.championId, true))} win ${esc(description.name)}!</h2><p>${object.recap.mvpId ? `${esc(playerById(object.recap.mvpId)?.name)} was MVP. ` : ''}${object.recap.youngPlayerId ? `${esc(playerById(object.recap.youngPlayerId)?.name)} won best young player. ` : ''}${object.recap.goalkeeperId ? `${esc(playerById(object.recap.goalkeeperId)?.name)} was best goalkeeper. ` : ''}${object.recap.topScorerId ? `${esc(playerById(object.recap.topScorerId)?.name)} scored ${object.recap.topScorerGoals} goals.` : ''}</p></section>` : '';
-  return `<section class="competition-hero"><div><span class="eyebrow">${object.editionYear ? `${object.editionYear} EDITION` : 'CURRENT EDITION'}</span><h2>${esc(object.stage || 'Ready')}</h2><p>${object.championId ? `${esc(getEntityName(state, object.championId, isInternational))} are champions.` : object.inactive ? 'This competition is not active in the current international season.' : object.scheduled ? 'This tournament is scheduled for the summer and will populate after qualification is completed.' : `${matches.length} matches completed.`}</p></div><div class="trophy-symbol">◆</div></section>${recap}${bracketView(description)}${groupTables(description)}<div class="leader-grid section-gap">${leaderPanel('Goals', description.id, 'goals')}${leaderPanel('Assists', description.id, 'assists')}${leaderPanel('Goalkeeper clean sheets', description.id, 'cleanSheets', 'GK')}${leaderPanel('Highest average rating', description.id, 'rating')}</div><section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">RECENT GAMES</span><h3>${esc(description.name)}</h3></div></div><div class="matches-list">${matches.slice(-18).reverse().map((match) => matchRow(match, true)).join('') || '<div class="empty-state compact">No matches yet.</div>'}</div></section>`;
+  const recap = object.recap ? `<section class="international-recap"><span class="eyebrow">TOURNAMENT RECAP</span><h2>${esc(getEntityName(state, object.championId, isInternational))} win ${esc(description.name)}!</h2><p>${object.recap.mvpId ? `${esc(playerById(object.recap.mvpId)?.name)} was MVP. ` : ''}${object.recap.youngPlayerId ? `${esc(playerById(object.recap.youngPlayerId)?.name)} won best young player. ` : ''}${object.recap.goalkeeperId ? `${esc(playerById(object.recap.goalkeeperId)?.name)} was best goalkeeper. ` : ''}${object.recap.topScorerId ? `${esc(playerById(object.recap.topScorerId)?.name)} scored ${object.recap.topScorerGoals} goals.` : ''}</p></section>` : '';
+  return `<section class="competition-hero"><div><span class="eyebrow">${object.editionYear ? `${object.editionYear} EDITION` : 'CURRENT EDITION'}</span><h2>${esc(object.stage || 'Ready')}</h2><p>${object.championId ? `${esc(getEntityName(state, object.championId, isInternational))} are champions.` : object.inactive ? 'This competition is not active in the current international season.' : object.scheduled ? 'This tournament is scheduled for the summer and will populate after qualification is completed.' : `${matches.length} matches completed.`}</p></div><div class="trophy-symbol">◆</div></section>${completedFinalCard(description)}${recap}${bracketView(description)}${groupTables(description)}<div class="leader-grid section-gap">${leaderPanel('Goals', description.id, 'goals')}${leaderPanel('Assists', description.id, 'assists')}${leaderPanel('Goalkeeper clean sheets', description.id, 'cleanSheets', 'GK')}${leaderPanel('Highest average rating', description.id, 'rating')}</div><section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">RECENT GAMES</span><h3>${esc(description.name)}</h3></div></div><div class="matches-list">${matches.slice(-18).reverse().map((match) => matchRow(match, true)).join('') || '<div class="empty-state compact">No matches yet.</div>'}</div></section>`;
+}
+
+function completedFinalCard(description) {
+  if (!description.object?.championId) return '';
+  const final = competitionMatchesAll().filter((match)=>match.competitionId===description.id && String(match.stage||'').toLowerCase()==='final').sort((a,b)=>(b.week||0)-(a.week||0))[0];
+  const champion = teamLink(description.object.championId, description.type==='international');
+  const runner = description.object.finalistId ? teamLink(description.object.finalistId, description.type==='international') : '—';
+  return `<section class="competition-final-card"><span class="eyebrow">FINAL RESULT</span><h2>${champion}</h2><p>${final ? `${teamLink(final.homeId, final.isInternational)} <strong>${final.homeGoals}–${final.awayGoals}</strong> ${teamLink(final.awayId, final.isInternational)}` : `${champion} defeated ${runner}`}</p><div class="final-card-meta"><div><span>Champion</span>${champion}</div><div><span>Runner-up</span>${runner}</div>${final?.manOfMatchId?`<div><span>Player of the match</span>${playerLink(final.manOfMatchId)}</div>`:''}</div></section>`;
 }
 
 function historyView(description) {
@@ -962,7 +987,7 @@ function narrativeMatchStory(match) {
 
 
 const FHOF_COMPETITION_WEIGHTS = {
-  WC: 10, EURO: 8.5, COPA: 8.2, AFCON: 6.2, ASIACUP: 5.2, GOLDCUP: 4.8, OFC: 3.2,
+  WC: 10, CWC: 9.5, ICUP: 6.5, EURO: 8.5, COPA: 8.2, AFCON: 6.2, ASIACUP: 5.2, GOLDCUP: 4.8, OFC: 3.2,
   UCL: 9, LIB: 8, UEL: 5.8, SUD: 5.4, UECL: 3.8, CCC: 4.8, ACL: 4.7, CAFCL: 4.6, OCL: 2.8,
   ESP1: 6.2, ENG1: 6.4, ITA1: 6, GER1: 5.9, FRA1: 5.5, BRA1: 5.8, ARG1: 5.5,
   POR1: 4.4, NED1: 4.3, BEL1: 3.7, TUR1: 3.7, USA1: 3.5, MEX1: 3.8, SAU1: 3.1, JPN1: 3.2
@@ -999,83 +1024,45 @@ function fhofCoachRankings() {
   return [...map.values()].map(x=>({...x,coach:coachById(x.id)})).filter(x=>x.coach).sort((a,b)=>b.score-a.score);
 }
 
-function fhofPresidentRankings() {
-  const champions=state.history.champions||[]; const clubRows=state.history.clubCompetitionSeasons||[];
-  return (state.owners||[]).map(owner=>{ const clubId=owner.clubId||owner.formerClubId; if(!clubId) return null; const start=owner.appointmentSeason??state.season; let score=0,games=0,wins=0,titles=0;
-    for(const row of clubRows){if(row.teamId!==clubId||row.season<start)continue;const w=fhofCompetitionWeight(row.competitionId,false);games+=row.apps||0;wins+=row.wins||0;score+=((row.wins||0)*.55+(row.apps||0)*.06)*w;}
-    for(const h of champions){if(h.winnerId!==clubId||h.season<start||h.isInternational)continue; titles++;score+=30*fhofCompetitionWeight(h.competitionId,false);}
-    score+=(owner.quality||50)*1.2+(owner.seasonsInRole||0)*6;
-    return {owner,clubId,score,games,wins,titles}; }).filter(Boolean).sort((a,b)=>b.score-a.score);
+function buildFhofData() {
+  const signature = [state.season, state.current.week, state.history.playerSeasons?.length||0, state.history.coachCompetitionSeasons?.length||0, state.history.clubCompetitionSeasons?.length||0, state.history.champions?.length||0, state.history.awards?.length||0, state.history.honours?.length||0].join(':');
+  if (hallCache.signature === signature && hallCache.data) return hallCache.data;
+  const players = fhofPlayerRankings();
+  const coaches = fhofCoachRankings();
+  const clubRowsByTeam = new Map();
+  for (const row of state.history.clubCompetitionSeasons || []) { if (!clubRowsByTeam.has(row.teamId)) clubRowsByTeam.set(row.teamId, []); clubRowsByTeam.get(row.teamId).push(row); }
+  const titlesByTeam = new Map();
+  for (const row of state.history.champions || []) { if (row.isInternational) continue; if (!titlesByTeam.has(row.winnerId)) titlesByTeam.set(row.winnerId, []); titlesByTeam.get(row.winnerId).push(row); }
+  const presidents = (state.owners || []).map((owner) => {
+    const clubId = owner.clubId || owner.formerClubId; if (!clubId) return null;
+    const start = owner.appointmentSeason ?? state.season; const end = owner.clubId ? state.season : (owner.departureSeason ?? start + (owner.seasonsInRole || 0));
+    let score=0,games=0,wins=0,titles=0;
+    for (const row of clubRowsByTeam.get(clubId) || []) { if(row.season<start||row.season>end)continue;const w=fhofCompetitionWeight(row.competitionId,false);games+=row.apps||0;wins+=row.wins||0;score+=((row.wins||0)*.55+(row.apps||0)*.06)*w; }
+    for (const honour of titlesByTeam.get(clubId) || []) { if(honour.season<start||honour.season>end)continue;titles++;score+=30*fhofCompetitionWeight(honour.competitionId,false); }
+    score+=(owner.quality||50)*1.2+(owner.seasonsInRole||0)*6; return {owner,clubId,score,games,wins,titles};
+  }).filter(Boolean).sort((a,b)=>b.score-a.score);
+
+  const coachRowsByEra = new Map();
+  for (const row of state.history.coachSeasons || []) { if(row.isInternational)continue;const key=`${row.teamId}::${row.coachId}`;if(!coachRowsByEra.has(key))coachRowsByEra.set(key,new Set());coachRowsByEra.get(key).add(row.season); }
+  const teamSeasonData = new Map();
+  for (const row of state.history.clubCompetitionSeasons || []) { const key=`${row.teamId}::${row.season}`;const item=teamSeasonData.get(key)||{score:0,games:0,wins:0,gf:0,ga:0,titles:0};const w=fhofCompetitionWeight(row.competitionId,false);item.games+=row.apps||0;item.wins+=row.wins||0;item.gf+=row.gf||0;item.ga+=row.ga||0;item.score+=((row.wins||0)*.62+(row.apps||0)*.055+Math.max(0,(row.gf||0)-(row.ga||0))*.095)*w;teamSeasonData.set(key,item); }
+  for (const honour of state.history.champions || []) { if(honour.isInternational)continue;const key=`${honour.winnerId}::${honour.season}`;const item=teamSeasonData.get(key)||{score:0,games:0,wins:0,gf:0,ga:0,titles:0};item.titles++;item.score+=34*fhofCompetitionWeight(honour.competitionId,false);teamSeasonData.set(key,item); }
+  const eras=[];
+  for(const [key,seasonSet] of coachRowsByEra){const [teamId,coachId]=key.split('::');const ordered=[...seasonSet].sort((a,b)=>a-b);let run=[];const runs=[];for(const season of ordered){if(run.length&&season!==run[run.length-1]+1){runs.push(run);run=[];}run.push(season);}if(run.length)runs.push(run);for(const continuous of runs){if(continuous.length<2)continue;let best=null;for(let i=0;i<continuous.length;i++){for(const length of [2,3]){const seasons=continuous.slice(i,i+length);if(seasons.length!==length)continue;const total={teamId,coachId,start:seasons[0],end:seasons.at(-1),seasons,score:length===3?18:6,games:0,wins:0,titles:0,gf:0,ga:0};for(const season of seasons){const row=teamSeasonData.get(`${teamId}::${season}`);if(!row)continue;for(const f of ['score','games','wins','titles','gf','ga'])total[f]+=row[f]||0;}if(!best||total.score>best.score||total.score===best.score&&total.titles>best.titles)best=total;}}if(best)eras.push(best);}}
+  eras.sort((a,b)=>b.score-a.score||b.titles-a.titles||b.wins-a.wins);
+
+  const nationSeason = new Map();
+  for(const row of state.history.coachSeasons||[]){if(!row.isInternational)continue;const key=`${row.teamId}::${row.season}`;const item=nationSeason.get(key)||{games:0,wins:0,score:0,titles:0};item.games+=row.games||0;item.wins+=row.wins||0;item.score+=(row.wins||0)*2+(row.games||0)*.25;nationSeason.set(key,item);}
+  for(const honour of state.history.champions||[]){if(!honour.isInternational)continue;const key=`${honour.winnerId}::${honour.season}`;const item=nationSeason.get(key)||{games:0,wins:0,score:0,titles:0};item.titles++;item.score+=45*fhofCompetitionWeight(honour.competitionId,true);nationSeason.set(key,item);}
+  const nations=[];for(const nation of state.nationalTeams||[]){let best=null;for(let start=Math.max(2001,state.season-8);start<=state.season;start++){const total={nation,start,end:start+3,score:0,titles:0,games:0,wins:0};for(let season=start;season<=start+3;season++){const row=nationSeason.get(`${nation.id}::${season}`);if(!row)continue;for(const f of ['score','titles','games','wins'])total[f]+=row[f]||0;}if((total.titles||total.games>=8)&&(!best||total.score>best.score))best=total;}if(best)nations.push(best);}nations.sort((a,b)=>b.score-a.score);
+  hallCache={signature,data:{players,coaches,presidents,eras,nations:nations.slice(0,5)}};
+  return hallCache.data;
 }
 
-function fhofClubEras() {
-  const coachRows = state.history.coachSeasons || [];
-  const compRows = state.history.clubCompetitionSeasons || [];
-  const champs = state.history.champions || [];
-  const groups = new Map();
-  for (const row of coachRows) {
-    if (row.isInternational) continue;
-    const key = `${row.teamId}::${row.coachId}`;
-    const seasons = groups.get(key) || new Set();
-    seasons.add(row.season);
-    groups.set(key, seasons);
-  }
-
-  const scoreWindow = (teamId, coachId, seasons) => {
-    const seasonSet = new Set(seasons);
-    let score = 0, games = 0, wins = 0, titles = 0, gf = 0, ga = 0;
-    for (const row of compRows) {
-      if (row.teamId !== teamId || !seasonSet.has(row.season)) continue;
-      const w = fhofCompetitionWeight(row.competitionId, false);
-      games += row.apps || 0; wins += row.wins || 0; gf += row.gf || 0; ga += row.ga || 0;
-      score += ((row.wins || 0) * 0.62 + (row.apps || 0) * 0.055 + Math.max(0, (row.gf || 0) - (row.ga || 0)) * 0.095) * w;
-    }
-    for (const honour of champs) {
-      if (honour.winnerId !== teamId || honour.isInternational || !seasonSet.has(honour.season)) continue;
-      titles += 1;
-      score += 34 * fhofCompetitionWeight(honour.competitionId, false);
-    }
-    // Three-season peaks receive only a small continuity bonus; trophies and
-    // weighted performance still determine the ranking.
-    score += seasons.length === 3 ? 18 : 6;
-    return { teamId, coachId, start: seasons[0], end: seasons[seasons.length - 1], seasons, score, games, wins, titles, gf, ga };
-  };
-
-  const eras = [];
-  for (const [key, seasonSet] of groups) {
-    const [teamId, coachId] = key.split('::');
-    const ordered = [...seasonSet].sort((a, b) => a - b);
-    const runs = [];
-    let run = [];
-    for (const season of ordered) {
-      if (run.length && season !== run[run.length - 1] + 1) { runs.push(run); run = []; }
-      run.push(season);
-    }
-    if (run.length) runs.push(run);
-
-    for (const continuous of runs) {
-      if (continuous.length < 2) continue;
-      const candidates = [];
-      for (let index = 0; index < continuous.length; index += 1) {
-        if (index + 1 < continuous.length) candidates.push(scoreWindow(teamId, coachId, continuous.slice(index, index + 2)));
-        if (index + 2 < continuous.length) candidates.push(scoreWindow(teamId, coachId, continuous.slice(index, index + 3)));
-      }
-      // One entry per uninterrupted coaching era, using its strongest two- or
-      // three-season window rather than the final seasons of the tenure.
-      candidates.sort((a, b) => b.score - a.score || b.titles - a.titles || b.wins - a.wins);
-      if (candidates[0]) eras.push(candidates[0]);
-    }
-  }
-  return eras.sort((a, b) => b.score - a.score || b.titles - a.titles || b.wins - a.wins);
-}
-
-function fhofNationalCycles(){const champs=(state.history.champions||[]).filter(x=>x.isInternational);const coachRows=(state.history.coachSeasons||[]).filter(x=>x.isInternational);const nations=[];
-  for(const nation of state.nationalTeams||[]){for(let start=state.season-8;start<=state.season;start+=1){const end=start+3;let score=0,titles=0,games=0,wins=0;for(const row of coachRows){if(row.teamId!==nation.id||row.season<start||row.season>end)continue;games+=row.games||0;wins+=row.wins||0;score+=(row.wins||0)*2+(row.games||0)*.25;}for(const h of champs){if(h.winnerId!==nation.id||h.season<start||h.season>end)continue;titles++;score+=45*fhofCompetitionWeight(h.competitionId,true);}if(titles||games>=8)nations.push({nation,start,end,score,titles,games,wins});}}
-  return nations.sort((a,b)=>b.score-a.score).filter((x,i,a)=>a.findIndex(y=>y.nation.id===x.nation.id)===i).slice(0,5);}
 
 function fhofPage(){
   if(!(state.history.playerSeasons||[]).length) return `${pageHead('FOOTBALL HALL OF FAME','The FHoF','The living canon opens after the first completed season. Competition relevance, peak performance, awards and trophies all shape induction.')}${magazineTabs('fhof')}<div class="empty-state">Complete the first season to populate the Football Hall of Fame.</div>`;
-  const players=fhofPlayerRankings(),coaches=fhofCoachRankings().slice(0,10),presidents=fhofPresidentRankings().slice(0,10),eras=fhofClubEras().slice(0,10),nations=fhofNationalCycles();
+  const hall=buildFhofData(),players=hall.players,coaches=hall.coaches.slice(0,10),presidents=hall.presidents.slice(0,10),eras=hall.eras.slice(0,10),nations=hall.nations;
   const positions=['GK','DF','MF','FW'];
   const playerSections=positions.map(pos=>`<section class="panel"><div class="panel-head"><div><span class="eyebrow">TOP 10 ${pos}</span><h3>${pos==='GK'?'Goalkeepers':pos==='DF'?'Defenders':pos==='MF'?'Midfielders':'Forwards'}</h3></div></div><div class="fhof-list">${players.filter(x=>x.player.position===pos).slice(0,10).map((x,i)=>`<div class="fhof-row"><b>${i+1}</b><div>${playerLink(x.id)}<small>${x.player.clubId?teamLink(x.player.clubId):'Retired / free'} · ${x.games} games · ${x.goals} G · ${x.assists} A · ${x.titles} titles · ${x.awards} awards</small></div><strong>${Math.round(x.score)}</strong></div>`).join('')}</div></section>`).join('');
   return `${pageHead('FOOTBALL HALL OF FAME','The FHoF','A living historical ranking weighted by competition relevance, statistics, ratings, individual awards and team honors.')}${magazineTabs('fhof')}
@@ -1087,16 +1074,27 @@ function fhofPage(){
 }
 
 function magazineTabs(active) {
-  return `<nav class="competition-tabs"><a href="#/magazine/preseason" class="${active === 'preseason' ? 'active' : ''}">Preseason</a><a href="#/magazine/transfers" class="${active === 'transfers' ? 'active' : ''}">Transfers</a><a href="#/magazine/results" class="${active === 'results' ? 'active' : ''}">Results</a><a href="#/magazine/rankings" class="${active === 'rankings' ? 'active' : ''}">Rankings</a><a href="#/magazine/fhof" class="${active === 'fhof' ? 'active' : ''}">FHoF</a></nav>`;
+  return `<nav class="competition-tabs"><a href="#/magazine/preseason" class="${active === 'preseason' ? 'active' : ''}">Preseason</a><a href="#/magazine/transfers" class="${active === 'transfers' ? 'active' : ''}">Transfers</a><a href="#/magazine/results" class="${active === 'results' ? 'active' : ''}">Results</a><a href="#/magazine/rankings" class="${active === 'rankings' ? 'active' : ''}">Rankings</a><a href="#/magazine/compare" class="${active === 'compare' ? 'active' : ''}">Comparator</a><a href="#/magazine/fhof" class="${active === 'fhof' ? 'active' : ''}">FHoF</a></nav>`;
 }
 
+
+function playerComparisonStats(playerId) {
+  const career = getPlayerCareer(state, playerId); const rows=[...(career.seasons||[]),...(career.current||[])];
+  const totals=rows.reduce((a,r)=>{a.games+=r.apps||0;a.goals+=r.goals||0;a.assists+=r.assists||0;a.cleanSheets+=r.cleanSheets||0;a.rating+=(r.averageRating||0)*(r.apps||0);return a;},{games:0,goals:0,assists:0,cleanSheets:0,rating:0});
+  totals.averageRating=totals.games?totals.rating/totals.games:0;totals.goalRate=totals.games?totals.goals/totals.games:0;
+  const honours=state.history.honours.filter((row)=>row.playerId===playerId);totals.titles=honours.length;totals.continental=honours.filter((row)=>['UCL','UEL','UECL','LIB','SUD','CCC','ACL','CAFCL','OCL','CWC','ICUP'].includes(row.competitionId)).length;totals.international=honours.filter((row)=>row.isInternational).length;return totals;
+}
+function teamComparisonStats(teamId){const international=Boolean(nationalById(teamId));const all=aggregateTeamAlmanac().find((row)=>row.teamId===teamId&&row.international===international)||{games:0,wins:0,gf:0,ga:0,domesticTitles:0,continentalTitles:0,internationalTitles:0,titles:0};return{...all,winPct:all.games?all.wins/all.games:0,goalsPerGame:all.games?all.gf/all.games:0};}
+function comparatorPage(){const type=comparatorType;const pool=type==='players'?[...state.players].sort((a,b)=>b.rating-a.rating):[...state.clubs.map((item)=>({...item,isInternational:false})),...(state.nationalTeams||[]).map((item)=>({...item,isInternational:true,reputation:item.strength,country:item.name}))].sort((a,b)=>(b.reputation||0)-(a.reputation||0));const selected=comparatorIds.map((id)=>type==='players'?playerById(id):(clubById(id)||nationalById(id))).filter(Boolean);const options=pool.slice(0,1500).map((item)=>`<option value="${item.id}" ${comparatorIds.includes(item.id)?'disabled':''}>${esc(item.name)}${type==='players'?` · ${item.position} ${item.rating}`:` · ${item.isInternational?'National team':item.country}`}</option>`).join('');const cards=selected.map((item)=>{if(type==='players'){const s=playerComparisonStats(item.id);return`<article class="comparison-card"><button data-action="remove-comparison" data-id="${item.id}">×</button>${rarityBadge(item.rarity)}<h3>${playerLink(item.id,false)}</h3><p>${item.clubId?teamLink(item.clubId):'Retired / free'} · ${item.position} · ${item.roleLabel}</p><div class="comparison-metrics"><div><span>Games</span><strong>${s.games}</strong></div><div><span>Goals</span><strong>${s.goals}</strong></div><div><span>Assists</span><strong>${s.assists}</strong></div><div><span>Avg rating</span><strong>${s.averageRating?s.averageRating.toFixed(2):'—'}</strong></div><div><span>Goals / game</span><strong>${s.goalRate.toFixed(2)}</strong></div><div><span>Clean sheets</span><strong>${['GK','DF'].includes(item.position)?s.cleanSheets:'—'}</strong></div><div><span>Continental titles</span><strong>${s.continental}</strong></div><div><span>International titles</span><strong>${s.international}</strong></div><div><span>Total titles</span><strong>${s.titles}</strong></div></div></article>`;}const international=Boolean(nationalById(item.id));const s=teamComparisonStats(item.id);return`<article class="comparison-card"><button data-action="remove-comparison" data-id="${item.id}">×</button>${international?flag(item.id,'md'):crest(item.id,'md')}<h3>${teamLink(item.id,international)}</h3><p>${international?'International football':`${item.country} · ${competitionLabel(item.leagueId)}`}</p><div class="comparison-metrics"><div><span>Games</span><strong>${s.games}</strong></div><div><span>Wins</span><strong>${s.wins}</strong></div><div><span>Win %</span><strong>${(s.winPct*100).toFixed(1)}%</strong></div><div><span>Goals</span><strong>${s.gf}</strong></div><div><span>Goals / game</span><strong>${s.goalsPerGame.toFixed(2)}</strong></div><div><span>Domestic titles</span><strong>${s.domesticTitles}</strong></div><div><span>Continental titles</span><strong>${s.continentalTitles}</strong></div><div><span>Total titles</span><strong>${s.titles}</strong></div></div></article>`;}).join('');return`${pageHead('WORLD FOOTBALL MAGAZINE','Comparator','Place up to three careers or clubs side by side using permanent historical totals.')}${magazineTabs('compare')}<section class="panel comparator-controls"><div class="filter-toolbar"><label>Compare<select id="comparator-type"><option value="players" ${type==='players'?'selected':''}>Players</option><option value="teams" ${type==='teams'?'selected':''}>Teams</option></select></label><label>Add ${type==='players'?'player':'team'}<select id="comparator-add"><option value="">Choose…</option>${options}</select></label><span>${selected.length}/3 selected</span></div></section><div class="comparison-grid section-gap">${cards||'<div class="empty-state">Select up to three entries to compare.</div>'}</div>`;}
 
 function universalCompetitionOptions(selected = 'ALL', includeAll = false) {
   const domestic = LEAGUE_DEFINITIONS.map((league) => ({ id: league.id, name: league.name, group: `${league.confederation} leagues` }))
     .concat(LEAGUE_DEFINITIONS.map((league) => ({ id: `CUP-${league.id}`, name: league.cupName, group: `${league.confederation} cups` })));
   const continental = CONTINENTAL_DEFINITIONS.map((competition) => ({ id: competition.id, name: competition.name, group: 'Continental club competitions' }));
   const international = INTERNATIONAL_COMPETITION_CATALOG.map((competition) => ({ id: competition.id, name: competition.name, group: 'International football' }));
-  const all = [{ id: 'SUPERCUP', name: 'Spanish Super Cup', group: 'Europe cups' }, ...domestic, ...continental, ...international];
+  const superCups = Object.values(state.current.superCups || {}).map((competition) => ({ id: competition.id, name: competition.name, group: `${COUNTRY_META[competition.country]?.region || 'World'} super cups` }));
+  const global = Object.values(state.current.globalClubCompetitions || {}).map((competition) => ({ id: competition.id, name: competition.name, group: 'Global club competitions' }));
+  const all = [...global, ...superCups, ...domestic, ...continental, ...international];
   const groups = new Map();
   all.forEach((item) => { if (!groups.has(item.group)) groups.set(item.group, []); groups.get(item.group).push(item); });
   const allOption = includeAll ? `<option value="ALL" ${selected === 'ALL' ? 'selected' : ''}>All competitions</option>` : '';
@@ -1177,14 +1175,16 @@ function recentCompletedCompetitionCards() {
   for (const champion of state.history.champions || []) if (seasons.has(champion.season)) add(champion);
   for (const league of Object.values(state.current.leagues || {})) if (league.championId) add({ competitionId: league.id, competitionName: league.name, winnerId: league.championId, runnerUpId: [...(league.table || [])].sort((a,b)=>b.points-a.points||b.gd-a.gd)[1]?.teamId, seasonLabel: state.current.seasonLabel });
   for (const cup of Object.values(state.current.domesticCups || {})) if (cup.championId) add({ competitionId: cup.id, competitionName: cup.name, winnerId: cup.championId, runnerUpId: cup.finalistId, seasonLabel: state.current.seasonLabel });
-  if (state.current.supercup?.championId) add({ competitionId: 'SUPERCUP', competitionName: state.current.supercup.name, winnerId: state.current.supercup.championId, runnerUpId: state.current.supercup.finalistId, seasonLabel: state.current.seasonLabel });
+  Object.values(state.current.superCups || {}).filter((competition)=>competition.championId).forEach((competition)=>add({competitionId:competition.id,competitionName:competition.name,winnerId:competition.championId,runnerUpId:competition.finalistId,seasonLabel:state.current.seasonLabel}));
+  Object.values(state.current.globalClubCompetitions || {}).filter((competition)=>competition.championId).forEach((competition)=>add({competitionId:competition.id,competitionName:competition.name,winnerId:competition.championId,runnerUpId:competition.finalistId,seasonLabel:state.current.seasonLabel}));
   for (const comp of Object.values(state.current.continentalCompetitions || {})) if (comp.championId) add({ competitionId: comp.id, competitionName: comp.name, winnerId: comp.championId, runnerUpId: comp.finalistId, seasonLabel: state.current.seasonLabel });
   for (const comp of Object.values(state.current.internationalCompetitions || {})) if (comp.championId) add({ competitionId: comp.id, competitionName: comp.name, winnerId: comp.championId, runnerUpId: comp.finalistId, isInternational: true, seasonLabel: state.current.seasonLabel });
   return entries.sort((a, b) => b.season - a.season || b.completionWeek - a.completionWeek || b.relevance - a.relevance).slice(0, 12);
 }
 
 function magazinePage(tabRaw = 'results') {
-  const tab = ['preseason','transfers','results','rankings','fhof'].includes(tabRaw) ? tabRaw : 'results';
+  const tab = ['preseason','transfers','results','rankings','compare','fhof'].includes(tabRaw) ? tabRaw : 'results';
+  if (tab === 'compare') return comparatorPage();
   if (tab === 'fhof') return fhofPage();
   if (tab === 'rankings') return magazineRankingsPage();
   const lastWeek = state.current.week;
@@ -1415,7 +1415,7 @@ function coachesPeoplePage(tabRaw = 'overview') {
   if (tab === 'statistics') return `${heading}${coachStatisticsTable()}`;
   const rows = [...(state.coaches || [])].filter((coach) => matchesRegion(coach.nationality, peopleOriginRegionFilter) && (peopleTeamRegionFilter === 'ALL' || (coach.clubId && COUNTRY_META[clubById(coach.clubId)?.country]?.region === peopleTeamRegionFilter) || (coach.nationalTeamId && nationalById(coach.nationalTeamId)?.region === peopleTeamRegionFilter))).sort((a, b) => (b.quality || 0) - (a.quality || 0) || (STAFF_RARITIES[b.rarity]?.rank || 0) - (STAFF_RARITIES[a.rarity]?.rank || 0));
   return `${heading}
-    <section class="panel"><div class="filter-toolbar"><label>Continent (origin)<select id="people-origin-region-filter">${regionOptions(peopleOriginRegionFilter)}</select></label><label>Continent (team)<select id="people-team-region-filter">${regionOptions(peopleTeamRegionFilter)}</select></label><span>${fmt(rows.filter((coach) => coach.status !== 'retired' && (coach.clubId || coach.nationalTeamId)).length)} employed · ${fmt(rows.filter((coach) => coach.status !== 'retired' && !coach.clubId && !coach.nationalTeamId).length)} free agents · ${fmt(rows.filter((coach) => coach.status === 'retired').length)} retired</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Coach</th><th>Nationality</th><th>Rarity</th><th>Quality</th><th>Style</th><th>Focus</th><th>Current job</th><th>Years in role</th></tr></thead><tbody>${rows.slice(0, 250).map((coach, index) => `<tr><td>${index + 1}</td><td>${coachLink(coach.id)}</td><td>${flag(coach.nationality)}</td><td>${staffRarityBadge(coach.rarity)}</td><td><strong>${coach.quality || '—'}/100</strong></td><td>${esc(COACH_PROFILES[coach.profile]?.label || coach.profileLabel || '—')}</td><td><strong>${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')}</strong></td><td>${coachJob(coach)}</td><td>${coach.seasonsInRole || 0}</td></tr>`).join('')}</tbody></table></div></section>`;
+    <section class="panel"><div class="filter-toolbar"><label>Continent (origin)<select id="people-origin-region-filter">${regionOptions(peopleOriginRegionFilter)}</select></label><label>Continent (team)<select id="people-team-region-filter">${regionOptions(peopleTeamRegionFilter)}</select></label><span>${fmt(rows.filter((coach) => coach.status !== 'retired' && (coach.clubId || coach.nationalTeamId)).length)} employed · ${fmt(rows.filter((coach) => coach.status !== 'retired' && !coach.clubId && !coach.nationalTeamId).length)} free agents · ${fmt(rows.filter((coach) => coach.status === 'retired').length)} retired</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Coach</th><th>Nationality</th><th>Rarity</th><th>Quality</th><th>Style</th><th>Focus</th><th>Current job</th><th>Career</th><th>Years in role</th></tr></thead><tbody>${rows.slice(0, 250).map((coach, index) => `<tr><td>${index + 1}</td><td>${coachLink(coach.id)}</td><td>${flag(coach.nationality)}</td><td>${staffRarityBadge(coach.rarity)}</td><td><strong>${coach.quality || '—'}/100</strong></td><td>${esc(COACH_PROFILES[coach.profile]?.label || coach.profileLabel || '—')}</td><td><strong>${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')}</strong></td><td>${coachJob(coach)}</td><td>Y${Math.min((coach.careerYear||0)+1,coach.careerLength||1)}/${coach.careerLength||'—'} · ${esc((coach.careerType||'stable_prime').replaceAll('_',' '))}</td><td>${coach.seasonsInRole || 0}</td></tr>`).join('')}</tbody></table></div></section>`;
 }
 
 function peoplePage(type = 'players', tab = 'overview') {
@@ -1535,6 +1535,7 @@ function coachPage(id) {
   const focus = COACH_FOCUSES[coach.focus] || COACH_FOCUSES.balanced;
   return `${pageHead('COACH CAREER', coach.name, `${countryName(coach.nationality)} · ${profile?.label || coach.profile} · ${focus.label}`)}
     <section class="entity-hero coach-entity"><div class="player-number">⌁</div><div class="entity-main"><div class="entity-badges">${staffRarityBadge(coach.rarity)}${flag(coach.nationality)}</div><span class="entity-kicker">${esc(profile?.label || coach.profileLabel)}</span><h2>${esc(coach.name)}</h2><div class="entity-meta">${coachJob(coach)}</div></div><div class="rating-orbit"><strong>${coach.quality}</strong><span>QUALITY</span></div></section>
+    <section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">COACHING CAREER CURVE</span><h3>${esc((coach.careerType || 'stable_prime').replaceAll('_', ' '))}</h3></div><span class="muted">Year ${Math.min((coach.careerYear || 0) + 1, coach.careerLength || 1)} of ${coach.careerLength || '—'}</span></div><div class="career-curve">${(coach.careerMultipliers || []).map((multiple, index) => `<div class="career-year ${index === coach.careerYear ? 'current' : ''} ${index < coach.careerYear ? 'past' : ''}"><span>Y${index + 1}</span><strong>${Number(multiple).toFixed(2)}</strong><small>${Math.round((coach.baseQuality || coach.quality) * multiple)}</small></div>`).join('')}</div></section>
     <div class="stats-ribbon section-gap">${statCard('Games', fmt(totals.games), `${totals.wins} wins`)}${statCard('Win rate', totals.games ? `${(winPct * 100).toFixed(1)}%` : '—', `${totals.draws} draws · ${totals.losses} losses`)}${statCard('Team goals', fmt(totals.gf), `${fmt(totals.ga)} conceded`)}${statCard('Titles', totals.titles, `${coach.seasonsInRole || 0} seasons in current role`)}</div>
     <div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><span class="eyebrow">TACTICAL IDENTITY</span><h3>${esc(profile?.label || coach.profileLabel)}</h3></div></div><p class="role-copy">${esc(profile?.description || 'A flexible football coach.')}</p><div class="staff-effects"><span>Focus: ${esc(focus.label)}</span></div><p class="role-copy">${esc(focus.description)}</p></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">CAREER HONORS</span><h3>${career.honours.length} trophies</h3></div></div>${honoursList(career.honours, 'competitionName')}</section></div>
     <section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">CAREER TIMELINE</span><h3>Team coached by season</h3></div><span class="muted">All club and national-team competitions combined</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Season</th><th>Team</th><th>Type</th><th>G</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>Win %</th><th>Titles</th></tr></thead><tbody>${timeline.map((row) => `<tr><td><strong>${esc(row.seasonLabel)}</strong></td><td>${teamLink(row.teamId, row.isInternational)}</td><td>${row.isInternational ? 'National team' : 'Club'}</td><td>${row.games}</td><td><strong>${row.wins}</strong></td><td>${row.draws}</td><td>${row.losses}</td><td>${row.gf}</td><td>${row.ga}</td><td>${row.games ? `${(row.wins / row.games * 100).toFixed(1)}%` : '—'}</td><td>${row.titles || 0}</td></tr>`).join('') || '<tr><td colspan="11">No completed coaching season yet.</td></tr>'}</tbody></table></div></section>
@@ -1555,7 +1556,7 @@ function clubBody(club) {
     <div class="club-modal-metrics">${statCard('League position', club.division === 1 ? (position || '—') : 'Second tier', tableRow ? `${tableRow.points} points` : 'Promotion candidate')}${statCard('Finances', money(club.finances), `${money(club.transferBudget)} transfer budget`)}${statCard('Historic titles', honours.length)}${statCard('Current form', tableRow?.form.join(' ') || '—')}</div>
     <div class="staff-grid section-gap">
       <section class="staff-card"><span class="eyebrow">OWNER / PRESIDENT</span><div class="staff-card-head"><div class="staff-avatar">♛</div><div><h3>${esc(owner?.name || 'Vacant')}</h3>${owner ? staffRarityBadge(owner.rarity) : ''}</div></div><strong>${esc(ownerProfile?.label || 'No profile')}</strong><p>${esc(ownerProfile?.description || 'The club is awaiting new ownership.')}</p><div class="staff-effects"><span>Money ×${Number(club.ownerMoneyMultiplier || 1).toFixed(2)}</span><span>Negotiation +${Math.round((club.ownerNegotiationBonus || 0) * 100)}%</span><span>Patience ×${Number(club.ownerPatience || 1).toFixed(2)}</span><span>${owner?.yearsRemaining ?? '—'} years remaining</span></div></section>
-      <section class="staff-card"><span class="eyebrow">HEAD COACH</span><div class="staff-card-head"><div class="staff-avatar">⌁</div><div><h3>${coach ? coachLink(coach.id, false) : 'Vacant'}</h3>${coach ? staffRarityBadge(coach.rarity) : ''}</div></div><strong>${esc(coachProfile?.label || 'No tactical identity')}</strong><p>${esc(coachProfile?.description || 'The board is searching for a new coach.')}</p><div class="staff-effects"><span>Quality ${coach?.quality || '—'}</span><span>${coach ? `Focus ${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')}` : '—'}</span><span>${coach?.seasonsInRole || 0} seasons</span><span>${coach?.trophies || 0} trophies</span></div></section>
+      <section class="staff-card"><span class="eyebrow">HEAD COACH</span><div class="staff-card-head"><div class="staff-avatar">⌁</div><div><h3>${coach ? coachLink(coach.id, false) : 'Vacant'}</h3>${coach ? staffRarityBadge(coach.rarity) : ''}</div></div><strong>${esc(coachProfile?.label || 'No tactical identity')}</strong><p>${esc(coachProfile?.description || 'The board is searching for a new coach.')}</p><div class="staff-effects"><span>Quality ${coach?.quality || '—'}</span><span>${coach ? `Focus ${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')}` : '—'}</span><span>${coach?.seasonsInRole || 0} seasons in role</span><span>${coach ? `Career Y${Math.min((coach.careerYear || 0) + 1, coach.careerLength || 1)}/${coach.careerLength || '—'}` : '—'}</span><span>${coach?.trophies || 0} trophies</span></div></section>
     </div>
     <div class="two-column section-gap"><section><div class="modal-section-head">KEY PLAYERS</div><div class="squad-list">${history.allCurrentPlayers.map((player) => `<a class="squad-row squad-row-wide" href="#/player/${player.id}/profile"><span>${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${esc(player.roleLabel)} · ${player.contractYears ? `${player.contractYears} yr` : 'Free'}</small></div><b>${player.rating}</b></a>`).join('')}</div></section><section><div class="modal-section-head">TROPHIES</div>${honoursList(honours, 'competitionName')}<div class="modal-section-head recent-head">RECENT SEASONS</div><div class="archive-list">${[...history.seasons].reverse().slice(0, 8).map((season) => `<div class="archive-row"><strong>${season.seasonLabel}</strong><span>${esc(competitionLabel(season.leagueId))}</span><b>${season.position}</b></div>`).join('') || '<div class="empty-state compact">No archived seasons yet.</div>'}</div></section></div>`;
 }
@@ -1588,7 +1589,7 @@ function nationPage(id) {
   const coach = coachById(nation.coachId);
   const coachProfile = COACH_PROFILES[coach?.profile];
   return `${pageHead('NATIONAL TEAM', nation.name, `Generation tier ${nation.tier} · Aggregate strength ${nation.strength} · ${pool.length} active named players`)}<section class="nation-hero">${flag(id, 'xl')}<div><span>${esc(nation.region)}</span><h2>${esc(nation.name)}</h2><p>Selected squad: ${lineup.length} named stars · No more than one goalkeeper</p></div><strong>${nation.strength}</strong></section>
-    <section class="staff-card section-gap national-coach-card"><span class="eyebrow">NATIONAL COACH</span><div class="staff-card-head"><div class="staff-avatar">⌁</div><div><h3>${coach ? coachLink(coach.id, false) : 'Vacant'}</h3>${coach ? staffRarityBadge(coach.rarity) : ''}</div></div><strong>${esc(coachProfile?.label || 'No tactical identity')}</strong><p>${esc(coachProfile?.description || 'The federation is searching for a coach.')}</p><div class="staff-effects"><span>Quality ${coach?.quality || '—'}</span><span>${coach ? `Focus ${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')}` : '—'}</span><span>${coach?.seasonsInRole || 0} seasons</span><span>${coach?.trophies || 0} trophies</span></div></section>
+    <section class="staff-card section-gap national-coach-card"><span class="eyebrow">NATIONAL COACH</span><div class="staff-card-head"><div class="staff-avatar">⌁</div><div><h3>${coach ? coachLink(coach.id, false) : 'Vacant'}</h3>${coach ? staffRarityBadge(coach.rarity) : ''}</div></div><strong>${esc(coachProfile?.label || 'No tactical identity')}</strong><p>${esc(coachProfile?.description || 'The federation is searching for a coach.')}</p><div class="staff-effects"><span>Quality ${coach?.quality || '—'}</span><span>${coach ? `Focus ${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')}` : '—'}</span><span>${coach?.seasonsInRole || 0} seasons in role</span><span>${coach ? `Career Y${Math.min((coach.careerYear || 0) + 1, coach.careerLength || 1)}/${coach.careerLength || '—'}` : '—'}</span><span>${coach?.trophies || 0} trophies</span></div></section>
     <div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><span class="eyebrow">CURRENT SELECTION</span><h3>Best eight</h3></div></div><div class="squad-list">${lineup.map((player) => `<a class="squad-row squad-row-wide" href="#/player/${player.id}/profile"><span>${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${player.clubId ? esc(clubById(player.clubId)?.name) : 'National pool'} · ${esc(player.roleLabel)}</small></div><b>${player.rating}</b></a>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">NATIONAL HONORS</span><h3>${honours.length} trophies</h3></div></div>${honoursList(honours, 'competitionName')}<div class="panel-head recent-head"><div><span class="eyebrow">CURRENT RESULTS</span><h3>International matches</h3></div></div><div class="matches-list">${matches.slice(-12).reverse().map((match) => matchRow(match, true)).join('') || '<div class="empty-state compact">No matches yet.</div>'}</div></section></div>`;
 }
 
@@ -1633,7 +1634,7 @@ function page(currentRoute) {
   if (currentRoute.page === 'world') return worldPage();
   if (currentRoute.page === 'magazine') return magazinePage(currentRoute.id);
   if (currentRoute.page === 'region') return regionPage(currentRoute.id);
-  if (currentRoute.page === 'country') return countryPage(currentRoute.id);
+  if (currentRoute.page === 'country') return countryPage(currentRoute.id, currentRoute.tab);
   if (currentRoute.page === 'international') return internationalPage(currentRoute.id);
   if (['league', 'competition'].includes(currentRoute.page)) {
     const description = descriptor(currentRoute.id);
@@ -1671,6 +1672,7 @@ async function simulate(action) {
   if (action === 'simulate-season') simulateToSeasonEnd(state);
   if (action === 'next-season') startNextSeason(state);
   await saveState();
+  hallCache = { signature: '', data: null };
   render();
   toast(action === 'next-season' ? `The ${state.current.seasonLabel} season is ready. The transfer market has run.` : `World advanced in ${Math.round(performance.now() - start)} ms.`);
 }
@@ -1808,6 +1810,7 @@ async function cloudLoad() {
     const loaded = await decodeCloudState(gameData);
     if (loaded?.version !== 4) throw new Error('The cloud save is not compatible with this version.');
     state = upgradeWorld(loaded);
+    hallCache = { signature: '', data: null };
     await saveState();
     cloudStatus = `Cloud loaded ${new Date(result.save.updated_at).toLocaleString()}`;
     location.hash = '#/world';
@@ -1879,6 +1882,10 @@ function bind() {
   if (rankingCompetition) rankingCompetition.addEventListener('change', (event) => { magazineRankingCompetition = event.target.value; render(); });
   const rankingMetric = document.getElementById('magazine-ranking-metric');
   if (rankingMetric) rankingMetric.addEventListener('change', (event) => { magazineRankingMetric = event.target.value; render(); });
+  const comparatorTypeSelect = document.getElementById('comparator-type');
+  if (comparatorTypeSelect) comparatorTypeSelect.addEventListener('change', (event) => { comparatorType = event.target.value; comparatorIds = []; render(); });
+  const comparatorAdd = document.getElementById('comparator-add');
+  if (comparatorAdd) comparatorAdd.addEventListener('change', (event) => { if (event.target.value && comparatorIds.length < 3 && !comparatorIds.includes(event.target.value)) comparatorIds.push(event.target.value); render(); });
 }
 
 function searchResults(query) {
@@ -1918,11 +1925,13 @@ document.addEventListener('click', async (event) => {
   if (action === 'close-search') { searchOpen = false; render(); }
   if (action === 'open-club-modal') { event.preventDefault(); clubModalId = target.dataset.id; searchOpen = false; render(); }
   if (action === 'close-club-modal') { clubModalId = null; render(); }
+  if (action === 'remove-comparison') { comparatorIds = comparatorIds.filter((id) => id !== target.dataset.id); render(); }
   if (action === 'cloud-save') await cloudSave();
   if (action === 'cloud-load') await cloudLoad();
   if (action === 'cloud-code') manageCloudCode();
   if (action === 'reset-world' && window.confirm('Reset the entire universe and erase its local history? Your existing Neon cloud save is not deleted.')) {
     state = createWorld(Date.now() % 2147483647);
+    hallCache = { signature: '', data: null };
     await saveState();
     location.hash = '#/world';
     render();
