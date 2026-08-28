@@ -14,7 +14,8 @@ import {
   STAFF_RARITIES,
   OWNER_PROFILES,
   COACH_PROFILES,
-  COACH_FOCUSES
+  COACH_FOCUSES,
+  RIVALRY_DEFINITIONS
 } from './data.js';
 import { REAL_WORLD_STARS } from './real-stars.js';
 
@@ -1393,7 +1394,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 14,
+    dataRevision: 15,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -1426,11 +1427,18 @@ export function createWorld(seed = Date.now() % 2147483647) {
       coachMoves: [],
       coachCompetitionSeasons: [],
       coachSeasons: [],
-      leagueMovements: []
+      leagueMovements: [],
+      hallOfFamePlayers: [],
+      clubLegends: [],
+      clubPowerRankings: [],
+      leaguePowerRankings: []
     },
     preferences: {
       favoriteClubIds: ['real-madrid'],
       favoritePlayerIds: [],
+      favoriteCoachIds: [],
+      favoriteNationIds: [],
+      favoriteCompetitionIds: ['UCL'],
       autoStopFinals: true
     }
   };
@@ -2881,6 +2889,206 @@ function registerChampion(state, competitionId, competitionName, winnerId, runne
   }
 }
 
+
+function legacyCompetitionWeight(state, competitionId, isInternational = false) {
+  if (!competitionId) return 1;
+  const fixed = {
+    WC: 5.0, UCL: 4.6, EURO: 4.1, COPA: 4.0, LIB: 3.8, CWC: 3.6,
+    UEL: 3.0, AFCON: 2.9, ASIACUP: 2.7, GOLDCUP: 2.5, ICUP: 2.5,
+    UECL: 2.25, SUD: 2.25, CCC: 2.2, ACL: 2.1, CAFCL: 2.05, OCL: 1.6,
+    GLOBAL: 4.2, WCQ: 1.15, EUROQ: 1.05, AFCONQ: 0.95, ASIAQ: 0.95, GOLDCUPQ: 0.9
+  };
+  if (fixed[competitionId]) return fixed[competitionId];
+  const league = LEAGUE_DEFINITIONS.find((item) => item.id === competitionId);
+  if (league) {
+    if (['ESP1','ENG1','ITA1','GER1','FRA1'].includes(league.id)) return 2.75;
+    if (['POR1','NED1','BRA1','ARG1','BEL1','TUR1'].includes(league.id)) return 2.2;
+    return league.tier === 'detailed' ? 1.9 : 1.3;
+  }
+  if (competitionId.startsWith('CUP-')) {
+    const leagueId = competitionId.slice(4);
+    const parent = LEAGUE_DEFINITIONS.find((item) => item.id === leagueId);
+    if (['ESP1','ENG1','ITA1','GER1','FRA1'].includes(leagueId)) return 1.85;
+    return parent?.tier === 'detailed' ? 1.45 : 1.05;
+  }
+  if (competitionId.startsWith('SC-') || competitionId === 'SUPERCUP') return 0.75;
+  return isInternational ? 1.25 : 1.0;
+}
+
+function rivalryDefinitionForIds(a, b) {
+  return RIVALRY_DEFINITIONS.find((item) =>
+    (item.clubAId === a && item.clubBId === b) || (item.clubAId === b && item.clubBId === a)
+  ) || null;
+}
+
+function legacyAwardValue(state, awardRow) {
+  if (!awardRow || awardRow.rank !== 1) return 0;
+  const name = String(awardRow.name || '').toLowerCase();
+  if (name.includes("ballon d'or")) return 58;
+  if (name.includes('kopa')) return 22;
+  if (name.includes('world best') && !name.includes('xi')) return 21;
+  if (name.includes('world best xi')) return 9;
+  const weight = legacyCompetitionWeight(state, awardRow.competitionId, false);
+  if (name.includes('player of the season') || name.includes('mvp') || name.includes('best player')) return 13 * weight;
+  if (name.includes('best goalkeeper') || name.includes('best defender') || name.includes('best midfielder') || name.includes('best forward')) return 8 * weight;
+  if (name.includes('top scorer') || name.includes('golden boot')) return 6 * weight;
+  return 4 * weight;
+}
+
+function buildLegacyContext(state, suppressNews = false) {
+  const playerRows = new Map(), honours = new Map(), awards = new Map();
+  for (const row of state.history.playerSeasons || []) { const list=playerRows.get(row.playerId)||[]; list.push(row); playerRows.set(row.playerId,list); }
+  for (const row of state.history.honours || []) { const list=honours.get(row.playerId)||[]; list.push(row); honours.set(row.playerId,list); }
+  for (const row of state.history.awards || []) { if(row.rank!==1) continue; const list=awards.get(row.playerId)||[]; list.push(row); awards.set(row.playerId,list); }
+  return { playerRows, honours, awards, suppressNews, hallSet: new Set((state.history.hallOfFamePlayers||[]).map((row)=>row.playerId)), legendSet: new Set((state.history.clubLegends||[]).map((row)=>`${row.playerId}::${row.clubId}`)) };
+}
+
+function playerLegacyBreakdown(state, player, context = null) {
+  const rows = context?.playerRows.get(player.id) || (state.history.playerSeasons || []).filter((row) => row.playerId === player.id);
+  const honours = context?.honours.get(player.id) || (state.history.honours || []).filter((row) => row.playerId === player.id);
+  const awards = context?.awards.get(player.id) || (state.history.awards || []).filter((row) => row.playerId === player.id && row.rank === 1);
+  let performance = 0, production = 0, games = 0, weightedGames = 0;
+  for (const row of rows) {
+    const weight = legacyCompetitionWeight(state, row.competitionId, row.isInternational);
+    const apps = row.apps || 0;
+    const rating = row.averageRating || 6.4;
+    games += apps;
+    weightedGames += apps * weight;
+    performance += Math.max(0, rating - 6.45) * apps * weight * 1.55;
+    if (player.position === 'FW') production += ((row.goals || 0) * 0.58 + (row.assists || 0) * 0.34) * weight;
+    else if (player.position === 'MF') production += ((row.goals || 0) * 0.34 + (row.assists || 0) * 0.52 + (row.cleanSheets || 0) * 0.04) * weight;
+    else if (player.position === 'DF') production += ((row.goals || 0) * 0.22 + (row.assists || 0) * 0.27 + (row.cleanSheets || 0) * 0.25) * weight;
+    else production += ((row.cleanSheets || 0) * 0.48 + (row.assists || 0) * 0.08) * weight;
+  }
+  let titleScore = 0, majorTitles = 0;
+  for (const honour of honours) {
+    const weight = legacyCompetitionWeight(state, honour.competitionId, honour.isInternational);
+    titleScore += 7.5 * weight;
+    if (weight >= 2.7) majorTitles += 1;
+  }
+  const awardScore = awards.reduce((sum, row) => sum + legacyAwardValue(state, row), 0);
+  const ballonDor = awards.filter((row) => String(row.name).includes("Ballon d'Or")).length;
+  const score = performance + production + titleScore + awardScore + weightedGames * 0.018;
+  return { score, performance, production, titleScore, awardScore, games, weightedGames, honours: honours.length, awards: awards.length, majorTitles, ballonDor };
+}
+
+function clubLegendBreakdowns(state, player, context = null) {
+  const byClub = new Map();
+  const rows = (context?.playerRows.get(player.id) || (state.history.playerSeasons || []).filter((row) => row.playerId === player.id)).filter((row)=>!row.isInternational);
+  for (const row of rows) {
+    const item = byClub.get(row.teamId) || { clubId: row.teamId, games: 0, goals: 0, assists: 0, cleanSheets: 0, ratingWeighted: 0, seasons: new Set(), weightedPerformance: 0 };
+    const weight = legacyCompetitionWeight(state, row.competitionId, false);
+    item.games += row.apps || 0;
+    item.goals += row.goals || 0;
+    item.assists += row.assists || 0;
+    item.cleanSheets += row.cleanSheets || 0;
+    item.ratingWeighted += (row.averageRating || 0) * (row.apps || 0);
+    item.seasons.add(row.season);
+    item.weightedPerformance += Math.max(0, (row.averageRating || 6.4) - 6.45) * (row.apps || 0) * Math.max(1, weight) * 0.9;
+    byClub.set(row.teamId, item);
+  }
+  for (const honour of context?.honours.get(player.id) || state.history.honours || []) {
+    if (honour.playerId !== player.id || honour.isInternational) continue;
+    const item = byClub.get(honour.teamId);
+    if (!item) continue;
+    item.titles = (item.titles || 0) + 1;
+    item.titleScore = (item.titleScore || 0) + 6 * legacyCompetitionWeight(state, honour.competitionId, false);
+  }
+  return [...byClub.values()].map((item) => {
+    const avg = item.games ? item.ratingWeighted / item.games : 0;
+    const positionProduction = player.position === 'FW' ? item.goals * 0.42 + item.assists * 0.22
+      : player.position === 'MF' ? item.goals * 0.24 + item.assists * 0.36
+      : player.position === 'DF' ? item.goals * 0.14 + item.assists * 0.18 + item.cleanSheets * 0.18
+      : item.cleanSheets * 0.30;
+    const score = item.weightedPerformance + item.games * 0.08 + positionProduction + (item.titleScore || 0) + item.seasons.size * 2;
+    return { ...item, seasons: item.seasons.size, averageRating: avg, score };
+  });
+}
+
+function evaluateRetiringPlayerLegacy(state, player, context = null) {
+  state.history.hallOfFamePlayers ||= [];
+  state.history.clubLegends ||= [];
+  const legacy = playerLegacyBreakdown(state, player, context);
+  const eliteCareer = legacy.majorTitles >= 2 || legacy.ballonDor >= 1 || legacy.awards >= 4;
+  const qualifies = legacy.games >= 180 && eliteCareer && (
+    legacy.score >= 560 ||
+    (legacy.ballonDor >= 1 && legacy.score >= 390) ||
+    (legacy.majorTitles >= 5 && legacy.awards >= 3 && legacy.score >= 450)
+  );
+  const alreadyHall = context?.hallSet ? context.hallSet.has(player.id) : state.history.hallOfFamePlayers.some((row)=>row.playerId===player.id);
+  if (qualifies && !alreadyHall) {
+    state.history.hallOfFamePlayers.push({
+      playerId: player.id,
+      inductionSeason: state.season,
+      inductionSeasonLabel: formatSeason(state.season),
+      position: player.position,
+      score: Number(legacy.score.toFixed(1)),
+      games: legacy.games,
+      majorTitles: legacy.majorTitles,
+      ballonDor: legacy.ballonDor,
+      totalTitles: legacy.honours,
+      individualAwards: legacy.awards
+    });
+    if (context?.hallSet) context.hallSet.add(player.id);
+    if (!context?.suppressNews) {
+      state.pendingSeasonNews ||= [];
+      state.pendingSeasonNews.unshift({
+      id: `news-${state.season + 1}-hof-${player.id}`,
+      week: 0,
+      importance: 'feature',
+      category: 'Hall of Fame',
+      headline: `${player.name} enters the Football Hall of Fame`,
+      body: `${player.name} retires with a legacy score of ${legacy.score.toFixed(0)}, ${legacy.honours} team trophies and ${legacy.awards} major individual awards.`
+      });
+    }
+  }
+  for (const clubLegacy of clubLegendBreakdowns(state, player, context)) {
+    const qualifiesClub = clubLegacy.games >= 110 && ((clubLegacy.score >= 235 && (clubLegacy.titles || 0) >= 2) || (clubLegacy.titles || 0) >= 6 || (clubLegacy.games >= 240 && clubLegacy.averageRating >= 7.25));
+    if (!qualifiesClub) continue;
+    const legendKey=`${player.id}::${clubLegacy.clubId}`;
+    if (context?.legendSet ? context.legendSet.has(legendKey) : state.history.clubLegends.some((row)=>row.playerId===player.id&&row.clubId===clubLegacy.clubId)) continue;
+    state.history.clubLegends.push({
+      clubId: clubLegacy.clubId,
+      playerId: player.id,
+      inductionSeason: state.season,
+      score: Number(clubLegacy.score.toFixed(1)),
+      seasons: clubLegacy.seasons,
+      games: clubLegacy.games,
+      goals: clubLegacy.goals,
+      assists: clubLegacy.assists,
+      cleanSheets: clubLegacy.cleanSheets,
+      averageRating: Number(clubLegacy.averageRating.toFixed(2)),
+      titles: clubLegacy.titles || 0
+    });
+    if (context?.legendSet) context.legendSet.add(legendKey);
+  }
+}
+
+function archivePowerRankings(state) {
+  state.history.clubPowerRankings ||= [];
+  state.history.leaguePowerRankings ||= [];
+  const season = state.season;
+  const champions = (state.history.champions || []).filter((row) => row.season === season && !row.isInternational);
+  const majorWeight = (clubId) => champions.filter((row) => row.winnerId === clubId).reduce((sum, row) => sum + legacyCompetitionWeight(state, row.competitionId, false), 0);
+  const clubRows = state.clubs.filter((club) => club.division === 1).map((club) => {
+    const leagueRow = state.history.clubSeasons.find((row) => row.season === season && row.clubId === club.id);
+    const competitionRows = state.history.clubCompetitionSeasons.filter((row) => row.season === season && row.teamId === club.id);
+    const games = competitionRows.reduce((sum,row)=>sum+(row.apps||0),0);
+    const wins = competitionRows.reduce((sum,row)=>sum+(row.wins||0),0);
+    const gd = competitionRows.reduce((sum,row)=>sum+(row.gf||0)-(row.ga||0),0);
+    const score = club.strength * 0.75 + club.reputation * 0.45 + (games ? wins/games*22 : 0) + Math.max(-5, Math.min(12, gd/18)) + majorWeight(club.id)*6 + (leagueRow ? Math.max(0, 8 - leagueRow.position) : 0);
+    return { clubId: club.id, score: Number(score.toFixed(2)), strength: club.strength, leagueId: club.leagueId };
+  }).sort((a,b)=>b.score-a.score).slice(0,60);
+  clubRows.forEach((row,index)=>state.history.clubPowerRankings.push({ season, seasonLabel: formatSeason(season), rank:index+1, ...row }));
+  for (const league of LEAGUE_DEFINITIONS) {
+    const clubs = clubRows.filter((row)=>row.leagueId===league.id).slice(0,5);
+    if (!clubs.length) continue;
+    const continentalTitles = champions.filter((row) => ['UCL','UEL','UECL','LIB','SUD','CCC','ACL','CAFCL','OCL','CWC','ICUP'].includes(row.competitionId) && getClub(state,row.winnerId)?.leagueId===league.id).length;
+    const score = clubs.reduce((sum,row)=>sum+row.score,0)/clubs.length + continentalTitles*12;
+    state.history.leaguePowerRankings.push({ season, seasonLabel: formatSeason(season), leagueId: league.id, score:Number(score.toFixed(2)), continentalTitles });
+  }
+}
+
 function archiveClubCompetitionSummaries(state) {
   const summaries = new Map();
   for (const match of state.current.matches) {
@@ -3030,9 +3238,10 @@ function archiveSeason(state) {
   }
   archiveCoachSummaries(state);
   const landmarks = state.current.matches
-    .filter((match) => match.landmark || match.stage === 'Final')
+    .filter((match) => match.landmark || match.stage === 'Final' || (!match.isInternational && rivalryDefinitionForIds(match.homeId, match.awayId)))
     .map((match) => ({ ...match }));
   state.history.landmarkMatches.push(...landmarks);
+  archivePowerRankings(state);
 }
 
 function rarityCounts(state) {
@@ -3657,6 +3866,8 @@ function evolveWorld(state) {
     club.transferBudget = Math.max(2, Math.round(club.finances * (0.22 + random(state) * 0.13)));
   }
 
+  const retirementLegacyContext = buildLegacyContext(state);
+
   for (const player of state.players) {
     if (player.status !== 'active') continue;
     player.contractYears = Math.max(0, (player.contractYears || 0) - 1);
@@ -3665,6 +3876,7 @@ function evolveWorld(state) {
       const formerClubId = player.clubId || null;
       player.status = 'retired';
       player.retirementSeason = state.season;
+      evaluateRetiringPlayerLegacy(state, player, retirementLegacyContext);
       player.clubId = null;
       player.contractYears = 0;
       player.salary = 0;
@@ -4420,6 +4632,24 @@ export function upgradeWorld(state) {
       refreshCoachQuality(state, coach);
     }
     state.dataRevision = 14;
+    invalidateRuntimeCache(state);
+  }
+  if (state.dataRevision < 15) {
+    state.history.hallOfFamePlayers ||= [];
+    state.history.clubLegends ||= [];
+    state.history.clubPowerRankings ||= [];
+    state.history.leaguePowerRankings ||= [];
+    state.preferences ||= {};
+    state.preferences.favoriteClubIds ||= [];
+    state.preferences.favoritePlayerIds ||= [];
+    state.preferences.favoriteCoachIds ||= [];
+    state.preferences.favoriteNationIds ||= [];
+    state.preferences.favoriteCompetitionIds ||= ['UCL'];
+    const legacyContext = buildLegacyContext(state, true);
+    for (const player of state.players || []) {
+      if (player.status === 'retired') evaluateRetiringPlayerLegacy(state, player, legacyContext);
+    }
+    state.dataRevision = 15;
     invalidateRuntimeCache(state);
   }
   return state;

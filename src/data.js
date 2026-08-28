@@ -4,6 +4,21 @@ export const SAVE_KEY = 'football-world-chronicle-v4';
 export const REGION_ORDER = ['Europe', 'South America', 'North America', 'Asia', 'Africa', 'Oceania'];
 export const PRIORITY_COUNTRIES = ['Spain', 'England', 'Italy', 'Germany', 'France', 'Portugal', 'Netherlands', 'Brazil', 'Argentina', 'United States', 'Mexico', 'Saudi Arabia', 'Japan', 'Morocco', 'Egypt'];
 
+export const RIVALRY_DEFINITIONS = [
+  ['real-madrid','atletico','Madrid derby'], ['real-madrid','athletic','historic Spanish rivalry'],
+  ['sevilla','betis','Seville derby'], ['valencia','villarreal','Valencian rivalry'],
+  ['man-city','man-utd','Manchester derby'], ['liverpool','everton','Merseyside derby'],
+  ['liverpool','man-utd','North-West rivalry'], ['arsenal','tottenham','North London derby'],
+  ['inter','milan','Derby della Madonnina'], ['roma','lazio','Derby della Capitale'],
+  ['juventus','inter','Derby d’Italia'], ['bayern','dortmund','Der Klassiker'],
+  ['psg','marseille','Le Classique'], ['benfica','sporting','Lisbon derby'], ['porto','benfica','O Clássico'],
+  ['river','boca','Superclásico'], ['racing','independiente','Avellaneda derby'],
+  ['flamengo','fluminense','Fla-Flu'], ['gremio','internacional','Grenal'],
+  ['celtic','rangers','Old Firm'], ['galatasaray','fenerbahce','Intercontinental derby'],
+  ['ajax','feyenoord','De Klassieker'], ['america','chivas','Clásico Nacional'],
+  ['al-ahly','zamalek','Cairo derby'], ['wydad','raja','Casablanca derby']
+].map(([clubAId, clubBId, name]) => ({ clubAId, clubBId, name }));
+
 const BASE_LEAGUE_DEFINITIONS = [
   { id:'ESP1', name:'La Liga', country:'Spain', tier:'detailed', confederation:'Europe', cupName:'Copa del Rey', superCupName:'Spanish Super Cup', clubs:[
     ['real-madrid','Real Madrid','Madrid',92],['deportivo','Deportivo La Coruña','A Coruña',76],['atletico','Atlético Madrid','Madrid',89],['athletic','Athletic Club','Bilbao',84],['villarreal','Villarreal','Villarreal',82],['real-sociedad','Real Sociedad','San Sebastián',82],['betis','Real Betis','Seville',80],['sevilla','Sevilla','Seville',83],['valencia','Valencia','Valencia',84],['girona','Girona','Girona',76],['celta','Celta Vigo','Vigo',73],['osasuna','Osasuna','Pamplona',73],['mallorca','Mallorca','Palma',72],['getafe','Getafe','Getafe',71],['rayo','Rayo Vallecano','Madrid',70],['alaves','Alavés','Vitoria',69],['espanyol','Espanyol','Barcelona',69],['las-palmas','Las Palmas','Las Palmas',68],['levante','Levante','Valencia',67],['oviedo','Real Oviedo','Oviedo',66]
