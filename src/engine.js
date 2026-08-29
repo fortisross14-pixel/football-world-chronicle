@@ -23,9 +23,10 @@ const COUNTRY_TO_CODE = Object.fromEntries(
   Object.entries(COUNTRY_META).map(([country, meta]) => [country, meta.code])
 );
 const CAREER_LENGTH_RANGES = {
-  short: [8, 9],
-  medium: [10, 11],
-  long: [12, 13]
+  // Players now enter senior football at 17-18 and normally retire between 30 and 39.
+  short: [12, 15],
+  medium: [16, 18],
+  long: [19, 22]
 };
 const RARITY_ORDER = ['generational', 'legend', 'epic', 'rare', 'uncommon', 'common'];
 const CLUB_ROSTER_TARGET = { detailed: 7, summary: 4, reserve: 4 };
@@ -71,9 +72,11 @@ const HISTORICAL_CLUB_REPUTATION = {
 
 const RUNTIME_CACHE = new WeakMap();
 const PLAYER_HISTORY_CACHE = new WeakMap();
+const ELITE_MARKET_CACHE = new WeakMap();
 
 function invalidateRuntimeCache(state) {
   RUNTIME_CACHE.delete(state);
+  ELITE_MARKET_CACHE.delete(state);
 }
 
 function getRuntimeCache(state) {
@@ -291,9 +294,15 @@ function chooseNationality(state, rarity, preferredCountry = null) {
   const preferredId = COUNTRY_TO_CODE[preferredCountry];
   const preferred = preferredId ? teamById(preferredId) : null;
   const eligible = NATIONAL_TEAMS.filter((team) => eligibleNationalityTiers(rarity).includes(team.tier));
-  // Clubs develop mostly domestic players. Roughly one in ten academy or youth
-  // entrants represents a migration, diaspora or family exception.
-  if (preferred && eligible.includes(preferred) && random(state) < 0.9) return preferred.id;
+  // Initial club rosters follow the same geography rule as future spawns: roughly
+  // 90% domestic, nearly all exceptions from the same continent, and only a tiny
+  // intercontinental academy/diaspora tail.
+  if (preferred && eligible.includes(preferred)) {
+    const roll = random(state);
+    if (roll < 0.9) return preferred.id;
+    const sameRegion = eligible.filter((team) => team.id !== preferred.id && team.region === preferred.region);
+    if (roll < 0.995 && sameRegion.length) return weightedPick(state, sameRegion, (team) => nationalityWeight(team, rarity))?.id || preferred.id;
+  }
   return weightedPick(state, eligible, (team) => nationalityWeight(team, rarity))?.id || 'esp';
 }
 
@@ -307,8 +316,24 @@ function careerLength(state) {
 
 function careerCurve(type, years) {
   const base = CAREER_TYPES[type]?.curve || CAREER_TYPES.stable_prime.curve;
-  if (years <= base.length) return base.slice(0, years);
-  return [...base, ...Array.from({ length: years - base.length }, () => 0.85)];
+  if (years === base.length) return [...base];
+  // Stretch/compress the archetype instead of padding long careers with years of 0.85.
+  // This preserves an early peak, late bloom, second wind, etc. over a realistic 12-22 year career.
+  return Array.from({ length: years }, (_, index) => {
+    if (years <= 1) return Number(base[0].toFixed(3));
+    const position = index * (base.length - 1) / (years - 1);
+    const left = Math.floor(position);
+    const right = Math.min(base.length - 1, Math.ceil(position));
+    const t = position - left;
+    return Number((base[left] * (1 - t) + base[right] * t).toFixed(3));
+  });
+}
+
+function mappedRealCareerLength(templateLength) {
+  // Legacy icon templates were authored on the old 8-13 year scale. Preserve their relative
+  // longevity while mapping them to realistic senior careers.
+  const map = { 8: 12, 9: 13, 10: 15, 11: 17, 12: 19, 13: 21 };
+  return map[Math.round(templateLength || 11)] || 17;
 }
 
 function rarityQuality(state, rarity) {
@@ -351,22 +376,24 @@ function createPlayer(state, {
   const length = careerLength(state);
   const type = pick(state, Object.keys(CAREER_TYPES));
   const curve = careerCurve(type, length.years);
+  const debutAge = random(state) < 0.48 ? 17 : 18;
   const initialCareerYear = careerYear === null
-    ? randomInt(state, 0, Math.max(0, Math.min(length.years - 3, 8)))
+    ? randomInt(state, 0, Math.max(0, Math.min(length.years - 4, 15)))
     : clamp(careerYear, 0, length.years - 1);
   const baseQuality = rarityQuality(state, rarity);
   const rating = clamp(Math.round(baseQuality * curve[initialCareerYear]), 51, 100);
   const name = uniqueName(state, actualNationality);
   const id = `${club?.id || actualNationality}-${slug(name)}-${state.nextPlayerId}`;
   state.nextPlayerId += 1;
-  const age = 18 + initialCareerYear;
+  const age = debutAge + initialCareerYear;
   const value = calculateMarketValueRaw(baseQuality, rarity, age, actualPosition);
   return {
     id,
     name,
     clubId: club?.id || null,
     nationality: actualNationality,
-    birthYear: START_SEASON - age,
+    birthYear: state.season - age,
+    debutAge,
     position: actualPosition,
     role: role.id,
     roleLabel: role.label,
@@ -441,13 +468,14 @@ function resolveRealWorldClub(state, clubs, template) {
 
 function createRealWorldPlayer(state, template, { club = null, careerYear = 0, debutSeason = state.season } = {}) {
   const type = CAREER_TYPES[template.careerType] ? template.careerType : 'stable_prime';
-  const length = clamp(template.careerLength || 11, 8, 13);
+  const length = mappedRealCareerLength(template.careerLength || 11);
   const curve = careerCurve(type, length);
   const initialCareerYear = clamp(careerYear, 0, length - 1);
   const role = roleTemplate(template.position, template.role);
   const baseQuality = clamp(template.baseQuality, STAR_RARITIES[template.rarity].min, STAR_RARITIES[template.rarity].max);
   const rating = clamp(Math.round(baseQuality * (curve[initialCareerYear] ?? 0.9)), 51, 100);
-  const age = 18 + initialCareerYear;
+  const debutAge = ['prodigy', 'early_peak'].includes(type) ? 17 : 18;
+  const age = debutAge + initialCareerYear;
   const value = calculateMarketValueRaw(baseQuality, template.rarity, age, template.position);
   const id = `real-${template.id}-${state.nextPlayerId}`;
   state.nextPlayerId += 1;
@@ -460,13 +488,14 @@ function createRealWorldPlayer(state, template, { club = null, careerYear = 0, d
     clubId: club?.id || null,
     nationality: template.nationality,
     birthYear: debutSeason - age,
+    debutAge,
     position: template.position,
     role: role.id,
     roleLabel: role.label,
     rarity: template.rarity,
     baseQuality,
     rating,
-    careerLengthType: length <= 9 ? 'short' : length <= 11 ? 'medium' : 'long',
+    careerLengthType: length <= 15 ? 'short' : length <= 18 ? 'medium' : 'long',
     careerLength: length,
     careerType: type,
     careerMultipliers: curve,
@@ -867,16 +896,24 @@ function rookieClubWeight(player, club, eliteDestination = false) {
 }
 
 function chooseRookieDestination(state, clubs, player) {
-  const eliteChance = player.rarity === 'generational' ? 0.28 : player.rarity === 'legend' ? 0.22 : 0.16;
+  const eliteChance = player.rarity === 'generational' ? 0.22 : player.rarity === 'legend' ? 0.17 : player.rarity === 'epic' ? 0.13 : 0.04;
   const eliteDestination = random(state) < eliteChance;
   const nationName = teamById(player.nationality)?.name;
+  const originRegion = teamById(player.nationality)?.region;
   const topDivision = clubs.filter((club) => club.division === 1);
   const domestic = nationName ? topDivision.filter((club) => club.country === nationName) : [];
-  const foreign = nationName ? topDivision.filter((club) => club.country !== nationName) : topDivision;
-  // Ninety percent of procedural players begin inside their own domestic system.
-  // The remaining ten percent cover diaspora, family migration and unusual academy paths.
-  const homeSpawn = domestic.length > 0 && random(state) < 0.9;
-  const geographicPool = homeSpawn ? domestic : (foreign.length ? foreign : domestic);
+  const sameContinent = originRegion ? topDivision.filter((club) => club.country !== nationName && club.confederation === originRegion) : [];
+  const globalForeign = topDivision.filter((club) => club.country !== nationName && club.confederation !== originRegion);
+
+  // Almost every player starts at home. Exceptions overwhelmingly stay in the same
+  // football continent (cross-border academies / neighboring-country paths). Truly
+  // intercontinental rookie moves are deliberately rare.
+  let geographicPool = domestic;
+  const roll = random(state);
+  if (!domestic.length) geographicPool = sameContinent.length ? sameContinent : topDivision;
+  else if (roll >= 0.90 && roll < 0.995 && sameContinent.length) geographicPool = sameContinent;
+  else if (roll >= 0.995 && globalForeign.length) geographicPool = globalForeign;
+
   const band = geographicPool.filter((club) => eliteDestination ? club.reputation >= 80 : club.reputation < 84);
   const candidates = band.length ? band : geographicPool;
   return weightedPick(state, candidates, (club) => rookieClubWeight(player, club, eliteDestination)) || pick(state, candidates) || null;
@@ -1486,7 +1523,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 16,
+    dataRevision: 17,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -3412,7 +3449,8 @@ function generateReplacementStars(state) {
     const player = realTemplate
       ? createRealWorldPlayer(state, realTemplate, { careerYear: 0, debutSeason: state.season + 1 })
       : createPlayer(state, { rarity, careerYear: 0, nationalSpecialist: true });
-    player.birthYear = state.season + 1 - 18;
+    player.debutAge ||= random(state) < 0.48 ? 17 : 18;
+    player.birthYear = state.season + 1 - player.debutAge;
     player.debutSeason = state.season + 1;
     player.happiness = randomInt(state, 64, 92);
     const target = realTemplate
@@ -4137,25 +4175,91 @@ function recentMajorClubAchievement(state, clubId, lookback = 2) {
   return { titles, finals, mostRecentTitleAge };
 }
 
+function computeLeagueStrengthRows(state, region = null) {
+  const rows = LEAGUE_DEFINITIONS
+    .filter((league) => !region || league.confederation === region)
+    .map((league) => {
+      const powers = (state.clubs || [])
+        .filter((club) => club.leagueId === league.id && club.division === 1)
+        .map((club) => calculateTeamStrength(state, club.id, false))
+        .sort((a, b) => b - a)
+        .slice(0, 5);
+      const score = powers.length ? powers.reduce((sum, value) => sum + value, 0) / powers.length : 0;
+      return { league, score };
+    })
+    .sort((a, b) => b.score - a.score);
+  return rows.map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+function clubDestinationScore(state, club) {
+  if (!club) return 0;
+  const power = calculateTeamStrength(state, club.id, false);
+  const recent = recentMajorClubAchievement(state, club.id, 3);
+  return power * 0.56 + (club.reputation || 60) * 0.38 + recent.titles * 5 + recent.finals * 2;
+}
+
+function getEliteMarketContext(state) {
+  const cached = ELITE_MARKET_CACHE.get(state);
+  if (cached) return cached;
+  const rowsByRegion = new Map();
+  for (const region of ['Europe','South America','North America','Asia','Africa','Oceania']) {
+    rowsByRegion.set(region, computeLeagueStrengthRows(state, region));
+  }
+  const europeanClubRows = (state.clubs || [])
+    .filter((club) => club.division === 1 && club.confederation === 'Europe')
+    .map((club) => ({ club, score: clubDestinationScore(state, club) }))
+    .sort((a, b) => b.score - a.score);
+  const context = { rowsByRegion, europeanClubRows };
+  ELITE_MARKET_CACHE.set(state, context);
+  return context;
+}
+
+function leagueStrengthRows(state, region = null) {
+  if (region) return getEliteMarketContext(state).rowsByRegion.get(region) || [];
+  return [...getEliteMarketContext(state).rowsByRegion.values()].flat().sort((a,b)=>b.score-a.score).map((row,index)=>({...row,rank:index+1}));
+}
+
+function europeanEliteClubIds(state, count = 18) {
+  return new Set(getEliteMarketContext(state).europeanClubRows.slice(0, count).map((row) => row.club.id));
+}
+
+function playerCareerStage(state, player) {
+  const age = Math.max(player.debutAge || 17, state.season - player.birthYear);
+  const remaining = Math.max(0, (player.careerLength || 16) - (player.careerYear || 0));
+  if (age <= 21 || (player.careerYear || 0) <= 3) return 'development';
+  if (age >= 32 || remaining <= 3) return 'late';
+  return 'prime';
+}
+
 function eliteMigrationPressure(state, player, club) {
   if (!club || !['generational', 'legend', 'epic'].includes(player.rarity)) return 0;
-  const age = Math.max(18, state.season - player.birthYear);
-  const youngDevelopmentStage = age < 22 || (player.careerYear || 0) < 3;
-  const isEstablishedEuropeanElite = club.confederation === 'Europe' && club.reputation >= 84;
-  if (isEstablishedEuropeanElite) return 0;
+  const age = Math.max(player.debutAge || 17, state.season - player.birthYear);
+  const stage = playerCareerStage(state, player);
+  const eliteEurope = europeanEliteClubIds(state, 18);
+  const europeanLeagues = leagueStrengthRows(state, 'Europe');
+  const leagueRank = europeanLeagues.find((row) => row.league.id === club.leagueId)?.rank || 99;
+  const isEliteDestination = eliteEurope.has(club.id);
+  const success = recentMajorClubAchievement(state, club.id, 2);
 
-  const rarityBase = player.rarity === 'generational' ? 42 : player.rarity === 'legend' ? 29 : 12;
-  const agePressure = Math.max(0, age - 21) * (player.rarity === 'epic' ? 4.2 : 6.8);
-  const qualityPressure = Math.max(0, player.rating - 87) * (player.rarity === 'generational' ? 3.2 : 2.3);
-  const stagePressure = club.confederation !== 'Europe' ? 22 : club.reputation < 78 ? 16 : 8;
-  const reputationPressure = Math.max(0, player.rating - club.reputation) * 1.35;
-  const achievement = recentMajorClubAchievement(state, club.id, 2);
-  let successCredit = achievement.finals * 18;
-  if (achievement.titles) {
-    successCredit += achievement.mostRecentTitleAge <= 1 ? 82 : 55;
+  // Prime generational/legendary players expect a genuine elite environment, not merely
+  // a historically reputable club. Dynamic league strength therefore matters too.
+  let pressure = player.rarity === 'generational' ? 34 : player.rarity === 'legend' ? 24 : 10;
+  if (stage === 'development') pressure *= 0.34;
+  if (stage === 'late') pressure *= 0.48;
+
+  if (club.confederation !== 'Europe') pressure += stage === 'prime' ? 34 : 14;
+  else {
+    pressure += Math.max(0, leagueRank - 5) * (stage === 'prime' ? 5.5 : 2.4);
+    if (!isEliteDestination && stage === 'prime') pressure += player.rarity === 'epic' ? 11 : 24;
   }
-  let pressure = rarityBase + agePressure + qualityPressure + stagePressure + reputationPressure - successCredit;
-  if (youngDevelopmentStage) pressure *= 0.25;
+  pressure += Math.max(0, player.rating - (club.reputation || 60)) * 1.15;
+  pressure += Math.max(0, player.rating - clubTeammateQuality(state, player, club) - 5) * 0.8;
+  if (age >= 22) pressure += Math.max(0, player.rating - 91) * 2.1;
+
+  // Winning the UCL/Libertadores buys genuine loyalty; domestic dominance alone does not
+  // completely remove the ambition of a prime superstar.
+  if (success.titles) pressure -= success.mostRecentTitleAge <= 1 ? 68 : 42;
+  pressure -= success.finals * 13;
   return clamp(pressure, 0, 100);
 }
 
@@ -4165,7 +4269,10 @@ function askingPrice(state, player, buyer = null) {
   const years = Math.max(0, player.contractYears || 0);
   const contractFactor = years <= 1 ? 0.42 : years === 2 ? 0.68 : years === 3 ? 0.86 : 1.0;
   const discount = 1 - (buyer?.ownerNegotiationBonus || 0) * 0.34;
-  return Number((player.marketValue * happinessFactor * contractFactor * discount).toFixed(1));
+  const currentClub = player.clubId ? getClub(state, player.clubId) : null;
+  const ambitionPressure = currentClub ? eliteMigrationPressure(state, player, currentClub) : 0;
+  const ambitionDiscount = 1 - Math.min(0.24, ambitionPressure * 0.0024);
+  return Number((player.marketValue * happinessFactor * contractFactor * discount * ambitionDiscount).toFixed(1));
 }
 
 function positionNeed(state, club) {
@@ -4223,6 +4330,7 @@ function transferPlayer(state, player, buyer, seller, fee, freeTransfer = false)
     fromClubId: oldClubId,
     toClubId: buyer.id,
     fee,
+    marketValue: player.marketValue,
     freeTransfer
   };
   state.current.transfers.push(record);
@@ -4242,11 +4350,16 @@ function transferPlayer(state, player, buyer, seller, fee, freeTransfer = false)
 }
 
 function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = false) {
-  const caps = { generational: 1, legend: 4, epic: initial ? 7 : 10 };
+  const caps = { generational: initial ? 1 : 3, legend: initial ? 4 : 8, epic: initial ? 7 : 12 };
   const moved = { generational: 0, legend: 0, epic: 0 };
   const movedByPosition = { GK: 0, DF: 0, MF: 0, FW: 0 };
   const positionCaps = { GK: initial ? 1 : 2, DF: initial ? 3 : 5, MF: initial ? 4 : 7, FW: initial ? 4 : 7 };
   let moves = 0;
+  const eliteEuropeMarket = europeanEliteClubIds(state, 18);
+  const leagueRankById = new Map();
+  for (const region of ['Europe','South America','North America','Asia','Africa','Oceania']) {
+    for (const row of leagueStrengthRows(state, region)) leagueRankById.set(row.league.id, row.rank);
+  }
   const candidates = activePlayers
     .filter((player) => ['generational', 'legend', 'epic'].includes(player.rarity))
     .filter((player) => !player.transferProtectedUntilSeason || state.season >= player.transferProtectedUntilSeason)
@@ -4268,6 +4381,9 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
 
   for (const candidate of candidates) {
     const { player, seller, desire, migrationPressure } = candidate;
+    const careerStage = playerCareerStage(state, player);
+    const eliteEurope = eliteEuropeMarket;
+    const sellerDestinationScore = seller ? clubDestinationScore(state, seller) : 0;
     if (moved[player.rarity] >= caps[player.rarity]) continue;
     if (movedByPosition[player.position] >= positionCaps[player.position]) continue;
     if (seller) {
@@ -4276,6 +4392,16 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
     }
     let possibleBuyers = clubs.filter((buyer) => {
       if (buyer.id === seller?.id || buyer.division === 2) return false;
+      const buyerDestinationScore = clubDestinationScore(state, buyer);
+      const primeSuperstar = careerStage === 'prime' && ['generational', 'legend'].includes(player.rarity);
+      if (primeSuperstar) {
+        // Prime all-time talents overwhelmingly choose one of the current elite European
+        // destinations. They do not make Napoli -> Nacional style backwards moves.
+        if (!eliteEurope.has(buyer.id)) return false;
+        if (seller && buyerDestinationScore < sellerDestinationScore - 1.5) return false;
+      } else if (careerStage !== 'late' && seller && buyerDestinationScore < sellerDestinationScore - 7) {
+        return false;
+      }
       if (buyer.reputation < Math.max(70, (seller?.reputation || 64) - (desire > 50 ? 11 : 6))) return false;
       const achievement = playerAchievementScore(state, player, 3);
       // Very young elite talent usually earns an intermediate move before the superclubs.
@@ -4292,9 +4418,13 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       const weakest = samePosition.sort((a, b) => a.rating - b.rating)[0];
       return !weakest || player.rating >= weakest.rating + (player.rarity === 'epic' ? 1 : 0);
     });
-    if (migrationPressure >= 55) {
-      const europeanElite = possibleBuyers.filter((club) => club.confederation === 'Europe' && club.reputation >= 82);
-      if (europeanElite.length) possibleBuyers = europeanElite;
+    if (migrationPressure >= 45 && careerStage !== 'late') {
+      const europeanElite = possibleBuyers.filter((club) => eliteEurope.has(club.id));
+      if (europeanElite.length && ['generational','legend'].includes(player.rarity)) possibleBuyers = europeanElite;
+      else {
+        const europeanStep = possibleBuyers.filter((club) => club.confederation === 'Europe' && club.reputation >= 78);
+        if (europeanStep.length) possibleBuyers = europeanStep;
+      }
     }
     if (!possibleBuyers.length) continue;
     const buyer = weightedPick(state, possibleBuyers, (club) => {
@@ -4307,7 +4437,10 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       const giant = club.reputation >= 92;
       const steppingStone = club.reputation >= 78 && club.reputation < 90;
       const developmentFit = player.rating < 89 && achievement < 28 ? (steppingStone ? 1.9 : giant ? 0.35 : 1) : 1;
-      return Math.max(1, (club.reputation - 63 + positionFit + (club.ownerNegotiationBonus || 0) * 30) * hoardingPenalty * europePull * goalkeeperDemand * developmentFit);
+      const leagueRank = leagueRankById.get(club.leagueId) || 12;
+      const leaguePull = Math.max(0.72, 1.28 - (leagueRank - 1) * 0.045);
+      const destinationPull = Math.max(0.72, clubDestinationScore(state, club) / 88);
+      return Math.max(1, (club.reputation - 63 + positionFit + (club.ownerNegotiationBonus || 0) * 30) * hoardingPenalty * europePull * goalkeeperDemand * developmentFit * leaguePull * destinationPull);
     });
     const fee = seller ? askingPrice(state, player, buyer) : 0;
     const europeStepUp = seller?.confederation !== 'Europe' && buyer.confederation === 'Europe' ? 0.16 : 0;
@@ -4335,8 +4468,8 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
 function lowerRarityMobilityScope(state, player) {
   const roll = stableStringRoll(`${player.id}-${state.season}-mobility`);
   if (player.rarity === 'common') return 'domestic';
-  if (player.rarity === 'uncommon') return roll < 0.08 ? 'continental' : 'domestic';
-  if (player.rarity === 'rare') return roll < 0.22 ? 'global' : roll < 0.52 ? 'continental' : 'domestic';
+  if (player.rarity === 'uncommon') return roll < 0.06 ? 'continental' : 'domestic';
+  if (player.rarity === 'rare') return roll < 0.10 ? 'global' : roll < 0.45 ? 'continental' : 'domestic';
   return 'global';
 }
 
@@ -4916,6 +5049,36 @@ export function upgradeWorld(state) {
     }
     if (state.current) state.current.offseason ||= null;
     state.dataRevision = 16;
+    invalidateRuntimeCache(state);
+  }
+  if (state.dataRevision < 17) {
+    // Convert the old compressed player-career scale into realistic 17/18-to-30/39 careers
+    // while preserving each active player's relative progress through the career.
+    for (const player of state.players || []) {
+      player.debutAge ||= 18;
+      const oldLength = Math.max(8, Number(player.careerLength || 13));
+      const oldYear = Math.max(0, Number(player.careerYear || 0));
+      const progress = oldLength > 1 ? oldYear / (oldLength - 1) : 0;
+      let newLength;
+      if (player.realWorldId) {
+        const template = REAL_WORLD_STARS.find((star) => star.id === player.realWorldId);
+        newLength = mappedRealCareerLength(template?.careerLength || oldLength);
+      } else {
+        const retirementAge = 30 + Math.floor(stableStringRoll(`${player.id}-v25-retirement`) * 10);
+        newLength = clamp(retirementAge - player.debutAge, 12, 22);
+      }
+      player.careerLength = newLength;
+      player.careerLengthType = newLength <= 15 ? 'short' : newLength <= 18 ? 'medium' : 'long';
+      player.careerMultipliers = careerCurve(player.careerType || 'stable_prime', newLength);
+      player.careerYear = Math.min(newLength - 1, Math.round(progress * (newLength - 1)));
+      player.birthYear = state.season - (player.debutAge + player.careerYear);
+      player.debutSeason = state.season - player.careerYear;
+      if (player.status === 'active') {
+        player.rating = clamp(Math.round(player.baseQuality * (player.careerMultipliers[player.careerYear] ?? 0.9)), 51, 100);
+      }
+    }
+    refreshAllMarketValues(state);
+    state.dataRevision = 17;
     invalidateRuntimeCache(state);
   }
   return state;

@@ -60,7 +60,7 @@ for (const player of world.players) {
   const rarity = STAR_RARITIES[player.rarity];
   assert(Boolean(rarity), `Unknown rarity for ${player.name}`);
   assert(player.baseQuality >= rarity.min && player.baseQuality <= rarity.max, `${player.name} is outside the ${rarity.label} quality range`);
-  assert(player.careerLength >= 8 && player.careerLength <= 13, `${player.name} has an invalid career length`);
+  assert(player.careerLength >= 12 && player.careerLength <= 22, `${player.name} has an invalid career length`);
   assert(player.careerMultipliers.every((value) => value >= 0.85 && value <= 1.02), `${player.name} has an invalid career multiplier`);
 }
 

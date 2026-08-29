@@ -1030,3 +1030,17 @@ button { cursor: pointer; }
 .legend-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legend-card{display:grid;grid-template-columns:34px 1fr;gap:9px;padding:14px;border:1px solid #e3e7ed;border-radius:14px;color:#18283b;text-decoration:none}.legend-card>b{color:#d2a318}.legend-card strong,.legend-card span,.legend-card small{display:block}.legend-card span,.legend-card small{color:#758499;font-size:12px}.rivalry-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.rivalry-card{display:grid;grid-template-columns:1fr auto;gap:14px;padding:16px;border:1px solid #dde5ee;border-radius:16px}.rivalry-card>div:first-child>span{color:#3271d1;font-size:10px;font-weight:900;letter-spacing:.09em}.rivalry-card h3{margin:5px 0 8px}.rivalry-record{text-align:right}.rivalry-record strong,.rivalry-record span,.rivalry-record small{display:block}.rivalry-record strong{font-size:22px}.rivalry-record span,.rivalry-record small{color:#76869a;font-size:11px}.fhof-row.inducted{background:#fffdf4}.archive-winner-cell small{display:block;margin-top:3px;color:#79869a}
 @media(max-width:900px){.quick-link-grid,.following-grid,.record-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.country-browser,.club-hub-grid,.legend-grid,.rivalry-grid{grid-template-columns:1fr}}
 @media(max-width:620px){.quick-link-grid,.following-grid,.record-grid{grid-template-columns:1fr}.country-browser-region>div{grid-template-columns:1fr}.club-profile-hero{grid-template-columns:auto 1fr}.club-profile-hero>.rating-orbit{grid-column:1/-1;justify-self:start}.rivalry-card{grid-template-columns:1fr}.rivalry-record{text-align:left}.follow-button{margin-left:0}.entity-tabs{overflow-x:auto;display:flex;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}}
+
+/* v0.25 player career chart */
+.career-chart-wrap{width:100%;margin-top:12px}
+.career-chart{display:block;width:100%;height:auto;min-height:190px;color:var(--text,#e9edf5);overflow:visible}
+.career-chart-baseline{stroke:rgba(148,163,184,.35);stroke-width:1.5;stroke-dasharray:5 5}
+.career-chart-line{fill:none;stroke:var(--accent,#7c8cff);stroke-width:4;stroke-linejoin:round;stroke-linecap:round}
+.career-chart-current{stroke:rgba(250,204,21,.75);stroke-width:2;stroke-dasharray:4 4}
+.career-chart circle{fill:var(--panel,#161b26);stroke:var(--accent,#7c8cff);stroke-width:2}
+.career-chart circle.current{fill:#facc15;stroke:#fff;stroke-width:2.5}
+.career-chart text{fill:var(--muted,#9aa4b2);font-size:11px}
+.career-chart .axis-label{font-size:10px;letter-spacing:.08em}
+.career-chart-summary{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.career-chart-summary span{border:1px solid var(--border,#303847);border-radius:999px;padding:6px 10px;color:var(--muted,#9aa4b2);font-size:12px}
+@media(max-width:640px){.career-chart{min-height:150px}.career-chart text{font-size:9px}.career-chart-summary{gap:6px}}

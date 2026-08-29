@@ -13,7 +13,7 @@ for (const star of REAL_WORLD_STARS) {
   assert(ROLE_DEFINITIONS[star.position]?.some((role) => role.id === star.role), `${star.name} has an invalid ${star.position} role: ${star.role}`);
   const rarity = STAR_RARITIES[star.rarity];
   assert(rarity && star.baseQuality >= rarity.min && star.baseQuality <= rarity.max, `${star.name} has quality outside the ${star.rarity} range.`);
-  assert(star.careerLength >= 8 && star.careerLength <= 13, `${star.name} has an invalid career length.`);
+  assert(star.careerLength >= 12 && star.careerLength <= 22, `${star.name} has an invalid career length.`);
 }
 
 const summaries = [];

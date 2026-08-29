@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createWorld, simulateToSeasonEnd, startNextSeason, upgradeWorld } from '../src/engine.js';
 
 const world = createWorld(424242);
-assert.equal(world.dataRevision, 16);
+assert.equal(world.dataRevision, 17);
 assert.equal(world.current.seasonLabel, 'Year 1');
 
 const nationalById = new Map(world.nationalTeams.map((team) => [team.id, team]));
