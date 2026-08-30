@@ -70,6 +70,51 @@ const HISTORICAL_CLUB_REPUTATION = {
   arsenal: 88, chelsea: 86, 'aston-villa': 85, dortmund: 86, psg: 84, 'man-city': 85
 };
 
+
+// Financial power is deliberately slower-moving than squad quality. A hot two-year run can
+// make a club excellent, but it does not instantly turn Uruguay into a richer ecosystem than
+// England, Spain, Germany or Italy. Clubs can climb/fall through four institutional buckets.
+const CLUB_FINANCIAL_TIERS = {
+  S: { label: 'Tier S', rank: 4, weight: 4.8 },
+  T1: { label: 'Tier 1', rank: 3, weight: 2.8 },
+  T2: { label: 'Tier 2', rank: 2, weight: 1.65 },
+  R: { label: 'Remaining', rank: 1, weight: 0.8 }
+};
+
+const COUNTRY_FINANCE_PROFILES = {
+  A: { base: 820, amplitude: 72, min: 700, max: 960 },
+  B: { base: 455, amplitude: 48, min: 330, max: 650 },
+  C: { base: 285, amplitude: 34, min: 170, max: 500 },
+  D: { base: 150, amplitude: 22, min: 80, max: 330 }
+};
+
+const COUNTRY_FINANCE_CLASS = {
+  England:'A', Spain:'A', Germany:'A', Italy:'A',
+  France:'B', Portugal:'B', Netherlands:'B', Scotland:'B', Brazil:'B', Argentina:'B',
+  Belgium:'C', 'Türkiye':'C', Turkey:'C', Russia:'C', Greece:'C', Croatia:'C', Serbia:'C', Switzerland:'C', Austria:'C', Ukraine:'C',
+  Denmark:'C', Sweden:'C', Norway:'C', Uruguay:'C', Colombia:'C', Mexico:'C', 'United States':'C', Egypt:'C', 'Saudi Arabia':'C', Japan:'C', Morocco:'C',
+  'South Africa':'C', 'South Korea':'C', China:'C', Australia:'C', Qatar:'C', 'United Arab Emirates':'C', Ecuador:'C', Paraguay:'C', Chile:'C'
+};
+
+const CLUB_FINANCIAL_TIER_OVERRIDES = {
+  'real-madrid':'S', atletico:'S', athletic:'T1', valencia:'T1', sevilla:'T1', villarreal:'T2', 'real-sociedad':'T2', betis:'T2', deportivo:'T2',
+  'man-utd':'S', liverpool:'S', arsenal:'S', chelsea:'T1', 'man-city':'T1', 'aston-villa':'T1', tottenham:'T1', everton:'T2', newcastle:'T2', nottingham:'T2', leeds:'T2',
+  milan:'S', inter:'S', juventus:'S', roma:'T1', lazio:'T1', napoli:'T1', fiorentina:'T1', torino:'T2', bologna:'T2', parma:'T2',
+  bayern:'S', dortmund:'T1', leverkusen:'T1', gladbach:'T2', stuttgart:'T2', frankfurt:'T2',
+  marseille:'S', psg:'T1', monaco:'T1', lyon:'T1', lille:'T2',
+  benfica:'S', porto:'S', sporting:'S', braga:'T1', vitoria:'T2',
+  ajax:'S', psv:'T1', feyenoord:'T1', az:'T2',
+  river:'S', boca:'S', racing:'T1', independiente:'T1', 'san-lorenzo':'T1', estudiantes:'T2', velez:'T2',
+  flamengo:'S', santos:'S', 'sao-paulo':'S', palmeiras:'T1', corinthians:'T1', gremio:'T1', internacional:'T1', 'atletico-mg':'T1', cruzeiro:'T2',
+  nacional:'S', penarol:'S', 'defensor-sporting':'T1', 'penarol-penarol':'S',
+  america:'S', chivas:'S', 'cruz-azul':'T1', tigres:'T1', monterrey:'T1',
+  celtic:'S', rangers:'S',
+  galatasaray:'S', fenerbahce:'S', besiktas:'T1',
+  'al-ahly':'S', zamalek:'S',
+  'al-hilal':'S', 'al-nassr':'T1', 'al-ittihad':'T1',
+  'kawasaki':'S', urawa:'T1', kobe:'T1'
+};
+
 const RUNTIME_CACHE = new WeakMap();
 const PLAYER_HISTORY_CACHE = new WeakMap();
 const ELITE_MARKET_CACHE = new WeakMap();
@@ -696,6 +741,176 @@ function stableStringRoll(value = '') {
   return (hash >>> 0) / 4294967295;
 }
 
+
+function countryFinanceProfile(country) {
+  return COUNTRY_FINANCE_PROFILES[COUNTRY_FINANCE_CLASS[country] || 'D'];
+}
+
+function initialClubFinancialTier(league, clubId, index) {
+  if (CLUB_FINANCIAL_TIER_OVERRIDES[clubId]) return CLUB_FINANCIAL_TIER_OVERRIDES[clubId];
+  const count = league?.clubs?.length || 6;
+  if (count <= 6) return index === 0 ? 'S' : index <= 2 ? 'T1' : index <= 4 ? 'T2' : 'R';
+  return index <= 1 ? 'S' : index <= 5 ? 'T1' : index <= 9 ? 'T2' : 'R';
+}
+
+function initializeCountryFinance(state) {
+  state.countryFinance ||= {};
+  for (const league of LEAGUE_DEFINITIONS) {
+    if (state.countryFinance[league.country]) continue;
+    const profile = countryFinanceProfile(league.country);
+    const eraRoll = stableStringRoll(`${state.seed}-${league.country}-finance-era`);
+    const phase = stableStringRoll(`${league.country}-finance-phase`) * Math.PI * 2;
+    const initial = clamp(profile.base + (eraRoll - 0.5) * profile.amplitude * 1.35, profile.min, profile.max);
+    state.countryFinance[league.country] = {
+      class: COUNTRY_FINANCE_CLASS[league.country] || 'D',
+      basePool: Number(initial.toFixed(1)),
+      pool: Number(initial.toFixed(1)),
+      phase: Number(phase.toFixed(4)),
+      updatedSeason: state.season
+    };
+  }
+}
+
+function financialTierWeight(tier) {
+  return CLUB_FINANCIAL_TIERS[tier]?.weight || CLUB_FINANCIAL_TIERS.R.weight;
+}
+
+function countryPool(state, country) {
+  initializeCountryFinance(state);
+  return Number(state.countryFinance?.[country]?.pool || countryFinanceProfile(country).base);
+}
+
+function clubCountryAllocationMap(state, country) {
+  const clubs = (state.clubs || []).filter((club) => club.country === country && club.division === 1);
+  const pool = countryPool(state, country);
+  const totalWeight = clubs.reduce((sum, club) => sum + financialTierWeight(club.financialTier), 0) || 1;
+  return new Map(clubs.map((club) => [club.id, pool * financialTierWeight(club.financialTier) / totalWeight]));
+}
+
+function seedClubFinanceFromPools(state) {
+  for (const league of LEAGUE_DEFINITIONS) {
+    const allocations = clubCountryAllocationMap(state, league.country);
+    for (const club of (state.clubs || []).filter((item) => item.country === league.country)) {
+      const share = allocations.get(club.id) || countryPool(state, league.country) * 0.018;
+      const variation = 0.88 + stableStringRoll(`${state.seed}-${club.id}-cash`) * 0.26;
+      club.annualFinanceShare = Number(share.toFixed(1));
+      club.finances = Math.max(3, Math.round(share * 1.75 * variation));
+      club.transferBudget = Math.max(1, Math.round(Math.min(club.finances * 0.48, share * 0.92)));
+      club.wageBudget = Number(Math.max(1.2, share * 0.24).toFixed(1));
+    }
+  }
+}
+
+function buildClubFinancialPerformanceMap(state, lookback = 10) {
+  const cutoff = state.season - lookback + 1;
+  const map = new Map();
+  const ensure = (clubId) => {
+    if (!map.has(clubId)) map.set(clubId, { score:0, leagueTitles:0, continentalFinals:0, continentalTitles:0, positionSum:0, seasons:0 });
+    return map.get(clubId);
+  };
+  for (const row of state.history?.clubSeasons || []) {
+    if (row.season < cutoff) continue;
+    const item = ensure(row.clubId);
+    item.seasons += 1;
+    item.positionSum += row.position || 10;
+    if (row.position === 1) { item.score += 6; item.leagueTitles += 1; }
+    else if (row.position === 2) item.score += 2.8;
+    else if (row.position <= 4) item.score += 1.1;
+  }
+  for (const row of state.history?.champions || []) {
+    if (row.season < cutoff) continue;
+    const weight = competitionLegacyWeight(row.competitionId);
+    const continental = ['UCL','UEL','UECL','LIB','SUD','CCC','ACL','CAFCL','OCL','CWC','ICUP'].includes(row.competitionId);
+    if (row.winnerId) {
+      const item = ensure(row.winnerId);
+      item.score += Math.max(1.5, weight * 4.2);
+      if (continental) { item.continentalFinals += 1; item.continentalTitles += 1; }
+    }
+    if (row.runnerUpId) {
+      const item = ensure(row.runnerUpId);
+      item.score += Math.max(0.8, weight * 2.2);
+      if (continental) item.continentalFinals += 1;
+    }
+  }
+  for (const item of map.values()) item.avgPos = item.seasons ? item.positionSum / item.seasons : 99;
+  return map;
+}
+
+function updateClubFinancialTiers(state) {
+  const performance = buildClubFinancialPerformanceMap(state, 10);
+  for (const club of state.clubs || []) {
+    if (club.division !== 1) continue;
+    const perf = performance.get(club.id) || { score:0, leagueTitles:0, continentalFinals:0, continentalTitles:0, avgPos:99, seasons:0 };
+    if (perf.seasons < 3) continue;
+    const old = club.financialTier || 'R';
+    let next = old;
+    if (old === 'R' && perf.score >= 8) next = 'T2';
+    else if (old === 'T2' && perf.score >= 18) next = 'T1';
+    else if (old === 'T1' && perf.score >= 34 && (perf.continentalFinals > 0 || perf.leagueTitles >= 2)) next = 'S';
+    else if (old === 'S' && perf.seasons >= 7 && perf.score < 16 && perf.leagueTitles === 0 && perf.continentalFinals === 0 && perf.avgPos > 5) next = 'T1';
+    else if (old === 'T1' && perf.seasons >= 7 && perf.score < 6 && perf.avgPos > 7) next = 'T2';
+    else if (old === 'T2' && perf.seasons >= 7 && perf.score < 2.5 && perf.avgPos > 9) next = 'R';
+    if (next !== old) {
+      club.financialTier = next;
+      club.financialTierSince = state.season + 1;
+      state.pendingSeasonNews ||= [];
+      if (['S','T1'].includes(next) || ['S','T1'].includes(old)) state.pendingSeasonNews.push({
+        id:`news-${state.season+1}-financial-tier-${club.id}`,
+        week:0,
+        importance: next === 'S' || old === 'S' ? 'major' : 'digest',
+        category:'Club Status',
+        headline:`${club.name} ${CLUB_FINANCIAL_TIERS[next].rank > CLUB_FINANCIAL_TIERS[old].rank ? 'rise' : 'fall'} to ${CLUB_FINANCIAL_TIERS[next].label}`,
+        body:`A decade of results has changed ${club.name}'s institutional standing and long-term share of ${club.country}'s football economy.`
+      });
+    }
+  }
+}
+
+function countryContinentalMomentum(state, country, lookback = 6) {
+  const cutoff = state.season - lookback + 1;
+  let points = 0;
+  for (const row of state.history?.champions || []) {
+    if (row.season < cutoff || !['UCL','UEL','UECL','LIB','SUD','CCC','ACL','CAFCL','OCL','CWC','ICUP'].includes(row.competitionId)) continue;
+    const winner = (state.clubs || []).find((club)=>club.id===row.winnerId);
+    const runner = (state.clubs || []).find((club)=>club.id===row.runnerUpId);
+    const weight = competitionLegacyWeight(row.competitionId);
+    if (winner?.country === country) points += weight * 7;
+    if (runner?.country === country) points += weight * 3.2;
+  }
+  return points;
+}
+
+function updateCountryFinancePools(state) {
+  initializeCountryFinance(state);
+  const elapsed = state.season - START_SEASON;
+  for (const league of LEAGUE_DEFINITIONS) {
+    const record = state.countryFinance[league.country];
+    const profile = countryFinanceProfile(league.country);
+    const cycle = Math.sin(elapsed / 5.4 + (record.phase || 0)) * profile.amplitude;
+    const momentum = Math.min(profile.amplitude * 1.35, countryContinentalMomentum(state, league.country, 6) * 0.72);
+    const target = clamp((record.basePool || profile.base) + cycle + momentum, profile.min, profile.max);
+    record.pool = Number((record.pool * 0.82 + target * 0.18).toFixed(1));
+    record.updatedSeason = state.season + 1;
+  }
+}
+
+function refreshClubFinancesFromPools(state) {
+  for (const league of LEAGUE_DEFINITIONS) {
+    const allocations = clubCountryAllocationMap(state, league.country);
+    for (const club of (state.clubs || []).filter((item)=>item.country===league.country)) {
+      const share = allocations.get(club.id) || countryPool(state, league.country) * 0.015;
+      club.annualFinanceShare = Number(share.toFixed(1));
+      const ownerFactor = club.ownerMoneyMultiplier || 1;
+      const operatingCost = Math.max(2, (club.wageBudget || share * 0.2) * 0.58);
+      // Transfer-sale windfalls remain in cash, but recurring wealth comes from the country's
+      // pool and the club's institutional bucket. Cash naturally burns down if the owner leaves.
+      club.finances = clamp(Math.round(club.finances * 0.72 + share * ownerFactor - operatingCost), 3, 1100);
+      club.wageBudget = Number(Math.max(1.2, share * 0.24 * Math.min(1.35, ownerFactor)).toFixed(1));
+      club.transferBudget = Math.max(2, Math.round(Math.min(club.finances * 0.58, share * (0.72 + Math.max(0, ownerFactor - 1) * 0.9) + club.finances * 0.12)));
+    }
+  }
+}
+
 function coachFocusWeights(profile) {
   if (profile === 'tournament_expert') return { tournament: 0.76, balanced: 0.20, regularity: 0.04 };
   if (['possession', 'pressing', 'youth_developer'].includes(profile)) return { regularity: 0.58, balanced: 0.34, tournament: 0.08 };
@@ -939,8 +1154,7 @@ function createClubsAndPlayers(state) {
   for (const league of LEAGUE_DEFINITIONS) {
     league.clubs.forEach(([id, name, city, strength], index) => {
       const division = league.tier === 'detailed' && index >= league.activeCount ? 2 : 1;
-      const cash = Math.round(8 + ((strength - 50) ** 2) * 0.22);
-      const financeBoost = league.country === 'Spain' && ['atletico', 'athletic', 'valencia', 'sevilla'].includes(id) ? 1.22 : 1;
+      const financialTier = initialClubFinancialTier(league, id, index);
       const club = {
         id,
         name,
@@ -954,9 +1168,12 @@ function createClubsAndPlayers(state) {
         division,
         form: 0,
         fans: Math.max(12000, Math.round(((strength - 48) ** 2) * 4800)),
-        finances: Math.max(3, Math.round(cash * financeBoost)),
-        transferBudget: Math.max(1, Math.round(cash * financeBoost * 0.32)),
-        wageBudget: Number((Math.max(3, cash * financeBoost) * 0.055).toFixed(1)),
+        financialTier,
+        financialTierSince: state.season,
+        finances: 10,
+        transferBudget: 3,
+        wageBudget: 2,
+        annualFinanceShare: 0,
         reputation: HISTORICAL_CLUB_REPUTATION[id] ?? strength,
         ownerId: null,
         coachId: null,
@@ -1003,6 +1220,11 @@ function createClubsAndPlayers(state) {
     }
   }
   state.targetActivePlayers = players.length;
+  // Seed the first economy from country pools and institutional tiers before owners modify it.
+  const priorClubs = state.clubs;
+  state.clubs = clubs;
+  seedClubFinanceFromPools(state);
+  state.clubs = priorClubs;
   return { clubs, players };
 }
 
@@ -1523,12 +1745,13 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 17,
+    dataRevision: 18,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
     nextStaffId: 1,
     season: START_SEASON,
+    countryFinance: {},
     clubs: [],
     players: [],
     usedNames: {},
@@ -1571,6 +1794,7 @@ export function createWorld(seed = Date.now() % 2147483647) {
       autoStopFinals: true
     }
   };
+  initializeCountryFinance(state);
   const entities = createClubsAndPlayers(state);
   state.clubs = entities.clubs;
   state.players = entities.players;
@@ -4040,10 +4264,18 @@ function ambitionHappinessChange(state, player, club) {
   if (rarityRank >= STAR_RARITIES.epic.rank) {
     change -= Math.max(0, qualityGap - 4) * 0.9;
     change -= Math.max(0, teammateGap - 7) * 0.55;
-    if (player.rating >= 90 && success.majorHonours === 0) change -= 9;
-    if (player.rating >= 95 && success.majorHonours === 0 && success.majorAwards === 0) change -= 8;
-    if (success.majorHonours > 0) change += 12 + success.majorHonours * 4;
-    if (success.majorAwards > 0) change += 8;
+    const stage = playerCareerStage(state, player);
+    const tierRank = clubFinancialTierRank(club);
+    const europeanRank = club.confederation === 'Europe' ? (leagueStrengthRows(state,'Europe').find((row)=>row.league.id===club.leagueId)?.rank || 99) : 99;
+    if (stage === 'prime' && ['generational','legend'].includes(player.rarity)) {
+      if (club.confederation !== 'Europe') change -= 13;
+      if (tierRank < 4) change -= (4-tierRank) * 5;
+      if (europeanRank > 5 && club.confederation === 'Europe') change -= Math.min(12, (europeanRank-5)*2);
+    }
+    if (player.rating >= 90 && success.majorHonours === 0) change -= 10;
+    if (player.rating >= 95 && success.majorHonours === 0 && success.majorAwards === 0) change -= 10;
+    if (success.majorHonours > 0) change += 11 + success.majorHonours * 4;
+    if (success.majorAwards > 0) change += 6;
   } else if (player.rarity === 'rare') {
     change -= Math.max(0, qualityGap - 10) * 0.25;
   }
@@ -4056,6 +4288,8 @@ function evolveWorld(state) {
   processCoachLifecycle(state);
   invalidateRuntimeCache(state);
   runCoachMarket(state);
+  updateClubFinancialTiers(state);
+  updateCountryFinancePools(state);
   for (const club of state.clubs) {
     const leagueFinish = state.history.clubSeasons.find(
       (row) => row.season === state.season && row.clubId === club.id
@@ -4068,14 +4302,11 @@ function evolveWorld(state) {
         58,
         95
       );
-      club.reputation = clamp(club.reputation * 0.96 + club.strength * 0.04, 54, 97);
+      club.reputation = clamp(club.reputation * 0.97 + club.strength * 0.03, 54, 97);
       club.fans = Math.max(35000, Math.round(club.fans * (0.985 + performance * 0.03)));
-      const revenue = (7 + performance * 32 + club.reputation * 0.34) * (club.ownerMoneyMultiplier || 1);
-      const operatingCost = club.wageBudget * 0.72 + Math.max(2, club.reputation * 0.05);
-      club.finances = clamp(Math.round(club.finances + revenue - operatingCost), 3, 1800);
     }
-    club.transferBudget = Math.max(2, Math.round(club.finances * (0.22 + random(state) * 0.13)));
   }
+  refreshClubFinancesFromPools(state);
 
   const retirementLegacyContext = buildLegacyContext(state);
 
@@ -4176,6 +4407,7 @@ function recentMajorClubAchievement(state, clubId, lookback = 2) {
 }
 
 function computeLeagueStrengthRows(state, region = null) {
+  initializeCountryFinance(state);
   const rows = LEAGUE_DEFINITIONS
     .filter((league) => !region || league.confederation === region)
     .map((league) => {
@@ -4184,18 +4416,32 @@ function computeLeagueStrengthRows(state, region = null) {
         .map((club) => calculateTeamStrength(state, club.id, false))
         .sort((a, b) => b - a)
         .slice(0, 5);
-      const score = powers.length ? powers.reduce((sum, value) => sum + value, 0) / powers.length : 0;
-      return { league, score };
+      const powerScore = powers.length ? powers.reduce((sum, value) => sum + value, 0) / powers.length : 0;
+      const financialPool = countryPool(state, league.country);
+      const financeProfile = countryFinanceProfile(league.country);
+      const financeScore = clamp(50 + (financialPool - 80) / 880 * 44, 50, 94);
+      // Market strength has inertia: squad quality matters, but a temporary collection of stars
+      // cannot instantly turn a tertiary league into a Big Four destination.
+      const marketScore = powerScore * 0.46 + financeScore * 0.54;
+      return { league, score: marketScore, powerScore, financialPool, financeScore };
     })
     .sort((a, b) => b.score - a.score);
   return rows.map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+function clubFinancialTierRank(club) {
+  return CLUB_FINANCIAL_TIERS[club?.financialTier]?.rank || 1;
 }
 
 function clubDestinationScore(state, club) {
   if (!club) return 0;
   const power = calculateTeamStrength(state, club.id, false);
   const recent = recentMajorClubAchievement(state, club.id, 3);
-  return power * 0.56 + (club.reputation || 60) * 0.38 + recent.titles * 5 + recent.finals * 2;
+  const profile = countryFinanceProfile(club.country);
+  const pool = countryPool(state, club.country);
+  const financeScore = clamp(50 + (pool - 80) / 880 * 44, 50, 94);
+  const tierBonus = { S:14, T1:8, T2:2, R:-4 }[club.financialTier || 'R'];
+  return power * 0.40 + (club.reputation || 60) * 0.25 + financeScore * 0.17 + tierBonus + recent.titles * 5 + recent.finals * 2;
 }
 
 function getEliteMarketContext(state) {
@@ -4223,6 +4469,49 @@ function europeanEliteClubIds(state, count = 18) {
   return new Set(getEliteMarketContext(state).europeanClubRows.slice(0, count).map((row) => row.club.id));
 }
 
+function isExceptionalNonEuropeanProject(state, club) {
+  if (!club || club.confederation === 'Europe' || clubFinancialTierRank(club) < 4) return false;
+  const owner = getOwner(state, club.id);
+  const ownerElite = owner && ['generational','legend'].includes(owner.rarity) && ['billionaire','consortium','negotiator'].includes(owner.profile);
+  const power = calculateTeamStrength(state, club.id, false);
+  const recent = recentMajorClubAchievement(state, club.id, 2);
+  return Boolean(ownerElite && power >= 90 && (recent.titles > 0 || countryPool(state, club.country) >= 430));
+}
+
+function primeDestinationAllowed(state, player, buyer, seller = null) {
+  const stage = playerCareerStage(state, player);
+  if (stage === 'late') return true;
+  const buyerScore = clubDestinationScore(state, buyer);
+  const sellerScore = seller ? clubDestinationScore(state, seller) : 0;
+  const europeRows = leagueStrengthRows(state, 'Europe');
+  const europeRank = europeRows.find((row)=>row.league.id===buyer.leagueId)?.rank || 99;
+  const tierRank = clubFinancialTierRank(buyer);
+  if (stage === 'development') {
+    if (seller && buyerScore < sellerScore - 2.5) return false;
+    if (seller?.confederation === 'Europe' && buyer.confederation !== 'Europe') return false;
+    return true;
+  }
+  if (player.rarity === 'generational') {
+    if (buyer.confederation !== 'Europe') return isExceptionalNonEuropeanProject(state, buyer) && random(state) < 0.025;
+    if (europeRank > 4) return false;
+    if (tierRank < 4 && !(tierRank === 3 && europeRank <= 4 && calculateTeamStrength(state,buyer.id,false) >= 90)) return false;
+  } else if (player.rarity === 'legend') {
+    if (buyer.confederation !== 'Europe') {
+      if (seller?.confederation === buyer.confederation && tierRank >= 4 && sellerScore <= buyerScore + 1) return true;
+      return isExceptionalNonEuropeanProject(state, buyer) && random(state) < 0.045;
+    }
+    if (europeRank > 8) return false;
+    if (tierRank < 3) return false;
+  } else if (player.rarity === 'epic') {
+    // Prime Epics can live at Roma, Dortmund, Porto, Ajax, Boca, etc., but a European
+    // prime star does not voluntarily make a major sporting downgrade to Uruguay/Colombia.
+    if (seller?.confederation === 'Europe' && buyer.confederation !== 'Europe') return false;
+    if (seller && buyerScore < sellerScore - 1.5) return false;
+    if (buyer.confederation === 'Europe' && europeRank > 11 && tierRank < 4) return false;
+  }
+  return !seller || buyerScore >= sellerScore - 1.5;
+}
+
 function playerCareerStage(state, player) {
   const age = Math.max(player.debutAge || 17, state.season - player.birthYear);
   const remaining = Math.max(0, (player.careerLength || 16) - (player.careerYear || 0));
@@ -4239,27 +4528,28 @@ function eliteMigrationPressure(state, player, club) {
   const europeanLeagues = leagueStrengthRows(state, 'Europe');
   const leagueRank = europeanLeagues.find((row) => row.league.id === club.leagueId)?.rank || 99;
   const isEliteDestination = eliteEurope.has(club.id);
+  const tierRank = clubFinancialTierRank(club);
   const success = recentMajorClubAchievement(state, club.id, 2);
 
-  // Prime generational/legendary players expect a genuine elite environment, not merely
-  // a historically reputable club. Dynamic league strength therefore matters too.
-  let pressure = player.rarity === 'generational' ? 34 : player.rarity === 'legend' ? 24 : 10;
-  if (stage === 'development') pressure *= 0.34;
-  if (stage === 'late') pressure *= 0.48;
+  let pressure = player.rarity === 'generational' ? 38 : player.rarity === 'legend' ? 27 : 11;
+  if (stage === 'development') pressure *= 0.3;
+  if (stage === 'late') pressure *= 0.42;
 
-  if (club.confederation !== 'Europe') pressure += stage === 'prime' ? 34 : 14;
-  else {
-    pressure += Math.max(0, leagueRank - 5) * (stage === 'prime' ? 5.5 : 2.4);
-    if (!isEliteDestination && stage === 'prime') pressure += player.rarity === 'epic' ? 11 : 24;
+  if (stage === 'prime') {
+    if (club.confederation !== 'Europe') pressure += player.rarity === 'epic' ? 18 : 42;
+    else {
+      if (leagueRank > 4) pressure += (leagueRank - 4) * (player.rarity === 'epic' ? 2.2 : 4.6);
+      if (tierRank < 4 && ['generational','legend'].includes(player.rarity)) pressure += (4 - tierRank) * 13;
+      if (!isEliteDestination && ['generational','legend'].includes(player.rarity)) pressure += 18;
+    }
   }
-  pressure += Math.max(0, player.rating - (club.reputation || 60)) * 1.15;
-  pressure += Math.max(0, player.rating - clubTeammateQuality(state, player, club) - 5) * 0.8;
-  if (age >= 22) pressure += Math.max(0, player.rating - 91) * 2.1;
+  pressure += Math.max(0, player.rating - (club.reputation || 60)) * 1.2;
+  pressure += Math.max(0, player.rating - clubTeammateQuality(state, player, club) - 4) * 0.95;
+  if (age >= 22) pressure += Math.max(0, player.rating - 91) * 2.3;
 
-  // Winning the UCL/Libertadores buys genuine loyalty; domestic dominance alone does not
-  // completely remove the ambition of a prime superstar.
-  if (success.titles) pressure -= success.mostRecentTitleAge <= 1 ? 68 : 42;
-  pressure -= success.finals * 13;
+  // Only major continental success truly buys patience from an all-time talent.
+  if (success.titles) pressure -= success.mostRecentTitleAge <= 1 ? 70 : 44;
+  pressure -= success.finals * 14;
   return clamp(pressure, 0, 100);
 }
 
@@ -4271,7 +4561,7 @@ function askingPrice(state, player, buyer = null) {
   const discount = 1 - (buyer?.ownerNegotiationBonus || 0) * 0.34;
   const currentClub = player.clubId ? getClub(state, player.clubId) : null;
   const ambitionPressure = currentClub ? eliteMigrationPressure(state, player, currentClub) : 0;
-  const ambitionDiscount = 1 - Math.min(0.24, ambitionPressure * 0.0024);
+  const ambitionDiscount = ambitionPressure >= 88 ? 0.54 : ambitionPressure >= 72 ? 0.66 : 1 - Math.min(0.28, ambitionPressure * 0.003);
   return Number((player.marketValue * happinessFactor * contractFactor * discount * ambitionDiscount).toFixed(1));
 }
 
@@ -4321,7 +4611,8 @@ function transferPlayer(state, player, buyer, seller, fee, freeTransfer = false)
   player.clubId = buyer.id;
   player.contractYears = randomInt(state, 2, 5);
   player.salary = Number((player.marketValue * (0.055 + random(state) * 0.025)).toFixed(1));
-  player.happiness = clamp(66 + Math.round((buyer.reputation - (seller?.reputation || 62)) * 0.7) + randomInt(state, -6, 10), 42, 100);
+  const destinationGain = clubDestinationScore(state, buyer) - (seller ? clubDestinationScore(state, seller) : 60);
+  player.happiness = clamp(68 + Math.round(destinationGain * 0.65) + randomInt(state, -5, 9), 42, 100);
   player.transferListed = false;
   const record = {
     season: state.season,
@@ -4393,15 +4684,7 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
     let possibleBuyers = clubs.filter((buyer) => {
       if (buyer.id === seller?.id || buyer.division === 2) return false;
       const buyerDestinationScore = clubDestinationScore(state, buyer);
-      const primeSuperstar = careerStage === 'prime' && ['generational', 'legend'].includes(player.rarity);
-      if (primeSuperstar) {
-        // Prime all-time talents overwhelmingly choose one of the current elite European
-        // destinations. They do not make Napoli -> Nacional style backwards moves.
-        if (!eliteEurope.has(buyer.id)) return false;
-        if (seller && buyerDestinationScore < sellerDestinationScore - 1.5) return false;
-      } else if (careerStage !== 'late' && seller && buyerDestinationScore < sellerDestinationScore - 7) {
-        return false;
-      }
+      if (!primeDestinationAllowed(state, player, buyer, seller)) return false;
       if (buyer.reputation < Math.max(70, (seller?.reputation || 64) - (desire > 50 ? 11 : 6))) return false;
       const achievement = playerAchievementScore(state, player, 3);
       // Very young elite talent usually earns an intermediate move before the superclubs.
@@ -4410,7 +4693,7 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       const fee = seller ? askingPrice(state, player, buyer) : 0;
       const globalSuperstar = migrationPressure >= 55 && ['generational', 'legend'].includes(player.rarity);
       const spendingLimit = globalSuperstar
-        ? Math.max(buyer.transferBudget, buyer.finances * 0.45)
+        ? Math.max(buyer.transferBudget, buyer.finances * (clubFinancialTierRank(buyer) >= 4 ? 0.72 : 0.58))
         : buyer.transferBudget;
       const wageLimit = Math.max(0.8, buyer.wageBudget * (globalSuperstar ? 0.62 : 0.52));
       if (fee > spendingLimit || player.salary > wageLimit) return false;
@@ -4419,10 +4702,11 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       return !weakest || player.rating >= weakest.rating + (player.rarity === 'epic' ? 1 : 0);
     });
     if (migrationPressure >= 45 && careerStage !== 'late') {
-      const europeanElite = possibleBuyers.filter((club) => eliteEurope.has(club.id));
-      if (europeanElite.length && ['generational','legend'].includes(player.rarity)) possibleBuyers = europeanElite;
-      else {
-        const europeanStep = possibleBuyers.filter((club) => club.confederation === 'Europe' && club.reputation >= 78);
+      if (['generational','legend'].includes(player.rarity)) {
+        const europeanElite = possibleBuyers.filter((club) => club.confederation === 'Europe' && clubFinancialTierRank(club) >= 3);
+        if (europeanElite.length) possibleBuyers = europeanElite;
+      } else if (player.rarity === 'epic' && seller?.confederation !== 'Europe') {
+        const europeanStep = possibleBuyers.filter((club) => club.confederation === 'Europe' && clubFinancialTierRank(club) >= 3);
         if (europeanStep.length) possibleBuyers = europeanStep;
       }
     }
@@ -4438,20 +4722,23 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       const steppingStone = club.reputation >= 78 && club.reputation < 90;
       const developmentFit = player.rating < 89 && achievement < 28 ? (steppingStone ? 1.9 : giant ? 0.35 : 1) : 1;
       const leagueRank = leagueRankById.get(club.leagueId) || 12;
-      const leaguePull = Math.max(0.72, 1.28 - (leagueRank - 1) * 0.045);
-      const destinationPull = Math.max(0.72, clubDestinationScore(state, club) / 88);
-      return Math.max(1, (club.reputation - 63 + positionFit + (club.ownerNegotiationBonus || 0) * 30) * hoardingPenalty * europePull * goalkeeperDemand * developmentFit * leaguePull * destinationPull);
+      const leaguePull = Math.max(0.62, 1.36 - (leagueRank - 1) * 0.055);
+      const destinationPull = Math.max(0.58, clubDestinationScore(state, club) / 88);
+      const institutionalPull = 0.55 + clubFinancialTierRank(club) * 0.22;
+      const financePull = Math.max(0.65, Math.min(1.35, countryPool(state, club.country) / 650));
+      return Math.max(1, (club.reputation - 63 + positionFit + (club.ownerNegotiationBonus || 0) * 30) * hoardingPenalty * europePull * goalkeeperDemand * developmentFit * leaguePull * destinationPull * institutionalPull * financePull);
     });
     const fee = seller ? askingPrice(state, player, buyer) : 0;
     const europeStepUp = seller?.confederation !== 'Europe' && buyer.confederation === 'Europe' ? 0.16 : 0;
+    const destinationGain = clubDestinationScore(state, buyer) - (seller ? clubDestinationScore(state, seller) : 58);
     const acceptance = clamp(
-      0.46 + desire / 155 + migrationPressure / 145
-      + (buyer.reputation - (seller?.reputation || 60)) / 82
-      + Math.max(0, 2 - (player.contractYears || 0)) * 0.09
+      0.44 + desire / 160 + migrationPressure / 125
+      + destinationGain / 65
+      + Math.max(0, 2 - (player.contractYears || 0)) * 0.10
       + (buyer.ownerNegotiationBonus || 0) * 0.35
       + europeStepUp,
-      0.35,
-      0.995
+      0.32,
+      0.998
     );
     if (random(state) > acceptance) continue;
     const oldClubId = player.clubId;
@@ -4625,6 +4912,30 @@ export function startNextSeason(state) {
   };
   addPreseasonMagazine(state);
   return state;
+}
+
+export function getLeagueMarketRankings(state, region = null) {
+  return leagueStrengthRows(state, region).map((row)=>({
+    leagueId: row.league.id,
+    leagueName: row.league.name,
+    country: row.league.country,
+    confederation: row.league.confederation,
+    rank: row.rank,
+    score: Number(row.score.toFixed(1)),
+    powerScore: Number((row.powerScore || 0).toFixed(1)),
+    financialPool: Number((row.financialPool || 0).toFixed(1))
+  }));
+}
+
+export function getClubFinancialStatus(state, clubId) {
+  const club = getClub(state, clubId);
+  if (!club) return null;
+  return {
+    tier: club.financialTier || 'R',
+    label: CLUB_FINANCIAL_TIERS[club.financialTier || 'R'].label,
+    annualShare: Number(club.annualFinanceShare || 0),
+    countryPool: countryPool(state, club.country)
+  };
 }
 
 export function getLeagueTable(state, leagueId) {
@@ -5079,6 +5390,38 @@ export function upgradeWorld(state) {
     }
     refreshAllMarketValues(state);
     state.dataRevision = 17;
+    invalidateRuntimeCache(state);
+  }
+  if (state.dataRevision < 18) {
+    initializeCountryFinance(state);
+    // Map every existing club into the four institutional buckets. Historical clubs use
+    // explicit baselines; the rest use their original league standing. Existing giant cash
+    // piles are capped to a few years of their sustainable allocation rather than deleted.
+    for (const league of LEAGUE_DEFINITIONS) {
+      const leagueClubs = (state.clubs || []).filter((club)=>club.leagueId===league.id).sort((a,b)=>b.reputation-a.reputation || b.strength-a.strength);
+      leagueClubs.forEach((club,index)=>{
+        club.financialTier ||= initialClubFinancialTier(league, club.id, index);
+        club.financialTierSince ||= state.season;
+      });
+      const allocations = clubCountryAllocationMap(state, league.country);
+      for (const club of leagueClubs) {
+        const share = allocations.get(club.id) || countryPool(state, league.country)*0.015;
+        club.annualFinanceShare = Number(share.toFixed(1));
+        club.finances = Math.min(Number(club.finances || 0), Math.max(20, share * 3.0));
+        club.transferBudget = Math.min(Number(club.transferBudget || 0), Math.max(5, share * 1.15));
+        club.wageBudget = Number(Math.max(1.2, share*0.24*(club.ownerMoneyMultiplier||1)).toFixed(1));
+      }
+    }
+    // Prime superstars stranded far below their sporting level become visibly restless.
+    invalidateRuntimeCache(state);
+    for (const player of state.players || []) {
+      if (player.status !== 'active' || !player.clubId || !['generational','legend','epic'].includes(player.rarity)) continue;
+      const club = getClub(state, player.clubId);
+      const pressure = eliteMigrationPressure(state, player, club);
+      if (pressure >= 80) player.happiness = Math.min(player.happiness ?? 60, 18);
+      else if (pressure >= 62) player.happiness = Math.min(player.happiness ?? 60, 32);
+    }
+    state.dataRevision = 18;
     invalidateRuntimeCache(state);
   }
   return state;
