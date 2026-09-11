@@ -261,20 +261,65 @@ export function clubLogoUrl(club) {
 }
 
 const COMP_STYLE = {
-  UCL:['✦','Champions','#102f62','#d8b75d'], UEL:['◇','Europa','#ec7b18','#0f172a'], UECL:['◉','Conference','#31b35b','#111827'],
-  LIB:['♜','Libertadores','#d9b75b','#10233f'], SUD:['◆','Sudamericana','#4787c7','#13243b'], CCC:['✹','Champions Cup','#db4b4b','#12325a'],
-  ACL:['✦','Asia','#54a6dc','#102f62'], CAFCL:['✦','Africa','#d9b75b','#1d3428'], OFCCL:['✦','Oceania','#2d83c6','#10233f'],
-  WC:['◍','World Cup','#d9b75b','#172033'], CWC:['◎','Club World','#d9b75b','#172033'], INTERCONT:['◈','Intercontinental','#d9b75b','#172033'],
-  EURO:['✦','Euro','#3578d4','#142542'], COPA:['◉','Copa América','#61b1dd','#163a61'], AFCON:['◆','AFCON','#d59a3b','#223925'], ASIANCUP:['◇','Asian Cup','#34a1cc','#173448'], GOLD:['★','Gold Cup','#d9b75b','#263144'], OFC:['◍','Oceania','#42a7d4','#18344e']
+  UCL:{ label:'Champions League', kind:'ucl' },
+  UEL:{ label:'Europa Cup', kind:'uel' },
+  UECL:{ label:'Conference Cup', kind:'uecl' },
+  LIB:{ label:'Libertadores Cup', kind:'lib' },
+  SUD:{ label:'Sudamericana Cup', kind:'sud' },
+  CCC:{ label:'Champions Cup', kind:'ccc' },
+  ACL:{ label:'Asia Champions', kind:'acl' },
+  CAFCL:{ label:'Africa Champions', kind:'cafcl' },
+  OFCCL:{ label:'Oceania Champions', kind:'ofccl' },
+  WC:{ label:'World Cup', kind:'wc' },
+  CWC:{ label:'Club World Cup', kind:'cwc' },
+  INTERCONT:{ label:'Intercontinental Cup', kind:'intercont' },
+  EURO:{ label:'Euro', kind:'euro' },
+  COPA:{ label:'Copa América', kind:'copa' },
+  AFCON:{ label:'Africa Cup', kind:'afcon' },
+  ASIANCUP:{ label:'Asian Cup', kind:'asiancup' },
+  GOLD:{ label:'Gold Cup', kind:'gold' },
+  OFC:{ label:'Oceania Cup', kind:'ofc' },
+  CUP:{ label:'Domestic Cup', kind:'cup' },
+  SC:{ label:'Super Cup', kind:'sc' },
+  DEFAULT:{ label:'Competition', kind:'default' }
 };
 
+function competitionMeta(id) {
+  const raw = String(id || '');
+  if (COMP_STYLE[raw]) return COMP_STYLE[raw];
+  if (raw.startsWith('CUP-')) return COMP_STYLE.CUP;
+  if (raw.startsWith('SC-')) return COMP_STYLE.SC;
+  return COMP_STYLE.DEFAULT;
+}
+
+function emblemSvg(kind) {
+  const svg = {
+    ucl: `<svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="uclBg" x1="0" x2="1"><stop offset="0" stop-color="#173976"/><stop offset="1" stop-color="#081935"/></linearGradient></defs><circle cx="50" cy="50" r="46" fill="url(#uclBg)"/><g fill="#ffffff"><circle cx="50" cy="17" r="8"/><circle cx="24" cy="30" r="8"/><circle cx="24" cy="70" r="8"/><circle cx="50" cy="83" r="8"/><circle cx="76" cy="70" r="8"/><circle cx="76" cy="30" r="8"/></g><circle cx="50" cy="50" r="15" fill="none" stroke="#ffffff" stroke-width="5"/></svg>`,
+    uel: `<svg viewBox="0 0 100 100" aria-hidden="true"><rect x="25" y="12" width="50" height="10" rx="4" fill="#0e2c62"/><path d="M43 22 L57 22 L66 73 L34 73 Z" fill="#d4a33e"/><rect x="39" y="73" width="22" height="8" rx="3" fill="#1e396e"/><rect x="31" y="82" width="38" height="8" rx="3" fill="#0c1833"/></svg>`,
+    uecl: `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="38" fill="none" stroke="#26a65b" stroke-width="8"/><circle cx="50" cy="50" r="25" fill="none" stroke="#113f2a" stroke-width="8"/><path d="M50 12 L58 42 L88 50 L58 58 L50 88 L42 58 L12 50 L42 42 Z" fill="#ffffff" opacity=".95"/></svg>`,
+    lib: `<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M40 12 L48 12 L46 78 L40 78 Z" fill="#a77012"/><path d="M52 12 L60 12 L60 78 L54 78 Z" fill="#dcba65"/><path d="M27 25 L36 19 L36 78 L27 78 Z" fill="#7d5810"/><path d="M64 19 L73 25 L73 78 L64 78 Z" fill="#e1c580"/><rect x="22" y="79" width="56" height="9" rx="4" fill="#1e2741"/></svg>`,
+    sud: `<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 16 L68 36 L50 84 L32 36 Z" fill="#2f68c7"/><path d="M50 26 L60 38 L50 67 L40 38 Z" fill="#ffffff" opacity=".92"/><circle cx="50" cy="18" r="7" fill="#e0b34c"/></svg>`,
+    ccc: `<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 10 L61 38 L90 38 L66 55 L75 85 L50 67 L25 85 L34 55 L10 38 L39 38 Z" fill="#dd5050"/><circle cx="50" cy="50" r="11" fill="#ffffff" opacity=".92"/></svg>`,
+    acl: `<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 8 C66 25 78 39 78 54 C78 73 65 87 50 92 C35 87 22 73 22 54 C22 39 34 25 50 8 Z" fill="#2f89d2"/><path d="M50 24 L58 43 L78 50 L58 57 L50 76 L42 57 L22 50 L42 43 Z" fill="#ffffff" opacity=".95"/></svg>`,
+    cafcl: `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="37" fill="#223925"/><path d="M50 15 L58 36 L82 38 L63 53 L69 76 L50 63 L31 76 L37 53 L18 38 L42 36 Z" fill="#dfbf66"/></svg>`,
+    ofccl: `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="40" fill="#123a64"/><path d="M20 58 C30 38 44 27 60 20 C56 32 60 45 75 55 C60 58 44 67 35 81 C33 71 28 63 20 58 Z" fill="#5dc0ff"/></svg>`,
+    wc: `<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M39 12 C42 27 34 34 34 45 C34 61 44 74 50 88 C56 74 66 61 66 45 C66 34 58 27 61 12 Z" fill="#d6ab48"/><circle cx="50" cy="24" r="10" fill="#f4d67f"/><path d="M42 48 C47 54 53 54 58 48" stroke="#fff3cf" stroke-width="5" fill="none" stroke-linecap="round"/></svg>`,
+    cwc: `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="38" fill="#1b2644"/><circle cx="50" cy="50" r="26" fill="none" stroke="#dfbc62" stroke-width="8"/><path d="M50 18 L57 43 L82 50 L57 57 L50 82 L43 57 L18 50 L43 43 Z" fill="#ffffff"/></svg>`,
+    intercont: `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="32" fill="#14213b" stroke="#d5ad53" stroke-width="8"/><path d="M50 18 v64 M18 50 h64 M28 28 q22 10 44 0 M28 72 q22 -10 44 0" stroke="#ffffff" stroke-width="4" fill="none" opacity=".9"/></svg>`,
+    euro: `<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M38 12 L62 12 L57 66 L43 66 Z" fill="#2b65c0"/><circle cx="50" cy="22" r="10" fill="#5ea7ff"/><rect x="35" y="66" width="30" height="8" rx="3" fill="#d7b35a"/><rect x="28" y="80" width="44" height="8" rx="3" fill="#152545"/></svg>`,
+    copa: `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="40" r="20" fill="#5aa8d4"/><path d="M37 56 h26 l-4 18 H41 Z" fill="#1a4165"/><rect x="30" y="77" width="40" height="8" rx="4" fill="#d0ad57"/></svg>`,
+    afcon: `<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 12 L68 36 L50 88 L32 36 Z" fill="#c49439"/><circle cx="50" cy="29" r="8" fill="#f2d07a"/><path d="M50 42 L58 58 L50 73 L42 58 Z" fill="#294629"/></svg>`,
+    asiancup: `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="34" fill="#173b55" stroke="#3cb6e0" stroke-width="8"/><path d="M50 18 C62 32 66 41 66 50 C66 61 59 70 50 82 C41 70 34 61 34 50 C34 41 38 32 50 18 Z" fill="#ffffff"/></svg>`,
+    gold: `<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M42 16 H58 L62 56 H38 Z" fill="#d4aa4a"/><rect x="40" y="56" width="20" height="9" rx="3" fill="#fff4cf"/><rect x="31" y="76" width="38" height="8" rx="4" fill="#1c2743"/></svg>`,
+    ofc: `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="36" fill="#1a3d63"/><path d="M27 61 C34 41 46 30 63 24 C59 35 64 48 76 57 C59 60 45 69 38 80 C35 73 31 67 27 61 Z" fill="#90d5ff"/></svg>`,
+    cup: `<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M35 20 H65 L61 48 C59 61 53 69 50 76 C47 69 41 61 39 48 Z" fill="#d5ae58"/><path d="M28 28 C17 28 17 46 33 50" stroke="#173259" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M72 28 C83 28 83 46 67 50" stroke="#173259" stroke-width="6" fill="none" stroke-linecap="round"/><rect x="34" y="79" width="32" height="8" rx="4" fill="#173259"/></svg>`,
+    sc: `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="36" fill="#162845"/><path d="M50 18 L59 40 L83 40 L63 55 L71 80 L50 66 L29 80 L37 55 L17 40 L41 40 Z" fill="#d5ae58"/></svg>`,
+    default: `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="36" fill="#18304c"/><path d="M50 17 L61 39 L85 42 L67 58 L72 82 L50 70 L28 82 L33 58 L15 42 L39 39 Z" fill="#58a4ff"/></svg>`
+  };
+  return svg[kind] || svg.default;
+}
+
 export function competitionEmblem(id, size = 'md') {
-  const key = String(id || '').replace(/^CUP-|^SC-/, '');
-  let style = COMP_STYLE[id];
-  if (!style) {
-    if (String(id).startsWith('CUP-')) style = ['♜','Cup','#d9b75b','#1b2d44'];
-    else if (String(id).startsWith('SC-')) style = ['✦','Super Cup','#d9b75b','#1b2d44'];
-    else style = ['◈','Competition','#4d9df3','#16283d'];
-  }
-  return `<span class="competition-emblem competition-emblem-${size}" style="--emblem-accent:${style[2]};--emblem-bg:${style[3]}" title="${style[1]}"><b>${style[0]}</b></span>`;
+  const meta = competitionMeta(id);
+  return `<span class="competition-emblem competition-emblem-${size} emblem-${meta.kind}" title="${meta.label}"><span class="competition-emblem-core">${emblemSvg(meta.kind)}</span></span>`;
 }

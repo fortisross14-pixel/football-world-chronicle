@@ -1,6 +1,6 @@
 {
   "name": "football-world-chronicle",
-  "version": "2.90.0",
+  "version": "2.94.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "check": "node --check src/data.js && node --check src/engine.js && node --check src/visuals.js && node --check src/app.js && node --check api/save.js && node --check api/load.js",
     "test": "node scripts/smoke-test.mjs",
     "balance": "node scripts/balance-test.mjs",
-    "regression": "node scripts/regression-v290.mjs",
+    "regression": "node scripts/regression-v291.mjs",
     "favorite-balance": "node scripts/favorite-balance-v17.mjs",
     "market-balance": "node scripts/market-balance-v18.mjs",
     "regression-v19": "node scripts/regression-v19.mjs",
