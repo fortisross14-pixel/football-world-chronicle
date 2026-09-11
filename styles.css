@@ -1046,7 +1046,7 @@ button { cursor: pointer; }
 @media(max-width:640px){.career-chart{min-height:150px}.career-chart text{font-size:9px}.career-chart-summary{gap:6px}}
 
 
-/* v0.28.1 LIGHT SHOW-OFF THEME ---------------------------------------------
+/* v0.28.3 LIGHT SHOW-OFF THEME ---------------------------------------------
    Restores the original white/blue Football World Chronicle identity while
    keeping the richer motion, badges, portraits, mobile navigation and polish. */
 :root {
@@ -1310,7 +1310,8 @@ button:active,.primary-button:active,.control-button:active,.nav-link:active,.co
   background:linear-gradient(145deg,#edf6ff,#dfeefa);
   box-shadow:0 7px 18px rgba(26,46,66,.12),inset 0 0 0 1px rgba(255,255,255,.6);
 }
-.anime-avatar svg { width:100%;height:100%;display:block; }
+.anime-avatar svg,.anime-avatar .anime-face-image { width:100%;height:100%;display:block; }
+.anime-face-image { object-fit:cover; object-position:center 28%; transform:scale(1.015); }
 .avatar-sm { width:42px;height:42px;border-radius:12px; }
 .avatar-md { width:64px;height:64px; }
 .avatar-lg { width:78px;height:78px; }
@@ -1465,3 +1466,118 @@ button:active,.primary-button:active,.control-button:active,.nav-link:active,.co
 .transfer-player-visual { display:flex;align-items:center;gap:10px; }
 .transfer-player-visual>div { min-width:0; }
 .transfer-player-visual small { display:block; }
+
+
+/* v0.28.5 ELITE/GENERIC FACE SPLIT ----------------------------------------------------
+   Portrait resilience, denser mobile navigation, readable long names and
+   keyboard/reduced-motion accessibility without changing the white/blue theme. */
+.build-chip {
+  display:inline-flex;
+  align-items:center;
+  margin-right:7px;
+  padding:3px 6px;
+  border-radius:999px;
+  color:#b7d8f7;
+  background:rgba(52,138,222,.16);
+  border:1px solid rgba(125,190,248,.16);
+  font-size:8px;
+  font-weight:850;
+  letter-spacing:.04em;
+}
+
+.anime-face-fallback {
+  position:absolute;
+  inset:0;
+  z-index:0;
+  display:grid;
+  place-items:center;
+  color:#50708d;
+  background:linear-gradient(145deg,#eaf4fd,#dceaf6);
+  font-size:clamp(10px,1.2vw,18px);
+  font-weight:900;
+  letter-spacing:.04em;
+}
+.anime-face-image { position:relative; z-index:1; object-position:center center; }
+.anime-avatar.avatar-missing { border-style:dashed; }
+.anime-avatar.avatar-missing .anime-face-fallback { color:#315a7d; }
+
+/* Make people feel like people everywhere they appear, and stop long names
+   from forcing cards/tables wider than the viewport. */
+.search-group a > div,
+.following-grid > a > div,
+.leader-person,
+.squad-row > div,
+.transfer-player-visual > div,
+.archive-person { min-width:0; }
+.search-group a strong,
+.search-group a small,
+.following-grid > a strong,
+.following-grid > a small,
+.squad-row div strong,
+.squad-row div small {
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.search-group .anime-avatar { width:42px; height:42px; border-radius:12px; }
+.following-grid .anime-avatar { width:42px; height:42px; border-radius:12px; }
+.search-group .country-flag-xs,
+.following-grid .country-flag-xs { vertical-align:-2px; }
+
+.table-scroll,
+.bracket-scroll,
+.competition-tabs,
+.sub-tabs,
+.week-strip,
+.career-curve { -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+.sub-tabs { overflow-x:auto; flex-wrap:nowrap; padding-bottom:4px; }
+.sub-tabs a { flex:0 0 auto; }
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline:3px solid rgba(22,113,217,.28);
+  outline-offset:2px;
+}
+
+@media (max-width:900px) {
+  /* The v0.8 two-row toolbar already lays itself out. Avoid the later theme's
+     fixed minimum height, which left excess whitespace on smaller phones. */
+  .topbar { min-height:0; }
+  /* Sticky competition tabs must clear both rows of the mobile top bar. */
+  .competition-tabs { top:108px; }
+  .content { padding-bottom:96px; }
+}
+
+@media (max-width:620px) {
+  .page-head { gap:12px; margin-bottom:17px; }
+  .page-head p { font-size:13px; line-height:1.48; }
+  .panel { padding:16px; }
+  .panel-head { gap:10px; }
+  .panel-head .muted { max-width:48%; text-align:right; }
+  .competition-tabs { margin-inline:-4px; padding:4px; border-radius:12px; }
+  .competition-tabs a { min-width:104px; padding:9px 11px; }
+  .sub-tabs { margin-inline:-2px; }
+  .hero-panel { border-radius:18px; }
+  .hero-copy p { font-size:13px; }
+}
+
+@media (max-width:420px) {
+  .competition-tabs { top:104px; }
+  .date-kicker { font-size:8px; }
+  .date-main { font-size:11px; }
+  .sim-controls .control-button,
+  .sim-controls .primary-button { height:40px; min-height:40px; }
+  .search-group a { gap:9px; padding-inline:6px; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after {
+    scroll-behavior:auto!important;
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+  }
+}

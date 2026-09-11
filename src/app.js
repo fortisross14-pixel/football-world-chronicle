@@ -40,7 +40,7 @@ import {
   getClubFinancialStatus,
   upgradeWorld
 } from './engine.js';
-import { playerPortrait as visualPlayerPortrait, coachPortrait as visualCoachPortrait, clubLogoUrl, competitionEmblem } from './visuals.js';
+import { playerPortrait as visualPlayerPortrait, coachPortrait as visualCoachPortrait, clubLogoUrls, competitionEmblem } from './visuals.js';
 
 let state = null;
 let searchOpen = false;
@@ -78,6 +78,7 @@ let leagueRegionFilter = 'ALL';
 let offseasonTab = 'summary';
 let hallCache = { signature: '', data: null };
 
+const APP_VERSION = '0.28.5';
 const DB_NAME = 'football-world-chronicle-v4';
 const DB_STORE = 'worlds';
 const DB_KEY = 'expanded-world-v4';
@@ -297,8 +298,10 @@ function crest(id, size = 'md') {
   const style = visual
     ? `--crest-bg:${visual[0]};--crest-ink:${visual[1]};--crest-border:${visual[2]}`
     : `--crest-bg:hsl(${club?.crestHue ?? 210},60%,42%);--crest-ink:#fff;--crest-border:hsla(${club?.crestHue ?? 210},60%,28%,.55)`;
-  const logo = clubLogoUrl(club);
-  return `<span class="crest crest-${size} ${logo ? 'crest-with-logo' : ''}" style="${style}" title="${esc(club?.name || id)}"><span class="crest-fallback">${esc(initials)}</span>${logo ? `<img data-club-logo src="${logo}" alt="" loading="lazy">` : ''}</span>`;
+  const logos = clubLogoUrls(club);
+  const logo = logos[0] || '';
+  const alternatives = logos.slice(1).join('|');
+  return `<span class="crest crest-${size} ${logo ? 'crest-with-logo' : ''}" style="${style}" title="${esc(club?.name || id)}"><span class="crest-fallback">${esc(initials)}</span>${logo ? `<img data-club-logo src="${logo}" data-logo-alts="${esc(alternatives)}" alt="" loading="lazy" decoding="async">` : ''}</span>`;
 }
 
 function playerPortrait(player, size = 'md') {
@@ -437,7 +440,7 @@ function sidebar(currentRoute) {
       </div>
       <button class="ghost-button full cloud-code-button" data-action="cloud-code">${icon('cloud')} Cloud code</button>
       <button class="ghost-button full reset-button" data-action="reset-world">${icon('reset')} Reset universe</button>
-      <div class="save-note">${esc(cloudStatus)}</div>
+      <div class="save-note"><span class="build-chip">v${APP_VERSION}</span>${esc(cloudStatus)}</div>
     </div>
   </aside>`;
 }
@@ -530,8 +533,8 @@ function latestSeasonSummary() {
 function followingPanel() {
   const items = [];
   for (const id of state.preferences.favoriteClubIds || []) { const club=clubById(id); if(club){const table=getLeagueTable(state,club.leagueId);const pos=table.findIndex((r)=>r.teamId===id)+1; items.push(`<a href="#/club/${id}/overview">${crest(id,'sm')}<div><strong>${esc(club.name)}</strong><small>${pos?`#${pos} ${esc(competitionLabel(club.leagueId))}`:esc(club.country)} · Power ${Math.round(getTeamPower(state,id,false))}</small></div></a>`);} }
-  for (const id of state.preferences.favoritePlayerIds || []) { const player=playerById(id); if(player){const totals=getPlayerTotals(state,id,'club'); items.push(`<a href="#/player/${id}/overview">${flag(player.nationality,'xs')}<div><strong>${esc(player.name)}</strong><small>${player.clubId?esc(clubById(player.clubId)?.name):'Free agent'} · ${totals.goals} career goals · ${player.rating}</small></div></a>`);} }
-  for (const id of state.preferences.favoriteCoachIds || []) { const coach=coachById(id); if(coach) items.push(`<a href="#/coach/${id}/overview">${flag(coach.nationality,'xs')}<div><strong>${esc(coach.name)}</strong><small>${coach.clubId?esc(clubById(coach.clubId)?.name):coach.nationalTeamId?esc(nationalById(coach.nationalTeamId)?.name):coach.status==='retired'?'Retired':'Free agent'} · Quality ${coach.quality}</small></div></a>`); }
+  for (const id of state.preferences.favoritePlayerIds || []) { const player=playerById(id); if(player){const totals=getPlayerTotals(state,id,'club'); items.push(`<a href="#/player/${id}/overview">${playerPortrait(player,'sm')}<div><strong>${esc(player.name)}</strong><small>${flag(player.nationality,'xs')} ${player.clubId?esc(clubById(player.clubId)?.name):'Free agent'} · ${totals.goals} career goals · ${player.rating}</small></div></a>`);} }
+  for (const id of state.preferences.favoriteCoachIds || []) { const coach=coachById(id); if(coach) items.push(`<a href="#/coach/${id}/overview">${coachPortrait(coach,'sm')}<div><strong>${esc(coach.name)}</strong><small>${flag(coach.nationality,'xs')} ${coach.clubId?esc(clubById(coach.clubId)?.name):coach.nationalTeamId?esc(nationalById(coach.nationalTeamId)?.name):coach.status==='retired'?'Retired':'Free agent'} · Quality ${coach.quality}</small></div></a>`); }
   for (const id of state.preferences.favoriteNationIds || []) { const nation=nationalById(id); if(nation) items.push(`<a href="#/nation/${id}/overview">${flag(id,'xs')}<div><strong>${esc(nation.name)}</strong><small>${esc(nation.region)} · Strength ${nation.strength}</small></div></a>`); }
   if (!items.length) return '';
   return `<section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">FOLLOWING</span><h3>Your football world</h3></div><span class="muted">Pinned clubs, people and nations</span></div><div class="following-grid">${items.slice(0,12).join('')}</div></section>`;
@@ -2175,8 +2178,22 @@ function manageCloudCode() {
 }
 
 function bind() {
+  document.querySelectorAll('[data-face-image]').forEach((image) => image.addEventListener('error', () => {
+    image.style.display = 'none';
+    image.closest('.anime-avatar')?.classList.add('avatar-missing');
+  }));
   document.querySelectorAll('[data-flag-image]').forEach((image) => image.addEventListener('error', () => { image.style.display = 'none'; }));
-  document.querySelectorAll('[data-club-logo]').forEach((image) => image.addEventListener('error', () => { image.style.display = 'none'; image.closest('.crest')?.classList.remove('crest-with-logo'); }));
+  document.querySelectorAll('[data-club-logo]').forEach((image) => image.addEventListener('error', () => {
+    const remaining = String(image.dataset.logoAlts || '').split('|').filter(Boolean);
+    const next = remaining.shift();
+    if (next) {
+      image.dataset.logoAlts = remaining.join('|');
+      image.src = next;
+      return;
+    }
+    image.style.display = 'none';
+    image.closest('.crest')?.classList.remove('crest-with-logo');
+  }));
   const globalSearch = document.getElementById('global-search');
   if (globalSearch) { setTimeout(() => globalSearch.focus(), 20); globalSearch.addEventListener('input', (event) => searchResults(event.target.value)); }
   const playerSearchInput = document.getElementById('player-search');
@@ -2249,7 +2266,7 @@ function searchResults(query) {
   const players = state.players.filter((player) => player.name.toLowerCase().includes(term)).slice(0, 12);
   const coaches = (state.coaches || []).filter((coach) => coach.name.toLowerCase().includes(term)).slice(0, 10);
   const nations = NATIONAL_TEAMS.filter((team) => team.name.toLowerCase().includes(term)).slice(0, 8);
-  root.innerHTML = `${clubs.length ? `<div class="search-group"><span>CLUBS</span>${clubs.map((club) => `<a href="#/club/${club.id}/overview">${crest(club.id, 'sm')}<div><strong>${esc(club.name)}</strong><small>${esc(club.country)} · ${esc(club.city)}</small></div></a>`).join('')}</div>` : ''}${players.length ? `<div class="search-group"><span>PLAYERS</span>${players.map((player) => `<a href="#/player/${player.id}/overview">${flag(player.nationality)}<div><strong>${esc(player.name)}</strong><small>${player.clubId ? esc(clubById(player.clubId)?.name) : 'National pool'} · ${player.position} ${player.rating} · ${STAR_RARITIES[player.rarity].label}</small></div></a>`).join('')}</div>` : ''}${coaches.length ? `<div class="search-group"><span>COACHES</span>${coaches.map((coach) => `<a href="#/coach/${coach.id}">${flag(coach.nationality)}<div><strong>${esc(coach.name)}</strong><small>${STAFF_RARITIES[coach.rarity].label} · ${esc(COACH_PROFILES[coach.profile]?.label || coach.profileLabel)} · ${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')} · ${coach.clubId ? esc(clubById(coach.clubId)?.name) : coach.nationalTeamId ? esc(nationalById(coach.nationalTeamId)?.name) : 'Free agent'}</small></div></a>`).join('')}</div>` : ''}${nations.length ? `<div class="search-group"><span>NATIONAL TEAMS</span>${nations.map((nation) => `<a href="#/nation/${nation.id}">${flag(nation.id)}<div><strong>${esc(nation.name)}</strong><small>${esc(nation.region)} · Tier ${nation.tier}</small></div></a>`).join('')}</div>` : ''}`;
+  root.innerHTML = `${clubs.length ? `<div class="search-group"><span>CLUBS</span>${clubs.map((club) => `<a href="#/club/${club.id}/overview">${crest(club.id, 'sm')}<div><strong>${esc(club.name)}</strong><small>${esc(club.country)} · ${esc(club.city)}</small></div></a>`).join('')}</div>` : ''}${players.length ? `<div class="search-group"><span>PLAYERS</span>${players.map((player) => `<a href="#/player/${player.id}/overview">${playerPortrait(player, 'sm')}<div><strong>${esc(player.name)}</strong><small>${flag(player.nationality, 'xs')} ${player.clubId ? esc(clubById(player.clubId)?.name) : 'National pool'} · ${player.position} ${player.rating} · ${STAR_RARITIES[player.rarity].label}</small></div></a>`).join('')}</div>` : ''}${coaches.length ? `<div class="search-group"><span>COACHES</span>${coaches.map((coach) => `<a href="#/coach/${coach.id}">${coachPortrait(coach, 'sm')}<div><strong>${esc(coach.name)}</strong><small>${flag(coach.nationality, 'xs')} ${STAFF_RARITIES[coach.rarity].label} · ${esc(COACH_PROFILES[coach.profile]?.label || coach.profileLabel)} · ${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')} · ${coach.clubId ? esc(clubById(coach.clubId)?.name) : coach.nationalTeamId ? esc(nationalById(coach.nationalTeamId)?.name) : 'Free agent'}</small></div></a>`).join('')}</div>` : ''}${nations.length ? `<div class="search-group"><span>NATIONAL TEAMS</span>${nations.map((nation) => `<a href="#/nation/${nation.id}">${flag(nation.id)}<div><strong>${esc(nation.name)}</strong><small>${esc(nation.region)} · Tier ${nation.tier}</small></div></a>`).join('')}</div>` : ''}`;
 }
 
 document.addEventListener('click', async (event) => {
