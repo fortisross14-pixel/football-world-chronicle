@@ -2494,3 +2494,310 @@ body {
     padding: 9px 12px;
   }
 }
+
+/* v2.95 CLEANUP PASS ------------------------------------------------------ */
+/* Remove image-driven header experiments and return to a cleaner premium UI. */
+.topbar-branding {
+  min-width: 250px;
+  justify-content: center;
+  align-items: flex-start;
+}
+.topbar-logo-lockup {
+  width: auto;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0;
+  text-decoration: none;
+}
+.topbar-lockup-image,
+.page-head-sweep,
+.page-head-seal,
+.entity-profile-ribbon img { display: none; }
+.topbar-logo-line,
+.topbar-slogan {
+  display: block;
+}
+.topbar-logo-main {
+  color: #ffffff;
+  font-size: clamp(20px, 1.9vw, 26px);
+  font-weight: 900;
+  letter-spacing: .01em;
+}
+.topbar-logo-accent {
+  color: var(--premium-gold);
+  font-size: clamp(28px, 2.6vw, 40px);
+  font-weight: 900;
+  letter-spacing: .005em;
+  line-height: .9;
+}
+.topbar-slogan {
+  margin-top: 4px;
+  color: rgba(229, 240, 251, .92);
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-style: normal;
+}
+.topbar-command { min-width: 0; }
+.topbar-tools { justify-content: flex-end; }
+.sim-controls { flex-wrap: wrap; }
+.sim-controls .control-button,
+.sim-controls .primary-button,
+.sim-controls .season-complete-chip {
+  white-space: nowrap;
+}
+
+.premium-page-head {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.98), rgba(246,250,255,.96));
+  border: 1px solid rgba(202, 217, 231, .94);
+}
+.premium-page-head::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top right, rgba(25, 119, 226, .09), transparent 23%),
+    linear-gradient(90deg, rgba(212,175,87,.14), transparent 24%),
+    repeating-linear-gradient(115deg, rgba(18,74,141,.028) 0 2px, transparent 2px 12px);
+  pointer-events: none;
+}
+.page-head-copy,
+.page-head-mark { position: relative; z-index: 1; }
+.page-head-mark {
+  width: 76px;
+  min-width: 76px;
+  height: 76px;
+  border-radius: 22px;
+  border: 1px solid rgba(206, 177, 95, .42);
+  background: linear-gradient(180deg, rgba(255,248,228,.98), rgba(244,231,188,.92));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.82), 0 8px 20px rgba(15, 37, 65, .07);
+}
+.page-head-mark b {
+  position: static;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: #846115;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+.premium-page-head::after {
+  left: 22px;
+  bottom: 14px;
+  width: min(260px, 34vw);
+  height: 3px;
+  background: linear-gradient(90deg, var(--premium-gold), rgba(23,111,224,.85));
+}
+.page-head-chip { font-size: 10px; }
+.page-head h1 { max-width: none; }
+
+/* Avatar cleanup: stronger rarity background, cleaner framing, no overlap. */
+.anime-avatar {
+  padding: 4px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.anime-avatar.rarity-common { --avatar-bg: linear-gradient(145deg,#f7f9fb,#e7edf2); --avatar-border:#d5dfe7; }
+.anime-avatar.rarity-uncommon { --avatar-bg: linear-gradient(145deg,#f0faf4,#dff3e7); --avatar-border:#baddc8; }
+.anime-avatar.rarity-rare { --avatar-bg: linear-gradient(145deg,#eef6ff,#d9ebff); --avatar-border:#aecded; }
+.anime-avatar.rarity-epic { --avatar-bg: linear-gradient(145deg,#f5edff,#e5d6fb); --avatar-border:#bea0eb; }
+.anime-avatar.rarity-legend { --avatar-bg: linear-gradient(145deg,#fff6df,#f7e2a9); --avatar-border:#ddb85d; }
+.anime-avatar.rarity-generational { --avatar-bg: linear-gradient(145deg,#fff1f1,#ffd2d2); --avatar-border:#ea9494; }
+.anime-face-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center 52%;
+  transform: scale(.92);
+  transform-origin: center center;
+  image-rendering: auto;
+}
+.avatar-sm .anime-face-image { transform: scale(.90); }
+.avatar-xl .anime-face-image { transform: scale(.90) translateY(1px); }
+.player-hero-portrait,
+.coach-hero-portrait {
+  width: 154px;
+  min-width: 154px;
+  padding: 4px 16px 20px 0;
+}
+.player-hero-portrait .avatar-xl,
+.coach-hero-portrait .avatar-xl {
+  width: 118px;
+  height: 118px;
+  border-radius: 24px;
+}
+.position-corner {
+  right: 6px;
+  bottom: 4px;
+  min-width: 36px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 11px;
+  z-index: 4;
+}
+.entity-profile-ribbon {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255,246,217,.98), rgba(248,230,175,.94));
+  border: 1px solid rgba(223, 189, 95, .55);
+  color: #725114;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.84), 0 8px 18px rgba(15, 37, 65, .08);
+}
+.entity-profile-ribbon::before {
+  content: attr(alt);
+  display: block;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+
+/* Mobile topbar cleanup */
+@media (max-width: 1180px) {
+  .topbar.premium-topbar {
+    grid-template-columns: minmax(220px,auto) 1fr;
+    grid-template-areas:
+      "brand controls"
+      "command controls";
+    align-items: center;
+  }
+  .topbar-branding { grid-area: brand; }
+  .topbar-command { grid-area: command; }
+  .sim-controls { grid-area: controls; justify-content: flex-end; }
+}
+
+@media (max-width: 900px) {
+  .topbar.premium-topbar {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "brand"
+      "command"
+      "controls";
+    gap: 10px;
+    padding: 12px;
+    min-height: 0;
+  }
+  .topbar-branding {
+    min-width: 0;
+    justify-content: flex-start;
+    max-width: 100%;
+  }
+  .topbar-logo-main { font-size: 18px; }
+  .topbar-logo-accent { font-size: 28px; }
+  .topbar-slogan { font-size: 10px; }
+  .topbar-command {
+    display: grid;
+    grid-template-columns: auto minmax(0,1fr) auto;
+    gap: 8px;
+  }
+  .date-block {
+    min-width: 0;
+    padding: 9px 12px;
+  }
+  .sim-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    gap: 8px;
+    width: 100%;
+  }
+  .sim-controls .control-button,
+  .sim-controls .primary-button,
+  .sim-controls .season-complete-chip {
+    min-width: 0;
+    width: 100%;
+    padding-inline: 10px;
+  }
+  .premium-page-head {
+    padding: 16px 18px 18px;
+  }
+  .page-head-mark {
+    width: 60px;
+    min-width: 60px;
+    height: 60px;
+    border-radius: 18px;
+  }
+  .page-head-mark b { font-size: 15px; }
+  .player-hero-portrait,
+  .coach-hero-portrait {
+    width: 124px;
+    min-width: 124px;
+    padding: 0 12px 16px 0;
+  }
+  .player-hero-portrait .avatar-xl,
+  .coach-hero-portrait .avatar-xl {
+    width: 98px;
+    height: 98px;
+    border-radius: 20px;
+  }
+}
+
+@media (max-width: 620px) {
+  .topbar-command { grid-template-columns: auto 1fr auto; }
+  .topbar .mobile-home-button,
+  .topbar .menu-button,
+  .topbar .search-button,
+  .topbar .cloud-save-top {
+    min-width: 44px;
+    width: 44px;
+    padding: 0;
+  }
+  .topbar .mobile-home-button span:last-child,
+  .topbar .menu-button span:last-child,
+  .topbar .search-button span:last-child,
+  .topbar .cloud-save-top span:last-child { display: none; }
+  .premium-page-head {
+    gap: 12px;
+    padding: 14px 15px 16px;
+  }
+  .page-head-mark {
+    width: 52px;
+    min-width: 52px;
+    height: 52px;
+  }
+  .page-head-mark b { font-size: 13px; }
+  .entity-hero.player-entity,
+  .entity-hero.coach-entity { gap: 14px; }
+  .player-hero-portrait,
+  .coach-hero-portrait {
+    width: 108px;
+    min-width: 108px;
+    padding: 0 10px 14px 0;
+  }
+  .player-hero-portrait .avatar-xl,
+  .coach-hero-portrait .avatar-xl {
+    width: 88px;
+    height: 88px;
+    border-radius: 18px;
+  }
+  .position-corner {
+    right: 2px;
+    bottom: -1px;
+    min-width: 34px;
+    height: 24px;
+    font-size: 10px;
+  }
+}
+.entity-profile-ribbon::before { content: none; }
+.entity-profile-ribbon {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+}
+.anime-face-image {
+  object-position: center 54%;
+  transform: scale(.88) translateY(3px);
+  filter:
+    drop-shadow(0 0 1px rgba(255,255,255,.95))
+    drop-shadow(0 0 2px rgba(255,255,255,.85));
+}
+.avatar-sm .anime-face-image { transform: scale(.87) translateY(2px); }
+.avatar-xl .anime-face-image { transform: scale(.86) translateY(4px); }
