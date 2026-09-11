@@ -61,54 +61,43 @@ function groupForCountry(country, seed) {
 }
 
 
-const PLAYER_FACE_GROUPS = {
+
+// Phase 1 face rebuild for v2.90:
+// - restore a clean, fixed portrait library
+// - route elite rarities through a large personality-rich pool
+// - route lower rarities through a smaller, intentionally repeatable pool
+// - keep face images free of baked UI effects so rarity backgrounds live in CSS
+const PLAYER_FACE_GROUPS_BASE = {
   light: [0,2,3,7,10,11,15,18,23,26,27,33,34,37,38,41,54,55,61,63,64,65,68,69,73,79,82],
   medium: [6,13,20,22,24,25,32,44,47,48,49,52,56,66,71,72,80,81,83],
   dark: [1,4,8,12,16,19,21,28,35,42,46,53,57,62,70,77],
   east: [5,14,29,30,36,39,40,43,45,50,51,58,59,60,67,74,75,76,78]
 };
 
-const COACH_FACE_GROUPS = {
+const COACH_FACE_GROUPS_BASE = {
   light: [0,1,4,8,10,12,14,15,18,19],
-  medium: [2,9,13,16,20,22,24,25,33,36],
-  dark: [3,21,23,29,39],
-  east: [5,6,7,11,17,26,31]
+  medium: [2,9,13,16],
+  dark: [3],
+  east: [5,6,7,11,17]
 };
 
-// Explicit elite/generic split for v0.28.5.
-// Elite rarities (generational/legend/epic) draw from a broad, personality-rich pool.
-// Regular rarities (rare/uncommon/common) intentionally recycle a compact, more generic pool.
 const GENERIC_PLAYER_GROUPS = {
-  light: [0,2,11,18,33,61],
-  medium: [4,13,20,27,34,73],
-  dark: [1,19,21,28,70,88],
-  east: [5,14,29,30,60,75]
+  light: [0,2,10,11,18,23,33,41,63,82],
+  medium: [6,13,20,22,24,25,32,44,47,48],
+  dark: [1,4,8,12,16,19,21,28,35,46],
+  east: [5,14,29,30,36,39,40,43,45,50]
 };
 
 const GENERIC_COACH_GROUPS = {
-  light: [0,1,12],
-  medium: [2,13,16],
-  dark: [3,23,29],
-  east: [5,11,17]
-};
-
-const EXTRA_ELITE_PLAYER_GROUPS = {
-  light: [31,115,168,169,170,171,172,173],
-  medium: [9,17,93,101,174,175,176,177,178,179],
-  dark: [180,181,182,183,184,185],
-  east: [186,187,188,189,190,191]
-};
-
-const EXTRA_ELITE_COACH_GROUPS = {
-  light: [40,41,42],
-  medium: [43,44,45],
-  dark: [46,47,48],
-  east: [49,50,51]
+  light: [1,4,12],
+  medium: [2,9,13],
+  dark: [3,23],
+  east: [5,11]
 };
 
 const FACE_POOL_COUNTS = {
-  player: { elite: 168, generic: 24, total: 192 },
-  coach: { elite: 40, generic: 12, total: 52 }
+  player: { elite: 160, generic: 40, total: 200 },
+  coach: { elite: 40, generic: 10, total: 50 }
 };
 
 const ELITE_RARITIES = new Set(['generational', 'legend', 'epic']);
@@ -117,44 +106,49 @@ function unique(list) {
   return [...new Set(list)];
 }
 
+function flattenGroups(groups) {
+  return unique(Object.values(groups).flat());
+}
+
 function subtract(list, blocked) {
   const blockedSet = new Set(blocked);
   return list.filter((item) => !blockedSet.has(item));
 }
 
-function flattenGroups(groups) {
-  return unique(Object.values(groups).flat());
+function canonicalPlayerFaceIndex(index) {
+  if (index < 84) return index;
+  if (index < 120) return index - 84;
+  if (index < 168) return index - 84;
+  return index - 168;
 }
 
-function buildExpandedGroups(baseGroups, baseCount) {
-  const expanded = {};
-  for (const [group, list] of Object.entries(baseGroups)) {
-    const basePool = unique(list.map((index) => index % baseCount));
-    expanded[group] = [...basePool, ...basePool.map((index) => index + baseCount)];
+function canonicalCoachFaceIndex(index) {
+  if (index < 20) return index;
+  if (index < 40) return index - 20;
+  return index - 40;
+}
+
+function buildDerivedFaceGroups(total, baseGroups, canonicalizer) {
+  const groupMap = new Map();
+  for (const [group, indexes] of Object.entries(baseGroups)) {
+    indexes.forEach((index) => groupMap.set(index, group));
   }
-  return expanded;
+  const derived = { light: [], medium: [], dark: [], east: [] };
+  for (let index = 0; index < total; index += 1) {
+    const canonical = canonicalizer(index);
+    const group = groupMap.get(canonical) || 'light';
+    derived[group].push(index);
+  }
+  return derived;
 }
 
-const EXPANDED_PLAYER_GROUPS = buildExpandedGroups(PLAYER_FACE_GROUPS, 84);
-const EXPANDED_COACH_GROUPS = buildExpandedGroups(COACH_FACE_GROUPS, 20);
+const ALL_PLAYER_GROUPS = buildDerivedFaceGroups(FACE_POOL_COUNTS.player.total, PLAYER_FACE_GROUPS_BASE, canonicalPlayerFaceIndex);
+const ALL_COACH_GROUPS = buildDerivedFaceGroups(FACE_POOL_COUNTS.coach.total, COACH_FACE_GROUPS_BASE, canonicalCoachFaceIndex);
 const GENERIC_PLAYER_SET = new Set(flattenGroups(GENERIC_PLAYER_GROUPS));
 const GENERIC_COACH_SET = new Set(flattenGroups(GENERIC_COACH_GROUPS));
 
-const ELITE_PLAYER_GROUPS = Object.fromEntries(Object.keys(EXPANDED_PLAYER_GROUPS).map((group) => [
-  group,
-  unique([
-    ...subtract(EXPANDED_PLAYER_GROUPS[group], GENERIC_PLAYER_SET),
-    ...(EXTRA_ELITE_PLAYER_GROUPS[group] || [])
-  ])
-]));
-
-const ELITE_COACH_GROUPS = Object.fromEntries(Object.keys(EXPANDED_COACH_GROUPS).map((group) => [
-  group,
-  unique([
-    ...subtract(EXPANDED_COACH_GROUPS[group], GENERIC_COACH_SET),
-    ...(EXTRA_ELITE_COACH_GROUPS[group] || [])
-  ])
-]));
+const ELITE_PLAYER_GROUPS = Object.fromEntries(Object.entries(ALL_PLAYER_GROUPS).map(([group, list]) => [group, subtract(list, GENERIC_PLAYER_SET)]));
+const ELITE_COACH_GROUPS = Object.fromEntries(Object.entries(ALL_COACH_GROUPS).map(([group, list]) => [group, subtract(list, GENERIC_COACH_SET)]));
 
 function appearanceGroup(country, seed) {
   const group = groupForCountry(country, seed);
@@ -174,9 +168,7 @@ function facePool(entity, kind, nationalityName) {
   const genericGroups = kind === 'coach' ? GENERIC_COACH_GROUPS : GENERIC_PLAYER_GROUPS;
   const eliteGroups = kind === 'coach' ? ELITE_COACH_GROUPS : ELITE_PLAYER_GROUPS;
   const primary = ELITE_RARITIES.has(rarity) ? eliteGroups : genericGroups;
-  const fallback = ELITE_RARITIES.has(rarity)
-    ? flattenGroups(eliteGroups)
-    : flattenGroups(genericGroups);
+  const fallback = ELITE_RARITIES.has(rarity) ? flattenGroups(eliteGroups) : flattenGroups(genericGroups);
   return primary[group] || primary.light || fallback;
 }
 
@@ -212,8 +204,10 @@ export function getFacePoolCounts() {
 export function getFacePoolPlan() {
   return JSON.parse(JSON.stringify({
     counts: FACE_POOL_COUNTS,
+    allPlayerGroups: ALL_PLAYER_GROUPS,
     elitePlayerGroups: ELITE_PLAYER_GROUPS,
     genericPlayerGroups: GENERIC_PLAYER_GROUPS,
+    allCoachGroups: ALL_COACH_GROUPS,
     eliteCoachGroups: ELITE_COACH_GROUPS,
     genericCoachGroups: GENERIC_COACH_GROUPS
   }));
