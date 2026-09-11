@@ -1,12 +1,12 @@
 {
   "name": "football-world-chronicle",
-  "version": "0.26.0",
+  "version": "0.28.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "http-server . -p 4173 -c-1",
     "start": "http-server . -p 4173 -c-1",
-    "check": "node --check src/data.js && node --check src/engine.js && node --check src/app.js && node --check api/save.js && node --check api/load.js",
+    "check": "node --check src/data.js && node --check src/engine.js && node --check src/visuals.js && node --check src/app.js && node --check api/save.js && node --check api/load.js",
     "test": "node scripts/smoke-test.mjs",
     "balance": "node scripts/balance-test.mjs",
     "regression": "node scripts/regression-v07.mjs",
@@ -19,7 +19,8 @@
     "regression-v23": "node scripts/regression-v23.mjs",
     "regression-v24": "node scripts/regression-v24.mjs",
     "regression-v25": "node scripts/regression-v25.mjs",
-    "regression-v26": "node scripts/regression-v26.mjs"
+    "regression-v26": "node scripts/regression-v26.mjs",
+    "regression-v27": "node scripts/regression-v27.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.0",

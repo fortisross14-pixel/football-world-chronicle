@@ -904,9 +904,124 @@ function refreshClubFinancesFromPools(state) {
       const operatingCost = Math.max(2, (club.wageBudget || share * 0.2) * 0.58);
       // Transfer-sale windfalls remain in cash, but recurring wealth comes from the country's
       // pool and the club's institutional bucket. Cash naturally burns down if the owner leaves.
-      club.finances = clamp(Math.round(club.finances * 0.72 + share * ownerFactor - operatingCost), 3, 1100);
+      const owner = (state.owners || []).find((item) => item.id === club.ownerId && item.status !== 'retired');
+      const ownerInjection = ownerAnnualCashInjection(owner);
+      club.ownerAnnualInjection = ownerInjection;
+      club.finances = clamp(Math.round(club.finances * 0.72 + share * ownerFactor + ownerInjection - operatingCost), 3, 1100);
       club.wageBudget = Number(Math.max(1.2, share * 0.24 * Math.min(1.35, ownerFactor)).toFixed(1));
-      club.transferBudget = Math.max(2, Math.round(Math.min(club.finances * 0.58, share * (0.72 + Math.max(0, ownerFactor - 1) * 0.9) + club.finances * 0.12)));
+      club.transferBudget = Math.max(2, Math.round(Math.min(club.finances * 0.58, share * (0.72 + Math.max(0, ownerFactor - 1) * 0.9) + ownerInjection * 0.72 + club.finances * 0.12)));
+    }
+  }
+}
+
+function buildClubPayrollMap(state) {
+  const map = new Map();
+  for (const player of state.players || []) {
+    if (player.status !== 'active' || !player.clubId) continue;
+    let item = map.get(player.clubId);
+    if (!item) { item = { bill: 0, players: [] }; map.set(player.clubId, item); }
+    item.bill += Number(player.salary || 0);
+    item.players.push(player);
+  }
+  return map;
+}
+
+function initializePayrollAnchors(state) {
+  const payroll = buildClubPayrollMap(state);
+  for (const club of state.clubs || []) {
+    const bill = payroll.get(club.id)?.bill || 0;
+    if (!Number.isFinite(club.payrollAnchor) || club.payrollAnchor <= 0) club.payrollAnchor = Math.max(1, Number(bill.toFixed(1)));
+    club.payrollPressureRatio = Number((bill / Math.max(1, club.payrollAnchor)).toFixed(3));
+    club.lastSalaryRisePct ||= 0;
+  }
+}
+
+function clubSeasonAchievementScore(state, clubId, season) {
+  let score = 0;
+  const finish = (state.history?.clubSeasons || []).find((row) => row.season === season && row.clubId === clubId);
+  if (finish) {
+    if (finish.position === 1) score += 3.4;
+    else if (finish.position === 2) score += 1.15;
+    else if (finish.position <= 4) score += 0.45;
+  }
+  const leagueIds = new Set(LEAGUE_DEFINITIONS.map((league) => league.id));
+  for (const row of state.history?.champions || []) {
+    if (row.season !== season) continue;
+    const id = row.competitionId;
+    if (row.winnerId === clubId) {
+      if (id === 'UCL') score += 5.0;
+      else if (id === 'CWC') score += 4.5;
+      else if (id === 'LIB') score += 4.0;
+      else if (['UEL','CCC','ACL','CAFCL','OCL'].includes(id)) score += 2.8;
+      else if (id === 'UECL' || id === 'SUD') score += 2.2;
+      else if (leagueIds.has(id)) score += 0.4;
+      else if (id.startsWith('CUP-')) score += 1.35;
+      else if (id.startsWith('SC-') || id === 'SUPERCUP' || id === 'ICUP') score += 0.55;
+    } else if (row.runnerUpId === clubId) {
+      if (id === 'UCL') score += 2.2;
+      else if (['CWC','LIB'].includes(id)) score += 1.65;
+      else if (['UEL','UECL','CCC','ACL','CAFCL','SUD'].includes(id)) score += 0.9;
+    }
+  }
+  return score;
+}
+
+function applyDynastySalaryPressure(state) {
+  state.pendingPayrollChanges ||= [];
+  initializePayrollAnchors(state);
+  const payroll = buildClubPayrollMap(state);
+  for (const club of state.clubs || []) {
+    if (club.division !== 1) continue;
+    club.payrollAnchor = Number(Math.max(1, club.payrollAnchor * 1.018).toFixed(2));
+    const scores = [0,1,2,3].map((ago) => clubSeasonAchievementScore(state, club.id, state.season - ago));
+    const current = scores[0];
+    const item = payroll.get(club.id) || { bill: 0, players: [] };
+    if (current < 3.0) {
+      club.payrollPressureRatio = Number((item.bill / Math.max(1, club.payrollAnchor)).toFixed(3));
+      club.lastSalaryRisePct = 0;
+      continue;
+    }
+    const good3 = scores.slice(0,3).filter((value) => value >= 3.0).length;
+    const good4 = scores.filter((value) => value >= 3.0).length;
+    const consecutive3 = scores.slice(0,3).every((value) => value >= 3.0);
+    let rise = 0.08;
+    if (good3 >= 2) rise = 0.14;
+    if (good4 >= 3) rise = 0.23;
+    if (consecutive3) rise = 0.28;
+    const before = item.bill;
+    let after = 0;
+    for (const player of item.players) {
+      const loyaltyPremium = ['common','uncommon'].includes(player.rarity) ? 1.025 : 1;
+      player.salary = Number(Math.max(0.2, (Number(player.salary || 0.2) * (1 + rise) * loyaltyPremium)).toFixed(1));
+      after += player.salary;
+    }
+    club.lastSalaryRisePct = Math.round(rise * 100);
+    club.payrollPressureRatio = Number((after / Math.max(1, club.payrollAnchor)).toFixed(3));
+    state.pendingPayrollChanges.push({
+      season: state.season + 1, clubId: club.id, achievementScore: Number(current.toFixed(1)),
+      goodSeasonsLast3: good3, goodSeasonsLast4: good4, risePct: Math.round(rise * 100),
+      wageBefore: Number(before.toFixed(1)), wageAfter: Number(after.toFixed(1)), pressure: club.payrollPressureRatio
+    });
+  }
+}
+
+function applyPayrollBudgetConstraints(state) {
+  const payroll = buildClubPayrollMap(state);
+  for (const club of state.clubs || []) {
+    const item = payroll.get(club.id) || { bill: 0, players: [] };
+    const anchor = Math.max(1, club.payrollAnchor || item.bill || 1);
+    const pressure = item.bill / anchor;
+    club.payrollPressureRatio = Number(pressure.toFixed(3));
+    if (pressure <= 1.06) continue;
+    const budgetFactor = clamp(1 - (pressure - 1.02) * 1.35, 0.06, 0.92);
+    club.transferBudget = Number(Math.max(0.5, club.transferBudget * budgetFactor).toFixed(1));
+    if (pressure >= 1.20) {
+      for (const player of item.players) {
+        if (STAR_RARITIES[player.rarity]?.rank >= STAR_RARITIES.rare.rank && player.rating >= 78) {
+          player.happiness = Math.max(5, (player.happiness ?? 60) - Math.round((pressure - 1) * 24));
+          player.payrollSalePressure = Number(Math.max(0, pressure - 1).toFixed(2));
+        }
+      }
     }
   }
 }
@@ -1029,11 +1144,28 @@ function createStaffMember(state, type, nationality, assignment = {}) {
 
 
 function ownerTermYears(state) {
+  // Presidents/owners are eras, not permanent club attributes. Most projects last
+  // 6-9 years; short 4-5 year experiments and 10-12 year dynasties remain possible.
   const roll = random(state);
-  if (roll < 0.12) return randomInt(state, 5, 7);
-  if (roll < 0.36) return randomInt(state, 8, 11);
-  if (roll < 0.72) return randomInt(state, 12, 16);
-  return randomInt(state, 17, 22);
+  if (roll < 0.22) return randomInt(state, 4, 5);
+  if (roll < 0.72) return randomInt(state, 6, 9);
+  return randomInt(state, 10, 12);
+}
+
+function ownerAnnualCashInjection(owner) {
+  if (!owner) return 0;
+  const rank = STAFF_RARITIES[owner.rarity]?.rank || 1;
+  if (owner.profile === 'billionaire') {
+    const amounts = { 1: 8, 2: 16, 3: 35, 4: 65, 5: 100, 6: 125 };
+    return amounts[rank] || 8;
+  }
+  if (owner.profile === 'consortium') {
+    const amounts = { 1: 5, 2: 10, 3: 22, 4: 38, 5: 58, 6: 78 };
+    return amounts[rank] || 5;
+  }
+  if (owner.profile === 'celebrity') return Math.max(0, (rank - 1) * 5);
+  if (owner.profile === 'businessman') return Math.max(0, (rank - 1) * 3);
+  return 0;
 }
 
 function applyOwnerToClub(state, owner, club, preserveFinances = true) {
@@ -1048,6 +1180,7 @@ function applyOwnerToClub(state, owner, club, preserveFinances = true) {
   club.ownerSportingBonus = (ownerData.sporting - 1) * rarityImpact * 4;
   club.ownerNegotiationBonus = Math.max(0, ownerData.negotiation - 1) * rarityImpact;
   club.ownerPatience = ownerData.patience;
+  club.ownerAnnualInjection = ownerAnnualCashInjection(owner);
   if (!preserveFinances) {
     club.finances = Math.max(3, Math.round(club.finances * club.ownerMoneyMultiplier));
     club.transferBudget = Math.max(1, Math.round(club.finances * 0.3));
@@ -1065,6 +1198,9 @@ function processOwnerTurnover(state) {
     if (owner.yearsRemaining > 0) continue;
     owner.formerClubId = owner.clubId;
     owner.clubId = null;
+    owner.status = 'retired';
+    owner.departureSeason = state.season;
+    owner.departureSeasonLabel = formatSeason(state.season);
     const nationality = COUNTRY_TO_CODE[club.country] || 'eng';
     const replacement = createStaffMember(state, 'owner', nationality, {
       clubId: club.id,
@@ -1074,14 +1210,13 @@ function processOwnerTurnover(state) {
     });
     state.owners.push(replacement);
     applyOwnerToClub(state, replacement, club, true);
-    if ((club.reputation || 0) >= 80) {
-      state.pendingOwnerChanges.push({
-        season: state.season + 1,
-        clubId: club.id,
-        formerOwnerId: owner.id,
-        ownerId: replacement.id
-      });
-    }
+    state.pendingOwnerChanges.push({
+      season: state.season + 1,
+      clubId: club.id,
+      formerOwnerId: owner.id,
+      ownerId: replacement.id,
+      major: (club.reputation || 0) >= 80
+    });
     state.pendingSeasonNews.push({
       id: `news-${state.season + 1}-owner-${club.id}`,
       week: 0,
@@ -1727,6 +1862,7 @@ function newCurrentSeason(state) {
     newCoaches: [...(state.pendingSeasonCoaches || [])],
     retirements: [...(state.pendingSeasonRetirements || [])],
     ownerChanges: [...(state.pendingOwnerChanges || [])],
+    payrollChanges: [...(state.pendingPayrollChanges || [])],
     news: [
       ...(state.pendingSeasonNews || []),
       {
@@ -1745,7 +1881,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 18,
+    dataRevision: 19,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -1764,6 +1900,7 @@ export function createWorld(seed = Date.now() % 2147483647) {
     pendingSeasonCoaches: [],
     pendingSeasonRetirements: [],
     pendingOwnerChanges: [],
+    pendingPayrollChanges: [],
     internationalCycle: { worldCupQualified: [], regionalQualified: {} },
     current: null,
     history: {
@@ -1807,6 +1944,7 @@ export function createWorld(seed = Date.now() % 2147483647) {
   state.pendingOwnerChanges = [];
   runTransferMarket(state, true);
   ensureClubRosters(state);
+  initializePayrollAnchors(state);
   addPreseasonMagazine(state);
   invalidateRuntimeCache(state);
   refreshAllClubStrengths(state);
@@ -3332,12 +3470,15 @@ function playerLegacyBreakdown(state, player, context = null) {
   const rows = context?.playerRows.get(player.id) || (state.history.playerSeasons || []).filter((row) => row.playerId === player.id);
   const honours = context?.honours.get(player.id) || (state.history.honours || []).filter((row) => row.playerId === player.id);
   const awards = context?.awards.get(player.id) || (state.history.awards || []).filter((row) => row.playerId === player.id && row.rank === 1);
-  let performance = 0, production = 0, games = 0, weightedGames = 0;
+  let performance = 0, production = 0, games = 0, weightedGames = 0, goals = 0, assists = 0, cleanSheets = 0;
   for (const row of rows) {
     const weight = legacyCompetitionWeight(state, row.competitionId, row.isInternational);
     const apps = row.apps || 0;
     const rating = row.averageRating || 6.4;
     games += apps;
+    goals += row.goals || 0;
+    assists += row.assists || 0;
+    cleanSheets += row.cleanSheets || 0;
     weightedGames += apps * weight;
     performance += Math.max(0, rating - 6.45) * apps * weight * 1.55;
     if (player.position === 'FW') production += ((row.goals || 0) * 0.58 + (row.assists || 0) * 0.34) * weight;
@@ -3345,16 +3486,21 @@ function playerLegacyBreakdown(state, player, context = null) {
     else if (player.position === 'DF') production += ((row.goals || 0) * 0.22 + (row.assists || 0) * 0.27 + (row.cleanSheets || 0) * 0.25) * weight;
     else production += ((row.cleanSheets || 0) * 0.48 + (row.assists || 0) * 0.08) * weight;
   }
-  let titleScore = 0, majorTitles = 0;
+  let titleScore = 0, majorTitles = 0, eliteTitles = 0, continentalTitles = 0, domesticLeagueTitles = 0;
+  const continentalIds = new Set(['UCL','UEL','UECL','LIB','SUD','CCC','ACL','CAFCL','OCL','CWC','ICUP']);
+  const leagueIds = new Set(LEAGUE_DEFINITIONS.map((league) => league.id));
   for (const honour of honours) {
     const weight = legacyCompetitionWeight(state, honour.competitionId, honour.isInternational);
     titleScore += 7.5 * weight;
     if (weight >= 2.7) majorTitles += 1;
+    if (weight >= 3.5 || honour.competitionId === 'WC') eliteTitles += 1;
+    if (continentalIds.has(honour.competitionId)) continentalTitles += 1;
+    if (leagueIds.has(honour.competitionId)) domesticLeagueTitles += 1;
   }
   const awardScore = awards.reduce((sum, row) => sum + legacyAwardValue(state, row), 0);
   const ballonDor = awards.filter((row) => String(row.name).includes("Ballon d'Or")).length;
   const score = performance + production + titleScore + awardScore + weightedGames * 0.018;
-  return { score, performance, production, titleScore, awardScore, games, weightedGames, honours: honours.length, awards: awards.length, majorTitles, ballonDor };
+  return { score, performance, production, titleScore, awardScore, games, weightedGames, goals, assists, cleanSheets, honours: honours.length, awards: awards.length, majorTitles, eliteTitles, continentalTitles, domesticLeagueTitles, ballonDor };
 }
 
 function clubLegendBreakdowns(state, player, context = null) {
@@ -3394,12 +3540,16 @@ function evaluateRetiringPlayerLegacy(state, player, context = null) {
   state.history.hallOfFamePlayers ||= [];
   state.history.clubLegends ||= [];
   const legacy = playerLegacyBreakdown(state, player, context);
-  const eliteCareer = legacy.majorTitles >= 2 || legacy.ballonDor >= 1 || legacy.awards >= 4;
-  const qualifies = legacy.games >= 180 && eliteCareer && (
-    legacy.score >= 560 ||
-    (legacy.ballonDor >= 1 && legacy.score >= 390) ||
-    (legacy.majorTitles >= 5 && legacy.awards >= 3 && legacy.score >= 450)
-  );
+  // Hall of Fame means a completed exceptional career, not merely being one of the
+  // best players in the first few simulated seasons. There are several legitimate
+  // routes: global greatness, sustained elite winning, or overwhelming regional
+  // dominance (e.g. a Mexican icon with ~10 league titles and several CCC wins).
+  const globalGreat = legacy.games >= 220 && legacy.ballonDor >= 1 && legacy.score >= 640;
+  const eliteWinner = legacy.games >= 240 && legacy.eliteTitles >= 2 && legacy.majorTitles >= 4 && legacy.score >= 780;
+  const sustainedMajor = legacy.games >= 320 && legacy.majorTitles >= 7 && legacy.awards >= 5 && legacy.score >= 900;
+  const regionalDynasty = legacy.games >= 340 && legacy.domesticLeagueTitles >= 7 && legacy.continentalTitles >= 2 && legacy.score >= 920;
+  const statisticalTitan = legacy.games >= 460 && legacy.honours >= 7 && legacy.awards >= 8 && legacy.score >= 1080;
+  const qualifies = globalGreat || eliteWinner || sustainedMajor || regionalDynasty || statisticalTitan;
   const alreadyHall = context?.hallSet ? context.hallSet.has(player.id) : state.history.hallOfFamePlayers.some((row)=>row.playerId===player.id);
   if (qualifies && !alreadyHall) {
     state.history.hallOfFamePlayers.push({
@@ -4380,6 +4530,8 @@ function evolveWorld(state) {
     }
     player.fame = clamp(player.fame + randomInt(state, -1, 2), 5, 100);
   }
+  applyDynastySalaryPressure(state);
+  applyPayrollBudgetConstraints(state);
   generateReplacementStars(state);
   ensureClubRosters(state);
   invalidateRuntimeCache(state);
@@ -4562,7 +4714,9 @@ function askingPrice(state, player, buyer = null) {
   const currentClub = player.clubId ? getClub(state, player.clubId) : null;
   const ambitionPressure = currentClub ? eliteMigrationPressure(state, player, currentClub) : 0;
   const ambitionDiscount = ambitionPressure >= 88 ? 0.54 : ambitionPressure >= 72 ? 0.66 : 1 - Math.min(0.28, ambitionPressure * 0.003);
-  return Number((player.marketValue * happinessFactor * contractFactor * discount * ambitionDiscount).toFixed(1));
+  const payrollPressure = Number(currentClub?.payrollPressureRatio || 1);
+  const payrollDiscount = payrollPressure >= 1.55 ? 0.62 : payrollPressure >= 1.35 ? 0.74 : payrollPressure >= 1.18 ? 0.86 : 1;
+  return Number((player.marketValue * happinessFactor * contractFactor * discount * ambitionDiscount * payrollDiscount).toFixed(1));
 }
 
 function positionNeed(state, club) {
@@ -4661,7 +4815,8 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
         + Math.max(0, 3 - (player.contractYears || 0)) * 15
         + random(state) * 25
         + (seller ? Math.max(0, 86 - seller.reputation) * (['generational', 'legend'].includes(player.rarity) ? 0.75 : 0.42) : 32)
-        + migrationPressure * 0.9;
+        + migrationPressure * 0.9
+        + Math.max(0, Number(seller?.payrollPressureRatio || 1) - 1) * 62;
       return { player, seller, desire, migrationPressure };
     })
     .filter(({ player, seller, desire, migrationPressure }) => !seller || desire >= (player.rarity === 'generational' ? 34 : 27) || migrationPressure >= 48)
@@ -4679,10 +4834,11 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
     if (movedByPosition[player.position] >= positionCaps[player.position]) continue;
     if (seller) {
       const sellerTarget = seller.division === 2 ? CLUB_ROSTER_TARGET.reserve : CLUB_ROSTER_TARGET[seller.tier];
-      if ((rosters.get(seller.id)?.length || 0) <= Math.max(3, sellerTarget - 1) && migrationPressure < 70) continue;
+      if ((rosters.get(seller.id)?.length || 0) <= Math.max(3, sellerTarget - 1) && migrationPressure < 70 && Number(seller.payrollPressureRatio || 1) < 1.20) continue;
     }
     let possibleBuyers = clubs.filter((buyer) => {
       if (buyer.id === seller?.id || buyer.division === 2) return false;
+      if (!initial && Number(buyer.payrollPressureRatio || 1) >= 1.18) return false;
       const buyerDestinationScore = clubDestinationScore(state, buyer);
       if (!primeDestinationAllowed(state, player, buyer, seller)) return false;
       if (buyer.reputation < Math.max(70, (seller?.reputation || 64) - (desire > 50 ? 11 : 6))) return false;
@@ -4752,6 +4908,150 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
   return moves;
 }
 
+function runPayrollClearanceMarket(state, clubs, rosters) {
+  let moves = 0;
+  // Clearance is a top-club/dynasty mechanic. Smaller clubs still lose transfer budget
+  // under wage pressure, but we avoid scanning the entire global market for hundreds of
+  // modest domestic champions every summer.
+  const pressured = clubs
+    .filter((club) => club.division === 1 && Number(club.payrollPressureRatio || 1) >= 1.25)
+    .filter((club) => clubFinancialTierRank(club) >= 3 || (club.reputation || 0) >= 82)
+    .sort((a,b) => Number(b.payrollPressureRatio || 1) - Number(a.payrollPressureRatio || 1))
+    .slice(0, 48);
+  const healthyBuyers = clubs
+    .filter((club) => club.division === 1 && Number(club.payrollPressureRatio || 1) < 1.22)
+    .sort((a,b) => clubDestinationScore(state,b)-clubDestinationScore(state,a))
+    .slice(0, 140);
+  for (const seller of pressured) {
+    const anchor = Math.max(1, Number(seller.payrollAnchor || 1));
+    let roster = rosters.get(seller.id) || [];
+    let bill = roster.reduce((sum, player) => sum + Number(player.salary || 0), 0);
+    const target = anchor * 1.16;
+    let sold = 0;
+    const candidates = [...roster]
+      .filter((player) => STAR_RARITIES[player.rarity]?.rank >= STAR_RARITIES.rare.rank)
+      .filter((player) => !player.transferProtectedUntilSeason || state.season >= player.transferProtectedUntilSeason)
+      .sort((a,b) => {
+        const ar = STAR_RARITIES[a.rarity]?.rank || 1, br = STAR_RARITIES[b.rarity]?.rank || 1;
+        const aSale = ar * 18 + a.rating * 0.6 + (a.marketValue || 0) * 0.08 + (a.salary || 0) * 1.6;
+        const bSale = br * 18 + b.rating * 0.6 + (b.marketValue || 0) * 0.08 + (b.salary || 0) * 1.6;
+        return bSale - aSale;
+      });
+    for (const player of candidates) {
+      if (bill <= target || sold >= 3) break;
+      const sellerDestination = clubDestinationScore(state, seller);
+      let buyers = healthyBuyers.filter((buyer) => {
+        if (buyer.id === seller.id || buyer.division !== 1 || Number(buyer.payrollPressureRatio || 1) >= 1.22) return false;
+        const buyerDestination = clubDestinationScore(state, buyer);
+        const stage = playerCareerStage(state, player);
+        if (stage !== 'late' && player.rarity === 'generational') {
+          const rank = leagueStrengthRows(state, 'Europe').find((row)=>row.league.id===buyer.leagueId)?.rank || 99;
+          if (buyer.confederation !== 'Europe' || rank > 5 || clubFinancialTierRank(buyer) < 3 || buyerDestination < sellerDestination - 8) return false;
+        } else if (stage !== 'late' && player.rarity === 'legend') {
+          const rank = leagueStrengthRows(state, 'Europe').find((row)=>row.league.id===buyer.leagueId)?.rank || 99;
+          if (buyer.confederation !== 'Europe' || rank > 9 || clubFinancialTierRank(buyer) < 3 || buyerDestination < sellerDestination - 10) return false;
+        } else if (stage !== 'late' && player.rarity === 'epic') {
+          if (seller.confederation === 'Europe' && buyer.confederation !== 'Europe') return false;
+          if (buyerDestination < sellerDestination - 12) return false;
+        } else if (buyerDestination < sellerDestination - 14) return false;
+        const fee = askingPrice(state, player, buyer);
+        const spendingLimit = Math.max(Number(buyer.transferBudget || 0), Number(buyer.finances || 0) * (player.rarity === 'generational' ? 0.62 : 0.48));
+        if (fee > spendingLimit) return false;
+        const estimatedSalary = Math.max(0.3, (player.marketValue || 0) * 0.06);
+        const sustainableOffer = Math.max(1.5, Number(buyer.wageBudget || 1) * 1.05, Number(buyer.annualFinanceShare || 0) * 0.18);
+        if (estimatedSalary > sustainableOffer) return false;
+        const samePosition = (rosters.get(buyer.id) || []).filter((item) => item.position === player.position);
+        const weakest = [...samePosition].sort((a,b)=>a.rating-b.rating)[0];
+        return !weakest || player.rating >= weakest.rating - (player.rarity === 'rare' ? 1 : 3);
+      });
+      if (!buyers.length) continue;
+      const buyer = weightedPick(state, buyers, (club) => {
+        const destination = Math.max(1, clubDestinationScore(state, club) - 55);
+        const need = positionNeedFromRoster(state, club, rosters.get(club.id) || []) === player.position ? 1.8 : 1;
+        const finance = 0.7 + Math.min(1.5, (club.finances || 0) / 260);
+        return destination * need * finance;
+      });
+      const fee = askingPrice(state, player, buyer);
+      const oldSalary = Number(player.salary || 0);
+      transferPlayer(state, player, buyer, seller, fee, false);
+      const record = state.current.transfers[state.current.transfers.length - 1];
+      if (record && record.playerId === player.id) record.reason = 'Payroll pressure';
+      rosters.set(seller.id, (rosters.get(seller.id) || []).filter((item) => item.id !== player.id));
+      rosters.get(buyer.id).push(player);
+      bill = Math.max(0, bill - oldSalary);
+      seller.payrollPressureRatio = Number((bill / anchor).toFixed(3));
+      sold += 1;
+      moves += 1;
+    }
+
+    // If the dynasty is still materially above its sustainable wage anchor, force a
+    // rational asset sale rather than allowing the club to remain trapped forever by
+    // the ordinary market's need/position checks.  The buyer still has to be a
+    // credible sporting destination and financially capable of completing the deal.
+    // Common/Uncommon players are intentionally excluded: their inflated dynasty
+    // salaries are the dead weight that makes the rebuild painful.
+    if (bill > target && sold < 3) {
+      const sellerDestination = clubDestinationScore(state, seller);
+      const fallbackCandidates = [...(rosters.get(seller.id) || [])]
+        .filter((player) => STAR_RARITIES[player.rarity]?.rank >= STAR_RARITIES.rare.rank)
+        .filter((player) => !player.transferProtectedUntilSeason || state.season >= player.transferProtectedUntilSeason)
+        .sort((a,b) => {
+          // Prefer cashing in on expensive Epics/Legends before automatically losing
+          // the club's singular Generational icon.
+          const burden = (player) => (player.salary || 0) * 5 + (player.marketValue || 0) * 0.32
+            + (player.rarity === 'legend' ? 24 : player.rarity === 'epic' ? 30 : player.rarity === 'rare' ? 18 : 8);
+          return burden(b) - burden(a);
+        });
+      for (const player of fallbackCandidates) {
+        if (bill <= target || sold >= 3) break;
+        const stage = playerCareerStage(state, player);
+        const europeRanks = new Map(leagueStrengthRows(state, 'Europe').map((row)=>[row.league.id,row.rank]));
+        const buyers = healthyBuyers.filter((buyer) => {
+          if (buyer.id === seller.id || Number(buyer.payrollPressureRatio || 1) >= 1.22) return false;
+          const buyerDestination = clubDestinationScore(state, buyer);
+          const rank = europeRanks.get(buyer.leagueId) || 99;
+          if (stage !== 'late' && player.rarity === 'generational') {
+            if (buyer.confederation !== 'Europe' || rank > 5 || clubFinancialTierRank(buyer) < 3) return false;
+            if (buyerDestination < sellerDestination - 15) return false;
+          } else if (stage !== 'late' && player.rarity === 'legend') {
+            if (buyer.confederation !== 'Europe' || rank > 10 || clubFinancialTierRank(buyer) < 3) return false;
+            if (buyerDestination < sellerDestination - 18) return false;
+          } else if (stage !== 'late' && player.rarity === 'epic') {
+            if (seller.confederation === 'Europe' && buyer.confederation !== 'Europe') return false;
+            if (buyerDestination < sellerDestination - 22) return false;
+          } else if (buyerDestination < sellerDestination - 24) return false;
+          const fee = askingPrice(state, player, buyer);
+          // A club can temporarily stretch its normal transfer budget for an elite
+          // player put on the market by a distressed rival, but never beyond the
+          // resources actually on its balance sheet.
+          const emergencyBudget = Math.max(Number(buyer.transferBudget || 0), Number(buyer.finances || 0) * 0.72);
+          if (fee > emergencyBudget || fee > Number(buyer.finances || 0) * 0.88) return false;
+          const projectedSalary = Math.max(0.4, Number(player.marketValue || 0) * 0.065);
+          const salaryRoom = Math.max(Number(buyer.wageBudget || 0) * 1.35, Number(buyer.annualFinanceShare || 0) * 0.25, 8);
+          return projectedSalary <= salaryRoom;
+        });
+        if (!buyers.length) continue;
+        const buyer = [...buyers].sort((a,b) => {
+          const score = (club) => clubDestinationScore(state, club) * 1.25 + (club.finances || 0) * 0.06 + (club.reputation || 0) * 0.35;
+          return score(b) - score(a);
+        })[0];
+        const fee = askingPrice(state, player, buyer);
+        const oldSalary = Number(player.salary || 0);
+        transferPlayer(state, player, buyer, seller, fee, false);
+        const record = state.current.transfers[state.current.transfers.length - 1];
+        if (record && record.playerId === player.id) record.reason = 'Payroll pressure';
+        rosters.set(seller.id, (rosters.get(seller.id) || []).filter((item) => item.id !== player.id));
+        rosters.get(buyer.id).push(player);
+        bill = Math.max(0, bill - oldSalary);
+        seller.payrollPressureRatio = Number((bill / anchor).toFixed(3));
+        sold += 1;
+        moves += 1;
+      }
+    }
+  }
+  return moves;
+}
+
 function lowerRarityMobilityScope(state, player) {
   const roll = stableStringRoll(`${player.id}-${state.season}-mobility`);
   if (player.rarity === 'common') return 'domestic';
@@ -4769,9 +5069,11 @@ function runTransferMarket(state, initial = false) {
   const activeByPosition = { GK: [], DF: [], MF: [], FW: [] };
   activePlayers.forEach((player) => activeByPosition[player.position]?.push(player));
   const maxMoves = initial ? Math.min(260, Math.round(state.clubs.length * 0.18)) : Math.min(420, Math.round(state.clubs.length * 0.24));
-  let moves = runEliteTransferMarket(state, clubs, activePlayers, rosters, initial);
+  let moves = initial ? 0 : runPayrollClearanceMarket(state, clubs, rosters);
+  moves += runEliteTransferMarket(state, clubs, activePlayers, rosters, initial);
   for (const buyer of clubs) {
     if (moves >= maxMoves) break;
+    if (!initial && Number(buyer.payrollPressureRatio || 1) >= 1.12) continue;
     if (buyer.division === 2 && random(state) < 0.56) continue;
     const roster = rosters.get(buyer.id) || [];
     const target = buyer.division === 2 ? CLUB_ROSTER_TARGET.reserve : CLUB_ROSTER_TARGET[buyer.tier];
@@ -4908,8 +5210,10 @@ export function startNextSeason(state) {
     transfers: [...(state.current.transfers || [])],
     freeAgents: (state.players || []).filter((player) => player.status === 'active' && !player.clubId).sort((a,b)=>b.rating-a.rating).slice(0,80).map((player)=>player.id),
     freeAgentSignings: [...(state.current.offseasonFreeAgentSignings || [])].slice(-120),
-    coachMoves: [...(state.history.coachMoves || [])].filter((move)=>move.season === state.season).slice(-120)
+    coachMoves: [...(state.history.coachMoves || [])].filter((move)=>move.season === state.season).slice(-120),
+    payrollChanges: [...(state.current.payrollChanges || [])]
   };
+  state.pendingPayrollChanges = [];
   addPreseasonMagazine(state);
   return state;
 }
@@ -5422,6 +5726,23 @@ export function upgradeWorld(state) {
       else if (pressure >= 62) player.happiness = Math.min(player.happiness ?? 60, 32);
     }
     state.dataRevision = 18;
+    invalidateRuntimeCache(state);
+  }
+  if (state.dataRevision < 19) {
+    state.pendingPayrollChanges ||= [];
+    if (state.current) state.current.payrollChanges ||= [];
+    initializePayrollAnchors(state);
+    // Old 17-22 year presidential terms are converted into the new 4-12 year lifecycle
+    // without instantly replacing every long-serving board on load.
+    for (const owner of state.owners || []) {
+      owner.status ||= owner.clubId ? 'active' : 'retired';
+      owner.seasonsInRole ||= Math.max(0, state.season - Number(owner.appointmentSeason ?? state.season));
+      if (owner.clubId) {
+        const maxRemaining = Math.max(1, 12 - owner.seasonsInRole);
+        owner.yearsRemaining = Math.min(Number(owner.yearsRemaining || ownerTermYears(state)), maxRemaining);
+      }
+    }
+    state.dataRevision = 19;
     invalidateRuntimeCache(state);
   }
   return state;
