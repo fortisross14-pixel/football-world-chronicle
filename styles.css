@@ -2801,3 +2801,74 @@ body {
 }
 .avatar-sm .anime-face-image { transform: scale(.87) translateY(2px); }
 .avatar-xl .anime-face-image { transform: scale(.86) translateY(4px); }
+
+
+/* v2.97 portrait cleanup pass -------------------------------------------- */
+.anime-avatar {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+.anime-avatar::after { display: none; }
+.anime-face-fallback { display: none; }
+.anime-face-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center center;
+  border-radius: inherit;
+  box-shadow: 0 10px 22px rgba(10, 18, 30, .22);
+}
+.avatar-sm { width: 44px; height: 44px; border-radius: 12px; }
+.avatar-md { width: 68px; height: 68px; border-radius: 18px; }
+.avatar-lg { width: 82px; height: 82px; border-radius: 20px; }
+.avatar-xl { width: 124px; height: 124px; border-radius: 24px; }
+.anime-avatar.rarity-common .anime-face-image,
+.anime-avatar.rarity-uncommon .anime-face-image,
+.anime-avatar.rarity-rare .anime-face-image {
+  box-shadow: 0 10px 22px rgba(10, 18, 30, .22), 0 0 0 1px rgba(255,255,255,.08);
+}
+.anime-avatar.rarity-epic .anime-face-image {
+  box-shadow: 0 10px 24px rgba(10, 18, 30, .26), 0 0 0 2px rgba(172, 133, 235, .65), 0 0 22px rgba(124, 84, 198, .26);
+}
+.anime-avatar.rarity-legend .anime-face-image {
+  box-shadow: 0 10px 24px rgba(10, 18, 30, .26), 0 0 0 2px rgba(228, 189, 83, .72), 0 0 22px rgba(201, 161, 48, .28);
+}
+.anime-avatar.rarity-generational .anime-face-image {
+  box-shadow: 0 10px 24px rgba(10, 18, 30, .26), 0 0 0 2px rgba(231, 101, 101, .72), 0 0 22px rgba(186, 78, 78, .28);
+}
+.player-hero-portrait, .coach-hero-portrait {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  width: 140px;
+  min-width: 140px;
+}
+.position-corner {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  min-width: 34px;
+  height: 28px;
+  padding: 0 7px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: white;
+  background: linear-gradient(135deg,#2387e8,#0b61ba);
+  font-size: 10px;
+  font-weight: 900;
+  box-shadow: 0 5px 12px rgba(26,46,66,.20);
+  z-index: 3;
+}
+@media (max-width: 700px) {
+  .avatar-xl { width: 110px; height: 110px; border-radius: 22px; }
+  .player-hero-portrait, .coach-hero-portrait { width: 124px; min-width: 124px; }
+  .position-corner { right: 4px; bottom: 4px; }
+}
