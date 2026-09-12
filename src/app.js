@@ -78,7 +78,7 @@ let leagueRegionFilter = 'ALL';
 let offseasonTab = 'summary';
 let hallCache = { signature: '', data: null };
 
-const APP_VERSION = '2.95';
+const APP_VERSION = '2.96';
 const DB_NAME = 'football-world-chronicle-v4';
 const DB_STORE = 'worlds';
 const DB_KEY = 'expanded-world-v4';
@@ -490,6 +490,51 @@ const sectionMonogram = (kicker = '', title = '') => {
 };
 
 const pageHead = (kicker, title, copy = '') => `<div class="page-head premium-page-head"><div class="page-head-copy"><div class="page-head-chip-row"><div class="eyebrow">${esc(kicker)}</div><span class="page-head-chip">${esc(state.current.seasonLabel || `Year ${state.season - 1999}`)}</span></div><h1>${esc(title)}</h1>${copy ? `<p>${esc(copy)}</p>` : ''}</div><div class="page-head-mark" aria-hidden="true"><b>${sectionMonogram(kicker, title)}</b></div></div>`;
+
+const statCard = (label, value, note = '') => `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${value}</div>${note ? `<div class="stat-note">${note}</div>` : ''}</div>`;
+
+function favoriteButton(type, id) {
+  const key = type === 'club' ? 'favoriteClubIds' : type === 'player' ? 'favoritePlayerIds' : type === 'coach' ? 'favoriteCoachIds' : type === 'nation' ? 'favoriteNationIds' : 'favoriteCompetitionIds';
+  const followed = (state.preferences?.[key] || []).includes(id);
+  return `<button class="follow-button ${followed ? 'active' : ''}" data-action="toggle-favorite" data-type="${esc(type)}" data-id="${esc(id)}"><span class="follow-star">${followed ? '★' : '☆'}</span><span>${followed ? 'Following' : 'Follow'}</span></button>`;
+}
+
+function entityTabs(base, tabs, active) {
+  return `<nav class="competition-tabs entity-tabs">${tabs.map(([id,label])=>`<a href="${base}/${id}" class="${active===id?'active':''}">${esc(label)}</a>`).join('')}</nav>`;
+}
+
+function matchRow(match, compact = false) {
+  const penalties = match.penalties ? ` (${match.penalties.home}-${match.penalties.away} pens)` : '';
+  const goals = (match.goalEvents || []).map((goal) => {
+    const scorer = playerById(goal.scorerId);
+    return scorer ? `${esc(scorer.name)} ${goal.minute}'` : '';
+  }).filter(Boolean).slice(0, 5).join(' · ');
+  return `<div class="match-row ${compact ? 'compact' : ''}">
+    <div class="match-meta"><span>W${match.week}</span><small>${esc(match.stage || match.competitionName)}</small></div>
+    <div class="match-team home">${teamLink(match.homeId, match.isInternational)}</div>
+    <div class="match-score"><strong>${match.homeGoals}</strong><span>–</span><strong>${match.awayGoals}</strong><small>${penalties}</small></div>
+    <div class="match-team away">${teamLink(match.awayId, match.isInternational)}</div>
+    <div class="match-star">${match.manOfMatchId ? playerLink(match.manOfMatchId) : ''}${goals ? `<small>${goals}</small>` : ''}</div>
+  </div>`;
+}
+
+function leaders(id, metric = 'goals', limit = 8, position = null) {
+  let rows = getCompetitionLeaderboard(state, id, metric);
+  if (position) rows = rows.filter((stat) => playerById(stat.playerId)?.position === position);
+  rows = rows.slice(0, limit);
+  if (!rows.length) return '<div class="empty-state compact">The race begins once matches are played.</div>';
+  return rows.map((stat, index) => {
+    const player = playerById(stat.playerId);
+    const value = metric === 'rating' ? stat.averageRating.toFixed(2) : stat[metric];
+    const team = stat.isInternational ? getEntityName(state, stat.teamId, true) : clubById(stat.teamId)?.name;
+    return `<div class="leader-row"><span class="rank">${index + 1}</span><div class="leader-person"><strong>${playerLink(player.id)}</strong><small>${esc(team || 'Free agent')} · ${player.position} · ${esc(player.roleLabel)}</small></div><div class="leader-value">${value}</div></div>`;
+  }).join('');
+}
+
+function tabs(base, active = 'overview') {
+  const labels = { overview: 'Overview', weekly: 'Weekly View', current: 'Current Year', history: 'History', stats: 'Stats' };
+  return `<nav class="competition-tabs">${TABS.map((tab) => `<a href="${base}/${tab}" class="${active === tab ? 'active' : ''}">${labels[tab]}</a>`).join('')}</nav>`;
+}
 
 function descriptor(id) {
   const league = state.current.leagues[id];
