@@ -78,7 +78,7 @@ let leagueRegionFilter = 'ALL';
 let offseasonTab = 'summary';
 let hallCache = { signature: '', data: null };
 
-const APP_VERSION = '2.97';
+const APP_VERSION = '2.98';
 const DB_NAME = 'football-world-chronicle-v4';
 const DB_STORE = 'worlds';
 const DB_KEY = 'expanded-world-v4';

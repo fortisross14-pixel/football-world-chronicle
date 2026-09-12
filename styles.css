@@ -2872,3 +2872,57 @@ body {
   .player-hero-portrait, .coach-hero-portrait { width: 124px; min-width: 124px; }
   .position-corner { right: 4px; bottom: 4px; }
 }
+
+
+/* v2.98 clean portrait replacement -------------------------------------- */
+.anime-avatar {
+  --avatar-bg: linear-gradient(180deg,#304a72 0%, #1d3252 100%);
+  --avatar-border: rgba(235,242,250,.24);
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0;
+  border-radius: 22px;
+  border: 2px solid var(--avatar-border);
+  background: var(--avatar-bg);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 24px rgba(3,10,20,.22);
+}
+.anime-avatar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 28% 18%, rgba(255,255,255,.18), transparent 40%), linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0));
+  pointer-events: none;
+  z-index: 1;
+}
+.anime-avatar::after { display: none; }
+.anime-face-fallback { display:none; }
+.anime-face-image {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 3px 7px rgba(0,0,0,.16));
+}
+.anime-avatar.rarity-common { --avatar-bg: linear-gradient(180deg,#38527b 0%, #213758 100%); --avatar-border: rgba(243,247,252,.20); }
+.anime-avatar.rarity-uncommon { --avatar-bg: linear-gradient(180deg,#2e5d58 0%, #21413e 100%); --avatar-border: rgba(184,230,210,.32); }
+.anime-avatar.rarity-rare { --avatar-bg: linear-gradient(180deg,#365f8f 0%, #234368 100%); --avatar-border: rgba(176,211,246,.34); }
+.anime-avatar.rarity-epic { --avatar-bg: linear-gradient(180deg,#63458e 0%, #412d62 100%); --avatar-border: rgba(205,171,255,.42); }
+.anime-avatar.rarity-legend { --avatar-bg: linear-gradient(180deg,#9a7a24 0%, #6a5314 100%); --avatar-border: rgba(247,221,131,.48); }
+.anime-avatar.rarity-generational { --avatar-bg: linear-gradient(180deg,#96424b 0%, #66232c 100%); --avatar-border: rgba(255,183,183,.46); }
+.avatar-sm { width: 44px; height: 44px; border-radius: 12px; }
+.avatar-md { width: 68px; height: 68px; border-radius: 18px; }
+.avatar-lg { width: 82px; height: 82px; border-radius: 20px; }
+.avatar-xl { width: 126px; height: 126px; border-radius: 24px; }
+.player-hero-portrait,.coach-hero-portrait { position:relative; z-index:2; flex:0 0 auto; width:138px; min-width:138px; }
+.position-corner { position:absolute; right:6px; bottom:6px; min-width:34px; height:28px; padding:0 7px; display:grid; place-items:center; border-radius:10px; color:#fff; background:linear-gradient(135deg,#2d89ee,#0b61ba); font-size:10px; font-weight:900; box-shadow:0 5px 12px rgba(26,46,66,.20); z-index:4; }
+@media (max-width: 700px) {
+  .avatar-xl { width: 114px; height: 114px; border-radius: 22px; }
+  .player-hero-portrait,.coach-hero-portrait { width: 122px; min-width: 122px; }
+  .position-corner { right:4px; bottom:4px; }
+}

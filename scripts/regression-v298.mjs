@@ -1,0 +1,18 @@
+import fs from "node:fs";
+import path from "node:path";
+import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
+import { createWorld } from "../src/engine.js";
+import { playerPortrait, coachPortrait } from "../src/visuals.js";
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, "..");
+const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+const css = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+assert.equal(pkg.version, "2.98.0");
+assert(css.includes("v2.98 clean portrait replacement"));
+for (const p of ["p000.webp","p099.webp","p199.webp"]) assert(fs.existsSync(path.join(root, "assets/faces/players", p)));
+for (const p of ["c000.webp","c024.webp","c049.webp"]) assert(fs.existsSync(path.join(root, "assets/faces/coaches", p)));
+const state = createWorld(2980);
+assert(playerPortrait(state.players[0], state.players[0].nationalityName || state.players[0].nationality, 'xl').includes('assets/faces/players/'));
+assert(coachPortrait(state.coaches[0], state.coaches[0].nationalityName || state.coaches[0].nationality, 'xl').includes('assets/faces/coaches/'));
+console.log(JSON.stringify({version: pkg.version, portraits: 'ok'}, null, 2));
