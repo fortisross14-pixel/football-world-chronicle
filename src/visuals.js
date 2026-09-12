@@ -214,6 +214,7 @@ export function getFacePoolPlan() {
 }
 
 const DIRECT_LOGOS = {
+  'Botafogo':'https://assets.football-logos.cc/logos/brazil/1500x1500/botafogo.fd9f548d.png',
   'Bayern Munich':'https://assets.football-logos.cc/logos/germany/256x256/bayern-munchen.6c38f13a.png',
   'Inter':'https://assets.football-logos.cc/logos/italy/256x256/inter.d4ebfb95.png'
 };
@@ -225,7 +226,7 @@ const CDN_BADGE_ALIASES = {
   'Bayern Munich':'bayern-munich','Borussia Dortmund':'borussia-dortmund','Bayer Leverkusen':'bayer-leverkusen','RB Leipzig':'rb-leipzig','Eintracht Frankfurt':'eintracht-frankfurt','Stuttgart':'vfb-stuttgart',
   'Paris Saint-Germain':'paris-saint-germain','Marseille':'olympique-marseille','Lyon':'olympique-lyonnais','Monaco':'as-monaco','Lille':'lille-osc',
   'Benfica':'sl-benfica','Porto':'fc-porto','Sporting CP':'sporting-cp','Ajax':'ajax-amsterdam','PSV':'psv-eindhoven','Feyenoord':'feyenoord-rotterdam',
-  'Galatasaray':'galatasaray','Fenerbahçe':'fenerbahce','Beşiktaş':'besiktas-jk','Trabzonspor':'trabzonspor','Celtic':'celtic-fc','Rangers':'rangers-fc'
+  'Anderlecht':'rsc-anderlecht','Galatasaray':'galatasaray','Fenerbahçe':'fenerbahce','Beşiktaş':'besiktas-jk','Trabzonspor':'trabzonspor','Celtic':'celtic-fc','Rangers':'rangers-fc'
 };
 
 const RAW_LOGO_ALIASES = {

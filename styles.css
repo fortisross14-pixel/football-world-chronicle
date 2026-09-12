@@ -2926,3 +2926,218 @@ body {
   .player-hero-portrait,.coach-hero-portrait { width: 122px; min-width: 122px; }
   .position-corner { right:4px; bottom:4px; }
 }
+
+/* v2.99 layout + club + rarity polish ---------------------------------- */
+/* Topbar: explicit two-row structure so controls never collide. */
+.topbar.premium-topbar {
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-height: 0;
+  padding: 12px 18px 14px;
+  overflow: visible;
+}
+.topbar-main-row {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+}
+.topbar-main-row .topbar-branding {
+  min-width: 0;
+  max-width: 360px;
+}
+.topbar-main-row .date-block {
+  min-width: 170px;
+  width: auto;
+}
+.topbar-utilities {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+.topbar-utilities .mobile-home-button,
+.topbar-utilities .menu-button,
+.topbar-utilities .cloud-save-top,
+.topbar-utilities .search-button {
+  flex: 0 0 auto;
+  min-width: 82px;
+  width: auto;
+  height: 40px;
+  padding: 0 12px;
+}
+.topbar-sim-row {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(187, 215, 246, .16);
+}
+.sim-row-label {
+  flex: 0 0 auto;
+  color: rgba(207,225,246,.68);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .18em;
+}
+.topbar-sim-row .sim-controls {
+  position: static;
+  z-index: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 10px;
+  min-width: 0;
+}
+.topbar-sim-row .control-button,
+.topbar-sim-row .primary-button {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 150px;
+  min-height: 42px;
+  padding: 0 18px;
+  white-space: nowrap;
+}
+.topbar-sim-row .season-end-button { min-width: 190px; }
+.topbar-sim-row .control-button span,
+.topbar-sim-row .primary-button span { white-space: nowrap; }
+
+@media (max-width: 1100px) {
+  .topbar-main-row {
+    grid-template-columns: minmax(180px, 1fr) auto;
+    grid-template-areas:
+      "brand utilities"
+      "date date";
+  }
+  .topbar-main-row .topbar-branding { grid-area: brand; }
+  .topbar-main-row .date-block { grid-area: date; min-width: 0; width: 100%; }
+  .topbar-utilities { grid-area: utilities; }
+  .topbar-sim-row { justify-content: stretch; }
+  .topbar-sim-row .sim-controls {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0,1fr));
+  }
+  .topbar-sim-row .control-button,
+  .topbar-sim-row .primary-button,
+  .topbar-sim-row .season-end-button {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .topbar.premium-topbar { padding: 10px 10px 12px; gap: 8px; }
+  .topbar-main-row {
+    grid-template-columns: minmax(0,1fr) auto;
+    gap: 8px;
+  }
+  .topbar-logo-main { font-size: 15px; }
+  .topbar-logo-accent { font-size: 23px; }
+  .topbar-slogan { display: none; }
+  .topbar-utilities { gap: 6px; }
+  .topbar-utilities .mobile-home-button,
+  .topbar-utilities .menu-button,
+  .topbar-utilities .cloud-save-top,
+  .topbar-utilities .search-button {
+    min-width: 38px;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+  }
+  .topbar-utilities .mobile-home-button span:last-child,
+  .topbar-utilities .menu-button span:last-child,
+  .topbar-utilities .cloud-save-top span:last-child,
+  .topbar-utilities .search-button span:last-child { display: none; }
+  .sim-row-label { display: none; }
+  .topbar-sim-row { padding-top: 7px; }
+  .topbar-sim-row .sim-controls { gap: 7px; }
+  .topbar-sim-row .control-button,
+  .topbar-sim-row .primary-button { min-height: 40px; padding: 0 8px; font-size: 11px; }
+}
+
+@media (max-width: 470px) {
+  .topbar-sim-row .sim-controls {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+  }
+  .topbar-sim-row .season-end-button { grid-column: 1 / -1; }
+}
+
+/* Clubs: one hero header, now with a genuine team-color edge. */
+.club-page-actions {
+  display: flex;
+  align-items: center;
+  margin: 14px 0 12px;
+}
+.club-page-actions .follow-button { margin: 0; }
+.premium-club-hero {
+  isolation: isolate;
+  padding-left: 38px;
+  margin-bottom: 0;
+}
+.premium-club-hero::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: 0 auto 0 0;
+  width: 16px;
+  background: var(--club-accent-bg, #2d7bd2);
+  border-right: 1px solid var(--club-accent-border, rgba(255,255,255,.2));
+  box-shadow: 5px 0 18px rgba(0,0,0,.18);
+  pointer-events: none;
+}
+.premium-club-hero > * { position: relative; z-index: 3; }
+.premium-club-hero .crest-xl {
+  box-shadow: 0 10px 26px rgba(2,14,30,.24), 0 0 0 4px rgba(255,255,255,.05);
+}
+
+/* Portrait rarity layers: same clean face assets, stronger color depth. */
+.anime-avatar.rarity-common {
+  --avatar-bg:
+    radial-gradient(circle at 30% 18%, rgba(128,171,226,.32), transparent 34%),
+    linear-gradient(145deg,#46658f 0%,#294564 48%,#172d49 100%);
+  --avatar-border: rgba(218,232,247,.26);
+}
+.anime-avatar.rarity-uncommon {
+  --avatar-bg:
+    radial-gradient(circle at 28% 18%, rgba(96,222,169,.34), transparent 36%),
+    linear-gradient(145deg,#347868 0%,#27574d 50%,#173a35 100%);
+  --avatar-border: rgba(178,241,214,.38);
+}
+.anime-avatar.rarity-rare {
+  --avatar-bg:
+    radial-gradient(circle at 30% 16%, rgba(98,184,255,.46), transparent 35%),
+    linear-gradient(145deg,#397fbe 0%,#285f96 48%,#193c65 100%);
+  --avatar-border: rgba(180,222,255,.44);
+}
+.anime-avatar.rarity-epic {
+  --avatar-bg:
+    radial-gradient(circle at 28% 16%, rgba(208,139,255,.52), transparent 34%),
+    linear-gradient(145deg,#8d56c8 0%,#673d9c 48%,#3d235f 100%);
+  --avatar-border: rgba(226,190,255,.52);
+}
+.anime-avatar.rarity-legend {
+  --avatar-bg:
+    radial-gradient(circle at 28% 14%, rgba(255,227,128,.60), transparent 36%),
+    linear-gradient(145deg,#c99b32 0%,#9a711d 48%,#5f420b 100%);
+  --avatar-border: rgba(255,229,146,.62);
+}
+.anime-avatar.rarity-generational {
+  --avatar-bg:
+    radial-gradient(circle at 26% 14%, rgba(255,116,126,.56), transparent 35%),
+    linear-gradient(145deg,#c94b5b 0%,#9b3042 48%,#5d1725 100%);
+  --avatar-border: rgba(255,188,193,.58);
+}

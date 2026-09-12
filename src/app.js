@@ -78,7 +78,7 @@ let leagueRegionFilter = 'ALL';
 let offseasonTab = 'summary';
 let hallCache = { signature: '', data: null };
 
-const APP_VERSION = '2.98';
+const APP_VERSION = '2.99';
 const DB_NAME = 'football-world-chronicle-v4';
 const DB_STORE = 'worlds';
 const DB_KEY = 'expanded-world-v4';
@@ -134,6 +134,7 @@ const CLUB_VISUALS = {
   'Feyenoord': ['linear-gradient(90deg,#ffffff 0 50%,#e21b23 50%)', '#111111', '#111111'],
   'Celtic': ['linear-gradient(90deg,#188b45 0 25%,#ffffff 25% 50%,#188b45 50% 75%,#ffffff 75%)', '#0e5b2e', '#188b45'],
   'Rangers': ['#1b458f', '#ffffff', '#e30613'],
+  'Anderlecht': ['#5a2390', '#ffffff', '#ffffff'],
   'Galatasaray': ['linear-gradient(90deg,#a90432 0 50%,#fdb912 50%)', '#ffffff', '#a90432'],
   'Fenerbahçe': ['linear-gradient(90deg,#ffed00 0 50%,#002d72 50%)', '#111111', '#002d72'],
   'Beşiktaş': ['#111111', '#ffffff', '#ffffff'],
@@ -448,27 +449,25 @@ function sidebar(currentRoute) {
 function topbar() {
   const seasonControls = state.current.completed
     ? `<span class="season-complete-chip">Season archived</span><button class="primary-button season-end-button" data-action="next-season">Run offseason · ${getSeasonLabel(state.season + 1)}</button>`
-    : `<button class="control-button" data-action="simulate-week">${icon('archive')}<span>+1</span> Week</button><button class="control-button" data-action="simulate-month">${icon('archive')}<span>+4</span> Weeks</button><button class="primary-button season-end-button" data-action="simulate-season">${icon('trophy')}To Season End</button>`;
+    : `<button class="control-button" data-action="simulate-week">${icon('archive')}<span>+1 Week</span></button><button class="control-button" data-action="simulate-month">${icon('archive')}<span>+4 Weeks</span></button><button class="primary-button season-end-button" data-action="simulate-season">${icon('trophy')}<span>To Season End</span></button>`;
   return `<header class="topbar premium-topbar">
-    <div class="topbar-branding">
-      <a class="topbar-logo-lockup" href="#/world" aria-label="Football World Chronicle home">
-        <span class="topbar-logo-line topbar-logo-main">Football World</span>
-        <span class="topbar-logo-line topbar-logo-accent">Chronicle</span>
-      </a>
-      <span class="topbar-slogan">A World of Football</span>
-    </div>
-    <div class="topbar-command">
-      <div class="topbar-nav-cluster">
-        <a class="mobile-home-button" href="#/world" aria-label="Go to world home">${icon('home')}<span>Home</span></a>
-        <button class="menu-button" data-action="toggle-menu" aria-label="Open navigation">${icon('menu')}<span>Menu</span></button>
+    <div class="topbar-main-row">
+      <div class="topbar-branding">
+        <a class="topbar-logo-lockup" href="#/world" aria-label="Football World Chronicle home">
+          <span class="topbar-logo-line topbar-logo-main">Football World</span>
+          <span class="topbar-logo-line topbar-logo-accent">Chronicle</span>
+        </a>
+        <span class="topbar-slogan">A World of Football</span>
       </div>
       <div class="date-block"><div class="date-kicker">${esc(state.current.seasonLabel)} · Week ${state.current.week}</div><div class="date-main">${dateLabel(state.current.date)}</div></div>
-      <div class="topbar-tools">
+      <div class="topbar-utilities">
+        <a class="mobile-home-button" href="#/world" aria-label="Go to world home">${icon('home')}<span>Home</span></a>
+        <button class="menu-button" data-action="toggle-menu" aria-label="Open navigation">${icon('menu')}<span>Menu</span></button>
         <button class="cloud-save-top" data-action="cloud-save">${icon('cloud')}<span>Save</span></button>
         <button class="search-button" data-action="toggle-search">${icon('search')}<span>Search</span></button>
       </div>
     </div>
-    <div class="sim-controls">${seasonControls}</div>
+    <div class="topbar-sim-row"><span class="sim-row-label">SIMULATE</span><div class="sim-controls">${seasonControls}</div></div>
   </header>`;
 }
 
@@ -1819,7 +1818,11 @@ function clubPage(id, tabRaw='overview') {
   const honours = state.history.champions.filter((row)=>!row.isInternational&&row.winnerId===club.id);
   const owner=ownerById(club.ownerId), coach=coachById(club.coachId);
   const tabs=entityTabs(`#/club/${club.id}`, [['overview','Overview'],['squad','Squad'],['staff','Staff'],['season','Season'],['history','History'],['honours','Honors'],['records','Records'],['legends','Legends'],['rivalries','Rivalries']],tab);
-  const head=`${pageHead('CLUB CHRONICLE',club.name,`${club.country} · ${club.city}`)}${favoriteButton('club',club.id)}${tabs}`;
+  const clubVisual = CLUB_VISUALS[club.name];
+  const clubAccent = clubVisual?.[0] || `hsl(${club.crestHue ?? 215},72%,48%)`;
+  const clubAccentBorder = clubVisual?.[2] || `hsl(${club.crestHue ?? 215},72%,38%)`;
+  const clubHero = `<section class="club-profile-hero premium-club-hero" style="--club-hue:${club.crestHue ?? 215};--club-accent-bg:${clubAccent};--club-accent-border:${clubAccentBorder}">${crest(club.id,'xl')}<div><span>${flag(club.country)} ${esc(club.country)} · ${esc(club.city)}</span><h2>${esc(club.name)}</h2><p>${esc(competitionLabel(club.leagueId))} · ${club.division===1?'Top division':'Promotion pool'}</p></div><div class="rating-orbit"><strong>${Math.round(getTeamPower(state,club.id,false))}</strong><span>POWER</span></div></section>`;
+  const head=`${clubHero}<div class="club-page-actions">${favoriteButton('club',club.id)}</div>${tabs}`;
   if(tab==='squad') return `${head}<section class="panel"><div class="panel-head"><div><span class="eyebrow">CURRENT SQUAD CORE</span><h3>${history.allCurrentPlayers.length} named players</h3></div></div><div class="squad-list">${history.allCurrentPlayers.map((player)=>`<a class="squad-row squad-row-wide squad-row-visual" href="#/player/${player.id}/overview">${playerPortrait(player, 'sm')}<span class="position-pill pos-${player.position.toLowerCase()}">${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${esc(player.roleLabel)} · ${player.contractYears?`${player.contractYears} yr`:'Free'} · ${money(player.marketValue)}</small></div><b>${player.rating}</b></a>`).join('')}</div></section><section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">ALL-TIME LEADERS</span><h3>Club career</h3></div></div>${clubPlayerLeadersTable(club.id)}</section>`;
   if(tab==='staff') return `${head}<div class="staff-grid"><section class="staff-card"><span class="eyebrow">OWNER / PRESIDENT</span><div class="staff-card-head"><div class="staff-avatar">♛</div><div><h3>${owner?ownerLink(owner.id):'Vacant'}</h3>${owner?staffRarityBadge(owner.rarity):''}</div></div><strong>${esc(OWNER_PROFILES[owner?.profile]?.label||'No profile')}</strong><p>${esc(OWNER_PROFILES[owner?.profile]?.description||'The club is awaiting leadership.')}</p><div class="staff-effects"><span>Money ×${Number(club.ownerMoneyMultiplier||1).toFixed(2)}</span><span>Negotiation +${Math.round((club.ownerNegotiationBonus||0)*100)}%</span><span>Patience ×${Number(club.ownerPatience||1).toFixed(2)}</span><span>${money(club.ownerAnnualInjection||0)}/yr cash</span><span>${owner?.yearsRemaining??'—'} years remaining</span></div></section><section class="staff-card"><span class="eyebrow">HEAD COACH</span><div class="staff-card-head">${coach ? coachPortrait(coach, 'lg') : '<div class="staff-avatar">⌁</div>'}<div><h3>${coach?coachLink(coach.id,false):'Vacant'}</h3>${coach?staffRarityBadge(coach.rarity):''}</div></div><strong>${esc(COACH_PROFILES[coach?.profile]?.label||'No tactical identity')}</strong><p>${esc(COACH_PROFILES[coach?.profile]?.description||'The club is searching for a coach.')}</p><div class="staff-effects"><span>Quality ${coach?.quality||'—'}</span><span>${coach?esc(COACH_FOCUSES[coach.focus]?.label||'Balanced'):'—'}</span><span>${coach?.seasonsInRole||0} seasons in role</span><span>${coach?`Y${Math.min((coach.careerYear||0)+1,coach.careerLength||1)}/${coach.careerLength||'—'}`:'—'}</span></div></section></div>`;
   if(tab==='season') {
@@ -1838,7 +1841,7 @@ function clubPage(id, tabRaw='overview') {
   if(tab==='rivalries') {
     const rows=clubRivalries(club.id); return `${head}<section class="panel"><div class="panel-head"><div><span class="eyebrow">RIVALRIES</span><h3>Historic and emerging opponents</h3></div></div>${rows.length?`<div class="rivalry-grid">${rows.map((row)=>`<article class="rivalry-card"><div><span>${row.static?'HISTORIC RIVALRY':'EMERGING RIVALRY'}</span><h3>${esc(row.definition.name)}</h3><p>${teamLink(row.opponentId)}</p></div><div class="rivalry-record"><strong>${row.wins}-${row.draws}-${row.losses}</strong><span>W-D-L · ${row.gf}-${row.ga} goals</span><small>${row.matches} stored meetings</small></div></article>`).join('')}</div>`:'<div class="empty-state">No established rivalry is stored yet.</div>'}</section>`;
   }
-  return `${head}<section class="club-profile-hero premium-club-hero" style="--club-hue:${club.crestHue ?? 215}">${crest(club.id,'xl')}<div><span>${flag(club.country)} ${esc(club.country)} · ${esc(club.city)}</span><h2>${esc(club.name)}</h2><p>${esc(competitionLabel(club.leagueId))} · ${club.division===1?'Top division':'Promotion pool'}</p></div><div class="rating-orbit"><strong>${Math.round(getTeamPower(state,club.id,false))}</strong><span>POWER</span></div></section><div class="stats-ribbon section-gap">${statCard('League',club.division===1?(position?`#${position}`:'—'):'2nd tier',tableRow?`${tableRow.points} points`:'')}${statCard('Finances',money(club.finances),`${money(club.transferBudget)} budget`)}${statCard('Honors',honours.length,`${(state.history.clubLegends||[]).filter((r)=>r.clubId===club.id).length} club legends`)}${statCard('Reputation',Math.round(club.reputation),`${fmt(club.fans)} supporters`)}</div><div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><span class="eyebrow">KEY PLAYERS</span><h3>Current core</h3></div><a href="#/club/${club.id}/squad">Full squad</a></div><div class="squad-list">${history.allCurrentPlayers.slice(0,7).map((player)=>`<a class="squad-row squad-row-wide squad-row-visual" href="#/player/${player.id}/overview">${playerPortrait(player, 'sm')}<span class="position-pill pos-${player.position.toLowerCase()}">${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${esc(player.roleLabel)}</small></div><b>${player.rating}</b></a>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">LEADERSHIP</span><h3>Club identity</h3></div></div><div class="identity-list"><div><span>President</span><strong>${owner?ownerLink(owner.id):'Vacant'}</strong></div><div><span>Coach</span><strong>${coach?coachLink(coach.id):'Vacant'}</strong></div><div><span>Coach focus</span><strong>${esc(COACH_FOCUSES[coach?.focus]?.label||'—')}</strong></div><div><span>Recent form</span><strong>${tableRow?.form?.join(' ')||'—'}</strong></div></div></section></div>`;
+  return `${head}<div class="stats-ribbon section-gap">${statCard('League',club.division===1?(position?`#${position}`:'—'):'2nd tier',tableRow?`${tableRow.points} points`:'')}${statCard('Finances',money(club.finances),`${money(club.transferBudget)} budget`)}${statCard('Honors',honours.length,`${(state.history.clubLegends||[]).filter((r)=>r.clubId===club.id).length} club legends`)}${statCard('Reputation',Math.round(club.reputation),`${fmt(club.fans)} supporters`)}</div><div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><span class="eyebrow">KEY PLAYERS</span><h3>Current core</h3></div><a href="#/club/${club.id}/squad">Full squad</a></div><div class="squad-list">${history.allCurrentPlayers.slice(0,7).map((player)=>`<a class="squad-row squad-row-wide squad-row-visual" href="#/player/${player.id}/overview">${playerPortrait(player, 'sm')}<span class="position-pill pos-${player.position.toLowerCase()}">${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${esc(player.roleLabel)}</small></div><b>${player.rating}</b></a>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">LEADERSHIP</span><h3>Club identity</h3></div></div><div class="identity-list"><div><span>President</span><strong>${owner?ownerLink(owner.id):'Vacant'}</strong></div><div><span>Coach</span><strong>${coach?coachLink(coach.id):'Vacant'}</strong></div><div><span>Coach focus</span><strong>${esc(COACH_FOCUSES[coach?.focus]?.label||'—')}</strong></div><div><span>Recent form</span><strong>${tableRow?.form?.join(' ')||'—'}</strong></div></div></section></div>`;
 }
 
 function clubPlayerLeadersTable(clubId){const rows=clubAllTimePlayerRows(clubId).sort((a,b)=>b.games-a.games).slice(0,15);return `<div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>G</th><th>Goals</th><th>Assists</th><th>CS</th><th>Rating</th><th>Titles</th></tr></thead><tbody>${rows.map((r)=>`<tr><td>${playerLink(r.playerId)}</td><td>${r.games}</td><td>${r.goals}</td><td>${r.assists}</td><td>${r.cleanSheets}</td><td>${r.averageRating?r.averageRating.toFixed(2):'—'}</td><td>${r.titles}</td></tr>`).join('')||'<tr><td colspan="7">No archived player history yet.</td></tr>'}</tbody></table></div>`;}
