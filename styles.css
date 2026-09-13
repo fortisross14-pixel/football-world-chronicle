@@ -3141,3 +3141,313 @@ body {
     linear-gradient(145deg,#c94b5b 0%,#9b3042 48%,#5d1725 100%);
   --avatar-border: rgba(255,188,193,.58);
 }
+
+/* v3.00 FINAL LAYOUT / SINGLE-HEADER PASS -------------------------------- */
+/* The topbar must own its full height. Earlier fixed 72px height let row two
+   spill over the page content. */
+.topbar.premium-topbar {
+  height: auto !important;
+  min-height: 0 !important;
+  box-sizing: border-box;
+  overflow: hidden !important;
+  padding: 8px 14px 10px !important;
+  gap: 6px !important;
+}
+.topbar-main-row {
+  min-height: 48px;
+  gap: 10px !important;
+}
+.topbar-main-row .topbar-branding { max-width: 330px; }
+.topbar-main-row .date-block {
+  min-height: 44px;
+  padding: 7px 12px;
+}
+.topbar-utilities { gap: 7px !important; }
+.topbar-utilities .mobile-home-button,
+.topbar-utilities .menu-button,
+.topbar-utilities .cloud-save-top,
+.topbar-utilities .search-button {
+  height: 38px !important;
+  min-height: 38px !important;
+}
+.topbar-sim-row {
+  position: static !important;
+  z-index: auto !important;
+  min-height: 42px;
+  padding-top: 6px !important;
+  justify-content: flex-end !important;
+  overflow: hidden;
+}
+.topbar-sim-row .sim-controls {
+  position: static !important;
+  inset: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  justify-content: flex-end !important;
+}
+.topbar-sim-row .control-button,
+.topbar-sim-row .primary-button {
+  min-height: 40px !important;
+  height: 40px !important;
+  min-width: 142px;
+}
+.topbar-sim-row .season-end-button { min-width: 184px; }
+.content { padding-top: 18px !important; }
+
+/* One compact blue header on club / player / coach / competition pages. */
+.compact-profile-hero,
+.compact-club-hero,
+.competition-page-hero {
+  min-height: 0 !important;
+  margin-bottom: 0;
+  border-radius: 18px !important;
+  box-shadow: 0 14px 30px rgba(7,25,49,.16), inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+.compact-profile-hero {
+  padding: 14px 20px !important;
+  gap: 15px !important;
+  flex-wrap: nowrap !important;
+}
+.compact-profile-hero .player-hero-portrait,
+.compact-profile-hero .coach-hero-portrait {
+  width: 108px !important;
+  min-width: 108px !important;
+  padding: 0 8px 10px 0 !important;
+}
+.compact-profile-hero .avatar-xl {
+  width: 94px !important;
+  height: 94px !important;
+  border-radius: 20px !important;
+}
+.compact-profile-hero .entity-main { min-width: 0; }
+.compact-profile-hero .entity-badges { margin-bottom: 4px !important; }
+.compact-profile-hero .entity-kicker {
+  margin-bottom: 4px !important;
+  padding: 4px 8px !important;
+  font-size: 9px !important;
+}
+.compact-profile-hero .entity-main h2 {
+  margin: 2px 0 5px !important;
+  font-size: clamp(30px, 3.8vw, 46px) !important;
+  line-height: .98 !important;
+}
+.compact-profile-hero .entity-meta {
+  margin-top: 4px !important;
+  padding: 6px 10px !important;
+  font-size: 12px;
+}
+.compact-profile-hero .rating-orbit,
+.compact-club-hero .rating-orbit {
+  width: 88px !important;
+  height: 88px !important;
+  border-radius: 22px !important;
+  margin-left: auto;
+}
+.compact-profile-hero .rating-orbit strong,
+.compact-club-hero .rating-orbit strong { font-size: 34px !important; }
+.compact-profile-hero .rating-orbit span,
+.compact-club-hero .rating-orbit span { font-size: 9px; }
+.compact-profile-hero .position-corner {
+  right: 2px !important;
+  bottom: 0 !important;
+}
+
+.compact-club-hero {
+  min-height: 116px !important;
+  grid-template-columns: auto minmax(0,1fr) auto !important;
+  gap: 15px !important;
+  padding: 14px 20px 14px 30px !important;
+}
+.compact-club-hero .crest-xl {
+  width: 82px !important;
+  height: 82px !important;
+  border-width: 3px !important;
+  padding: 5px !important;
+}
+.compact-club-hero h2 {
+  margin: 2px 0 4px !important;
+  font-size: 28px !important;
+}
+.compact-club-hero p,
+.compact-club-hero span { font-size: 12px; }
+.premium-club-hero::before {
+  width: 8px !important;
+  left: 7px !important;
+  top: 12px !important;
+  bottom: 12px !important;
+  border-radius: 8px;
+  background: var(--club-accent-bg, #2d7bd2) !important;
+  border-right: 0 !important;
+  box-shadow: none !important;
+}
+.compact-club-hero {
+  border-left: 5px solid var(--club-accent-secondary, rgba(255,255,255,.45)) !important;
+}
+
+.competition-page-hero {
+  min-height: 112px !important;
+  padding: 16px 22px !important;
+  gap: 18px !important;
+}
+.competition-page-hero h2 {
+  margin: 2px 0 5px !important;
+  font-size: clamp(28px, 3.3vw, 40px) !important;
+}
+.competition-page-hero p { font-size: 12px; }
+.competition-page-hero .overview-trophy {
+  width: 74px !important;
+  height: 74px !important;
+  min-width: 74px;
+}
+.competition-page-hero .competition-emblem { width: 72px !important; height: 72px !important; }
+
+.entity-page-actions,
+.club-page-actions {
+  display: flex;
+  align-items: center;
+  margin: 10px 0 9px !important;
+}
+.entity-page-actions .follow-button,
+.club-page-actions .follow-button { margin: 0 !important; }
+.entity-tabs,
+.competition-tabs { margin-top: 0 !important; }
+
+/* Current knockout round: fixtures first, final only once completed. */
+.current-round-panel { margin-top: 0; }
+.current-round-panel > .competition-final-card {
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+.next-round-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 10px;
+}
+.next-round-match {
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg,#f9fbfe,#f1f6fb);
+  border: 1px solid #dbe5ee;
+}
+.next-round-match > small {
+  display: block;
+  margin-bottom: 8px;
+  color: #6f7f91;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+}
+.next-round-match > div {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+  align-items: center;
+  gap: 8px;
+}
+.next-round-match > div .entity-link:last-child { justify-content: flex-end; text-align: right; }
+.next-round-match > div > strong { color: #8a97a6; font-size: 10px; text-transform: uppercase; }
+.overview-final-snapshot {
+  padding: 4px 0;
+}
+.overview-final-snapshot > span {
+  display: block;
+  margin-bottom: 8px;
+  color: #b28724;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+.overview-final-snapshot > div {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto minmax(0,1fr);
+  gap: 10px;
+  align-items: center;
+}
+.overview-final-snapshot > div .entity-link:last-child { justify-content: flex-end; text-align: right; }
+.overview-final-snapshot > div > strong { font-size: 18px; color: #17263a; }
+.overview-final-snapshot > small { display:block; margin-top:8px; color:#718094; }
+
+/* Club history is dense, so keep the expanded all-competition record readable. */
+.club-history-table th,
+.club-history-table td { white-space: nowrap; }
+
+@media (max-width: 1100px) {
+  .topbar.premium-topbar { height:auto !important; overflow:hidden !important; }
+  .topbar-sim-row .sim-controls { width: 100%; }
+  .topbar-sim-row .control-button,
+  .topbar-sim-row .primary-button,
+  .topbar-sim-row .season-end-button { min-width: 0 !important; width: 100%; }
+}
+
+@media (max-width: 700px) {
+  .topbar.premium-topbar { padding: 8px 9px 9px !important; gap:5px !important; }
+  .topbar-main-row { min-height: 42px; }
+  .topbar-sim-row { min-height: 38px; padding-top:5px !important; }
+  .topbar-sim-row .control-button,
+  .topbar-sim-row .primary-button { height: 36px !important; min-height: 36px !important; font-size:10px !important; }
+  .content { padding-top: 12px !important; }
+  .compact-profile-hero {
+    display: grid !important;
+    grid-template-columns: 88px minmax(0,1fr) 72px !important;
+    padding: 12px 13px !important;
+    gap: 10px !important;
+  }
+  .compact-profile-hero .player-hero-portrait,
+  .compact-profile-hero .coach-hero-portrait { width:88px !important; min-width:88px !important; padding:0 !important; }
+  .compact-profile-hero .avatar-xl { width:82px !important; height:82px !important; border-radius:18px !important; }
+  .compact-profile-hero .entity-main h2 { font-size: clamp(24px,7vw,34px) !important; }
+  .compact-profile-hero .rating-orbit { width:70px !important; height:70px !important; border-radius:18px !important; }
+  .compact-profile-hero .rating-orbit strong { font-size:28px !important; }
+  .compact-profile-hero .entity-meta { padding:5px 7px !important; }
+  .compact-club-hero { min-height:100px !important; padding:12px 13px 12px 25px !important; }
+  .compact-club-hero .crest-xl { width:70px !important; height:70px !important; }
+  .compact-club-hero .rating-orbit { width:70px !important; height:70px !important; border-radius:18px !important; }
+  .compact-club-hero h2 { font-size:24px !important; }
+  .competition-page-hero { min-height:96px !important; padding:13px 15px !important; }
+  .competition-page-hero .overview-trophy { width:58px !important; height:58px !important; min-width:58px; }
+  .competition-page-hero .competition-emblem { width:56px !important; height:56px !important; }
+  .next-round-list { grid-template-columns: 1fr; }
+}
+.compact-nation-hero {
+  min-height: 112px !important;
+  padding: 14px 20px !important;
+  border-radius: 18px !important;
+  gap: 15px !important;
+}
+.compact-nation-hero .flag-xl { width: 72px !important; height: 48px !important; }
+.compact-nation-hero h2 { margin:2px 0 4px !important; font-size:30px !important; }
+.compact-nation-hero p,.compact-nation-hero span { font-size:12px; }
+.compact-nation-hero > strong { font-size:34px !important; }
+@media(max-width:700px){
+  .compact-nation-hero { min-height:94px !important; padding:12px 14px !important; }
+  .compact-nation-hero h2 { font-size:24px !important; }
+  .compact-nation-hero > strong { font-size:28px !important; }
+}
+
+/* v3.00 intermediate-width topbar refinement ----------------------------- */
+@media (max-width: 1100px) and (min-width: 701px) {
+  .topbar-main-row {
+    grid-template-columns: minmax(185px,1fr) 148px auto !important;
+    grid-template-areas: "brand date utilities" !important;
+    gap: 9px !important;
+  }
+  .topbar-main-row .topbar-branding { grid-area: brand; max-width: 250px; }
+  .topbar-main-row .date-block { grid-area: date; width: 148px !important; min-width: 148px !important; }
+  .topbar-utilities { grid-area: utilities; gap: 6px !important; }
+  .topbar-utilities .mobile-home-button,
+  .topbar-utilities .menu-button,
+  .topbar-utilities .cloud-save-top,
+  .topbar-utilities .search-button {
+    min-width: 42px !important;
+    width: 42px !important;
+    padding: 0 !important;
+  }
+  .topbar-utilities .mobile-home-button span:last-child,
+  .topbar-utilities .menu-button span:last-child,
+  .topbar-utilities .cloud-save-top span:last-child,
+  .topbar-utilities .search-button span:last-child { display: none !important; }
+}

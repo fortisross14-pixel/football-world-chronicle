@@ -1571,13 +1571,17 @@ function initializeCups(state) {
   const domesticCups = {};
   for (const league of LEAGUE_DEFINITIONS) {
     const cupId = `CUP-${league.id}`;
+    const active = state.clubs.filter((club) => club.leagueId === league.id).map((club) => club.id);
+    const initialDraw = league.tier === 'summary' ? { pairs: [], byes: [] } : drawCupRoundPairs(state, active);
     domesticCups[cupId] = {
       id: cupId,
       leagueId: league.id,
       country: league.country,
       tier: league.tier,
       name: league.cupName,
-      active: state.clubs.filter((club) => club.leagueId === league.id).map((club) => club.id),
+      active,
+      nextPairs: initialDraw.pairs,
+      nextByes: initialDraw.byes,
       stage: league.tier === 'summary' ? 'Season simulation' : 'Opening Round',
       championId: null,
       finalistId: null,
@@ -1604,6 +1608,7 @@ function initializeCups(state) {
       country: league.country,
       name: SUPER_CUP_NAMES[league.id],
       active,
+      nextPairs: pairTeams(state, active),
       stage: active.length > 2 ? 'Semi-finals' : 'Final',
       championId: null,
       finalistId: null,
@@ -2653,6 +2658,19 @@ function pairTeams(state, ids) {
   return pairs;
 }
 
+function drawCupRoundPairs(state, ids) {
+  let participants = [...ids];
+  let byes = [];
+  const bracketSize = 2 ** Math.ceil(Math.log2(Math.max(2, participants.length)));
+  const byeCount = Math.max(0, bracketSize - participants.length);
+  if (byeCount > 0) {
+    const shuffled = shuffle(state, participants);
+    byes = shuffled.slice(0, byeCount);
+    participants = shuffled.slice(byeCount);
+  }
+  return { pairs: pairTeams(state, participants), byes };
+}
+
 function pairSeededTeams(state, qualifiers) {
   if (qualifiers.length < 4) return pairTeams(state, qualifiers.map((item) => item.teamId));
   const half = Math.floor(qualifiers.length / 2);
@@ -2671,16 +2689,11 @@ function pairSeededTeams(state, qualifiers) {
 
 function simulateDomesticCupRound(state, cup, week) {
   if (cup.championId || cup.active.length < 2) return;
-  let participants = [...cup.active];
-  let byes = [];
-  const bracketSize = 2 ** Math.ceil(Math.log2(participants.length));
-  const byeCount = bracketSize - participants.length;
-  if (byeCount > 0) {
-    const shuffled = shuffle(state, participants);
-    byes = shuffled.slice(0, byeCount);
-    participants = shuffled.slice(byeCount);
-  }
-  const pairs = pairTeams(state, participants);
+  const draw = cup.nextPairs?.length ? { pairs: cup.nextPairs, byes: cup.nextByes || [] } : drawCupRoundPairs(state, cup.active);
+  const pairs = draw.pairs;
+  const byes = draw.byes;
+  cup.nextPairs = [];
+  cup.nextByes = [];
   const winners = [...byes];
   const stage = cup.active.length > 16
     ? 'Opening Round'
@@ -2726,6 +2739,9 @@ function simulateDomesticCupRound(state, cup, week) {
           : winners.length === 4
             ? 'Semi-finals'
             : 'Final';
+    const nextDraw = drawCupRoundPairs(state, winners);
+    cup.nextPairs = nextDraw.pairs;
+    cup.nextByes = nextDraw.byes;
   }
 }
 
@@ -2736,7 +2752,8 @@ function simulateDomesticCups(state, week) {
 function simulateSuperCupCompetition(state, cup, week) {
   if (!cup || cup.championId || cup.active.length < 2) return;
   const stage = cup.active.length > 2 ? 'Semi-final' : 'Final';
-  const pairs = pairTeams(state, cup.active);
+  const pairs = cup.nextPairs?.length ? cup.nextPairs : pairTeams(state, cup.active);
+  cup.nextPairs = [];
   const winners = [];
   const matchIds = [];
   pairs.forEach(([homeId, awayId]) => {
@@ -2751,7 +2768,7 @@ function simulateSuperCupCompetition(state, cup, week) {
   cup.rounds.push({ week, stage, matchIds });
   cup.active = winners;
   if (winners.length === 1) { cup.championId = winners[0]; cup.stage = 'Complete'; cup.completed = true; }
-  else cup.stage = 'Final';
+  else { cup.stage = 'Final'; cup.nextPairs = pairTeams(state, winners); }
 }
 
 function simulateSuperCups(state, week) {
@@ -2803,6 +2820,7 @@ function simulateGlobalClubKnockout(state, comp, week) {
     state.current.news.unshift({ id: `news-${state.season}-${comp.id}-champion`, week, importance: 'feature', category: 'Global Club Football', storyType: 'result', relevance: 94, headline: `${getClub(state, comp.championId)?.name || 'A club'} win ${comp.name}!`, body: `${getClub(state, comp.championId)?.name || 'The champions'} defeat ${getClub(state, comp.finalistId)?.name || 'the finalists'}${finalMatch ? ` ${finalMatch.homeGoals}-${finalMatch.awayGoals}` : ''} in the final.${mvp ? ` ${getPlayer(state, mvp.playerId)?.name} is player of the tournament.` : ''}` });
   } else {
     comp.knockout.round = winners.length === 8 ? 'Quarter-final' : winners.length === 4 ? 'Semi-final' : 'Final';
+    comp.knockout.openingPairs = pairTeams(state, winners);
     comp.stage = comp.knockout.round === 'Quarter-final' ? 'Quarter-finals' : `${comp.knockout.round}s`;
   }
 }
@@ -3010,6 +3028,7 @@ function simulateInternationalKnockout(state, comp, week) {
     });
   } else {
     comp.knockout.round = winners.length === 8 ? 'Quarter-final' : winners.length === 4 ? 'Semi-final' : 'Final';
+    comp.knockout.openingPairs = pairTeams(state, winners);
     comp.stage = comp.knockout.round === 'Quarter-final' ? 'Quarter-finals' : `${comp.knockout.round}s`;
   }
 }

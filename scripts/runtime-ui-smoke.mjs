@@ -51,8 +51,8 @@ const hashchange = handlers['window:hashchange'];
 assert(hashchange, 'hashchange handler not registered');
 
 const routes = [
-  [`#/player/${player.id}/overview`, 'Player profile'],
-  [`#/coach/${coach.id}/overview`, 'Coach profile'],
+  [`#/player/${player.id}/overview`, 'ABILITY'],
+  [`#/coach/${coach.id}/overview`, 'QUALITY'],
   [`#/club/${club.id}/overview`, club.name],
   [`#/league/${leagueId}/overview`, reference.current.leagues[leagueId].name],
   ['#/competitions', 'Competitions'],
