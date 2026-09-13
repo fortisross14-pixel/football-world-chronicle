@@ -56,7 +56,8 @@ const routes = [
   [`#/club/${club.id}/overview`, club.name],
   [`#/league/${leagueId}/overview`, reference.current.leagues[leagueId].name],
   ['#/competitions', 'Competitions'],
-  ['#/people/players/overview', 'Players']
+  ['#/people/players/overview', 'Players'],
+  ['#/postseason/setup', 'Choose the matches you want to experience']
 ];
 
 for (const [hash, marker] of routes) {

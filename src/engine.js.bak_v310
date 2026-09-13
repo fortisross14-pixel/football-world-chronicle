@@ -1894,7 +1894,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 21,
+    dataRevision: 20,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -6340,27 +6340,6 @@ export function upgradeWorld(state) {
       state.current.postseason.awards ||= [];
     }
     state.dataRevision = 20;
-    invalidateRuntimeCache(state);
-  }
-  if (state.dataRevision < 21) {
-    const postseason = state.current?.postseason;
-    for (const match of postseason?.showcaseMatches || []) {
-      const finalStats = match.finalStats || { home: { shots: match.finalScore?.home || 0, onTarget: match.finalScore?.home || 0, corners: 0, possession: 50, yellow: 0, red: 0 }, away: { shots: match.finalScore?.away || 0, onTarget: match.finalScore?.away || 0, corners: 0, possession: 50, yellow: 0, red: 0 } };
-      const penalties = match.penalties || null;
-      if (!Array.isArray(match.liveTimeline) || !match.liveTimeline.length) {
-        match.liveTimeline = showcaseLiveTimeline({
-          ...match,
-          homeGoals: match.finalScore?.home ?? match.homeGoals ?? 0,
-          awayGoals: match.finalScore?.away ?? match.awayGoals ?? 0,
-          extraTime: Boolean(match.extraTime || penalties)
-        }, finalStats, match.goalEvents || [], penalties);
-      }
-      if (penalties && (!Array.isArray(match.penaltySequence) || !match.penaltySequence.length)) {
-        match.penaltySequence = showcasePenaltySequence(state, match, penalties);
-      }
-      match.liveProgress ||= { timelineIndex: 0, pauseReason: null, penaltyIndex: 0 };
-    }
-    state.dataRevision = 21;
     invalidateRuntimeCache(state);
   }
   return state;
