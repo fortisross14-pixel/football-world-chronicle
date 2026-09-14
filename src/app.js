@@ -87,7 +87,7 @@ let postseasonPlaybackSpeed = 1;
 let postseasonAwardTimers = [];
 let postseasonAwardAnimating = false;
 
-const APP_VERSION = '3.11';
+const APP_VERSION = '3.12';
 const DB_NAME = 'football-world-chronicle-v4';
 const DB_STORE = 'worlds';
 const DB_KEY = 'expanded-world-v4';
@@ -1494,45 +1494,134 @@ function awardsPage(sectionRaw = 'current', categoryRaw = 'ballon_dor') {
 }
 
 
+function nextShowcaseSeasonForCompetition(competitionId) {
+  const currentSeason = Number(state.season);
+  const mod = ((currentSeason % 4) + 4) % 4;
+  if (competitionId === 'WC') {
+    const delta = (1 - mod + 4) % 4;
+    return currentSeason + delta;
+  }
+  if (['EURO','COPA','AFCON','ASIACUP','GOLDCUP','OFC'].includes(competitionId)) {
+    const delta = (3 - mod + 4) % 4;
+    return currentSeason + delta;
+  }
+  if (competitionId === 'CWC') {
+    const delta = (0 - mod + 4) % 4;
+    return currentSeason + delta;
+  }
+  return currentSeason;
+}
+
 function postseasonCompetitionOptions() {
   const clubRows = Object.values(state.current.continentalCompetitions || {})
     .filter((competition) => {
       const definition = CONTINENTAL_DEFINITIONS.find((item) => item.id === competition.id);
       return definition && definition.level <= 2;
     })
-    .map((competition) => ({ ...competition, category: 'Club continental', isInternational: false }));
+    .map((competition) => ({ ...competition, category: 'Club continental', isInternational: false, availableThisSeason: true, twoLegSemis: true, nextSeason: state.season }));
   const globalRows = Object.values(state.current.globalClubCompetitions || {})
     .filter((competition) => ['CWC','ICUP'].includes(competition.id))
-    .map((competition) => ({ ...competition, category: 'Global club', isInternational: false }));
-  const nationalRows = Object.values(state.current.internationalCompetitions || {})
+    .map((competition) => ({ ...competition, category: 'Global club', isInternational: false, availableThisSeason: true, twoLegSemis: false, nextSeason: state.season }));
+
+  const currentNational = Object.values(state.current.internationalCompetitions || {})
     .filter((competition) => competition.kind === 'finals' && !competition.friendly)
-    .map((competition) => ({ ...competition, category: 'National teams', isInternational: true }));
-  return [...globalRows, ...clubRows, ...nationalRows];
+    .map((competition) => ({ ...competition, category: 'National teams', isInternational: true, availableThisSeason: true, twoLegSemis: false, nextSeason: state.season }));
+  const currentNationalIds = new Set(currentNational.map((competition) => competition.id));
+  const futureNational = INTERNATIONAL_COMPETITION_CATALOG
+    .filter((competition) => competition.type === 'finals' && ['WC','EURO','COPA','AFCON','ASIACUP','GOLDCUP','OFC'].includes(competition.id) && !currentNationalIds.has(competition.id))
+    .map((competition) => {
+      const nextSeason = nextShowcaseSeasonForCompetition(competition.id);
+      return {
+        id: competition.id,
+        name: competition.name,
+        confederation: competition.confederation,
+        category: 'National teams',
+        isInternational: true,
+        availableThisSeason: nextSeason === state.season,
+        twoLegSemis: false,
+        nextSeason,
+        editionYear: nextSeason + 1,
+        future: nextSeason !== state.season
+      };
+    });
+
+  const cwcPresent = globalRows.some((competition) => competition.id === 'CWC');
+  if (!cwcPresent) {
+    const nextSeason = nextShowcaseSeasonForCompetition('CWC');
+    globalRows.push({
+      id: 'CWC',
+      name: 'FIFA Club World Cup',
+      confederation: 'World',
+      category: 'Global club',
+      isInternational: false,
+      availableThisSeason: nextSeason === state.season,
+      twoLegSemis: false,
+      nextSeason,
+      editionYear: nextSeason + 1,
+      future: nextSeason !== state.season
+    });
+  }
+
+  return [...globalRows, ...clubRows, ...currentNational, ...futureNational]
+    .filter((competition, index, rows) => rows.findIndex((row) => row.id === competition.id) === index);
 }
 
-function postseasonSelectionCount(mode) {
-  return mode === 'semis' ? 3 : mode === 'final' ? 1 : 0;
+function postseasonSelectionCount(mode, competition = null) {
+  if (mode === 'final') return 1;
+  if (mode !== 'semis') return 0;
+  return competition?.twoLegSemis ? 5 : 3;
 }
 
 function postseasonSetupPage() {
-  const postseason = state.current.postseason ||= { selections: {}, prepared: false, phase: 'setup', showcaseMatches: [], awards: [], completed: false };
+  const postseason = state.current.postseason ||= { selections: {}, prepared: false, phase: 'setup', showcaseMatches: [], awards: [], awardActiveIndex: 0, completed: false };
+  state.showcasePreferences ||= { ...(postseason.selections || {}) };
+  postseason.selections = { ...state.showcasePreferences, ...(postseason.selections || {}) };
   const options = postseasonCompetitionOptions();
-  const totalGames = options.reduce((sum, competition) => sum + postseasonSelectionCount(postseason.selections?.[competition.id] || 'none'), 0);
+  const totalGames = options.reduce((sum, competition) => competition.availableThisSeason ? sum + postseasonSelectionCount(postseason.selections?.[competition.id] || 'none', competition) : sum, 0);
+  const futureSaved = options.filter((competition) => !competition.availableThisSeason && (postseason.selections?.[competition.id] || 'none') !== 'none').length;
   const groups = ['Global club','Club continental','National teams'];
   const sections = groups.map((category) => {
     const rows = options.filter((competition) => competition.category === category);
     if (!rows.length) return '';
     return `<section class="panel postseason-selector-section"><div class="panel-head"><div><span class="eyebrow">${esc(category.toUpperCase())}</span><h3>${category}</h3></div></div><div class="postseason-selector-grid">${rows.map((competition) => {
       const selected = postseason.selections?.[competition.id] || 'none';
-      return `<article class="postseason-selector-card ${selected !== 'none' ? 'selected' : ''}"><div class="postseason-selector-title">${competitionEmblem(competition.id,'sm')}<div><strong>${esc(competition.name)}</strong><small>${esc(competition.confederation || competition.category)}${competition.editionYear ? ` · ${competition.editionYear}` : ''}</small></div></div><div class="postseason-choice-row">${[['none','Nothing'],['final','Final'],['semis','Semis + Final']].map(([mode,label]) => `<button class="postseason-choice ${selected === mode ? 'active' : ''}" data-action="showcase-select" data-competition-id="${esc(competition.id)}" data-mode="${mode}">${label}<small>${postseasonSelectionCount(mode)} game${postseasonSelectionCount(mode) === 1 ? '' : 's'}</small></button>`).join('')}</div></article>`;
+      const timing = competition.availableThisSeason
+        ? `${getSeasonLabel(state.season)} · playing this season`
+        : `Next edition · ${getSeasonLabel(competition.nextSeason)}`;
+      return `<article class="postseason-selector-card ${selected !== 'none' ? 'selected' : ''} ${competition.availableThisSeason ? '' : 'future-showcase'}"><div class="postseason-selector-title">${competitionEmblem(competition.id,'sm')}<div><strong>${esc(competition.name)}</strong><small>${esc(competition.confederation || competition.category)} · ${esc(timing)}</small></div></div><div class="postseason-choice-row">${[['none','Nothing'],['final','Final'],['semis','Semis + Final']].map(([mode,label]) => { const count = postseasonSelectionCount(mode, competition); return `<button class="postseason-choice ${selected === mode ? 'active' : ''}" data-action="showcase-select" data-competition-id="${esc(competition.id)}" data-mode="${mode}">${label}<small>${count} game${count === 1 ? '' : 's'}${competition.availableThisSeason ? '' : ' · saved'}</small></button>`; }).join('')}</div></article>`;
     }).join('')}</div></section>`;
   }).join('');
-  return `${pageHead('POSTSEASON SHOWCASE', 'Choose the matches you want to experience', 'These choices do not change the football engine. The season is simulated normally, then selected matches are revealed from the real results in a cinematic postseason.')}
-    <section class="postseason-setup-hero"><div><span class="eyebrow">OPTIONAL MATCH SHOWCASE</span><h2>${totalGames ? `${totalGames} showcase games selected` : 'No showcase games selected'}</h2><p>${totalGames ? 'To Season End will calculate the complete season normally, then stop at your selected matches before Awards Night.' : 'Leave everything on Nothing for the normal season simulation. Awards Night will still be available when the season ends.'}</p></div><div class="postseason-count"><strong>${totalGames}</strong><span>GAMES</span></div></section>${sections}`;
+  const summary = totalGames
+    ? `${totalGames} showcase games this season${futureSaved ? ` · ${futureSaved} future selection${futureSaved === 1 ? '' : 's'} saved` : ''}`
+    : futureSaved
+      ? `${futureSaved} future tournament selection${futureSaved === 1 ? '' : 's'} saved`
+      : 'No showcase games selected';
+  return `${pageHead('POSTSEASON SHOWCASE', 'Choose the matches you want to experience', 'Selections can be saved even when a tournament is not being played this season. Future competitions show the year of their next edition and remain selected until you change them.')}
+    <section class="postseason-setup-hero"><div><span class="eyebrow">OPTIONAL MATCH SHOWCASE</span><h2>${summary}</h2><p>${totalGames ? 'To Season End will calculate the complete season normally, then stop at your selected matches before Awards Night.' : futureSaved ? 'Your future selections are saved. This season will only stop for tournaments that are actually being played now.' : 'Leave everything on Nothing for the normal season simulation. Awards Night will still be available when the season ends.'}</p></div><div class="postseason-count"><strong>${totalGames}</strong><span>THIS YEAR</span></div></section>${sections}`;
 }
 
 function postseasonTeamMark(id, isInternational, size = 'lg') {
   return isInternational ? flag(id, size === 'lg' ? 'lg' : 'sm') : crest(id, size);
+}
+
+function postseasonGoalTheme(id, isInternational) {
+  if (isInternational) {
+    const hue = Math.abs(String(id || 'nation').split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0) * 17) % 360;
+    return `--goal-bg:linear-gradient(135deg,hsl(${hue} 68% 42%),hsl(${hue} 72% 27%));--goal-fg:#ffffff;--goal-accent:rgba(255,255,255,.72)`;
+  }
+  const club = clubById(id);
+  const visual = CLUB_VISUALS[club?.name] || null;
+  if (!visual) {
+    const hue = club?.crestHue ?? 215;
+    return `--goal-bg:linear-gradient(135deg,hsl(${hue} 72% 48%),hsl(${hue} 76% 28%));--goal-fg:#ffffff;--goal-accent:rgba(255,255,255,.70)`;
+  }
+  const primary = visual[0];
+  const secondary = visual[1] || '#ffffff';
+  const accent = visual[2] || secondary;
+  const whitePrimary = /^#(?:fff|ffffff)$/i.test(primary.trim());
+  const lightPrimary = /^#(?:ffe667|fde100|fff200|f5c400|ffed00)$/i.test(primary.trim());
+  const foreground = whitePrimary || lightPrimary ? secondary : '#ffffff';
+  return `--goal-bg:${primary};--goal-fg:${foreground};--goal-accent:${accent}`;
 }
 
 function postseasonGamesPage() {
@@ -1543,17 +1632,30 @@ function postseasonGamesPage() {
   const unresolved = matches.filter((match) => !match.resolved).length;
   const competitionIds = [...new Set(matches.map((match) => match.competitionId))];
   const competitionSections = competitionIds.map((competitionId) => {
-    const rows = matches.filter((match) => match.competitionId === competitionId).sort((a,b)=>a.week-b.week);
-    return `<section class="panel postseason-tournament"><div class="panel-head"><div><span class="eyebrow">SHOWCASE TOURNAMENT</span><h3>${esc(rows[0]?.competitionName || competitionId)}</h3></div>${competitionEmblem(competitionId,'md')}</div><div class="postseason-match-list">${rows.map((match, index) => {
-      const earlierUnresolved = rows.slice(0,index).some((row) => !row.resolved);
-      const locked = earlierUnresolved && /^final$/i.test(String(match.stage || '').trim());
-      const home = getEntityName(state, match.homeId, match.isInternational);
-      const away = getEntityName(state, match.awayId, match.isInternational);
-      const status = match.resolved ? `${match.finalScore.home}–${match.finalScore.away}${match.penalties ? ` · pens ${match.penalties.home}–${match.penalties.away}` : ''}` : locked ? 'Awaiting semifinals' : 'Ready';
-      return `<button class="postseason-match-card ${match.resolved ? 'resolved' : ''} ${locked ? 'locked' : ''}" ${locked ? 'disabled' : ''} data-action="open-postseason-match" data-match-id="${esc(match.id)}"><span class="postseason-stage">${esc(match.stage || 'Knockout')}</span><div class="postseason-match-teams"><div>${postseasonTeamMark(match.homeId, match.isInternational, 'md')}<strong>${esc(home)}</strong></div><b>${match.resolved ? match.finalScore.home : '–'}</b><span>vs</span><b>${match.resolved ? match.finalScore.away : '–'}</b><div>${postseasonTeamMark(match.awayId, match.isInternational, 'md')}<strong>${esc(away)}</strong></div></div><small>${esc(status)}</small></button>`;
+    const rows = matches.filter((match) => match.competitionId === competitionId).sort((a,b)=>a.week-b.week || String(a.stage || '').localeCompare(String(b.stage || '')));
+    return `<section class="panel postseason-tournament"><div class="panel-head"><div><span class="eyebrow">SHOWCASE TOURNAMENT</span><h3>${esc(rows[0]?.competitionName || competitionId)}</h3></div>${competitionEmblem(competitionId,'md')}</div><div class="postseason-match-list">${rows.map((match) => {
+      const earlierUnresolved = rows.some((row) => row.week < match.week && !row.resolved);
+      const finalRound = /^final$/i.test(String(match.stage || '').trim());
+      const locked = earlierUnresolved;
+      const hideTeams = finalRound && locked;
+      const home = hideTeams ? 'Awaiting semi-final winner' : getEntityName(state, match.homeId, match.isInternational);
+      const away = hideTeams ? 'Awaiting semi-final winner' : getEntityName(state, match.awayId, match.isInternational);
+      let status = 'Ready';
+      if (match.resolved) {
+        if (match.aggregate?.leg === 2) status = `Aggregate ${match.aggregate.homeFinal}–${match.aggregate.awayFinal}${match.penalties ? ` · pens ${match.penalties.home}–${match.penalties.away}` : ''}`;
+        else if (match.aggregate?.leg === 1) status = `First leg · ${match.finalScore.home}–${match.finalScore.away}`;
+        else status = `${match.finalScore.home}–${match.finalScore.away}${match.penalties ? ` · pens ${match.penalties.home}–${match.penalties.away}` : ''}`;
+      } else if (locked) {
+        status = finalRound ? 'Awaiting semi-finals' : 'Awaiting previous leg';
+      } else if (match.aggregate?.leg === 2) {
+        status = `Second leg · aggregate starts ${match.aggregate.homeBefore}–${match.aggregate.awayBefore}`;
+      }
+      const homeMark = hideTeams ? '<span class="showcase-team-placeholder">?</span>' : postseasonTeamMark(match.homeId, match.isInternational, 'md');
+      const awayMark = hideTeams ? '<span class="showcase-team-placeholder">?</span>' : postseasonTeamMark(match.awayId, match.isInternational, 'md');
+      return `<button class="postseason-match-card ${match.resolved ? 'resolved' : ''} ${locked ? 'locked' : ''}" ${locked ? 'disabled' : ''} data-action="open-postseason-match" data-match-id="${esc(match.id)}"><span class="postseason-stage">${esc(match.stage || 'Knockout')}</span><div class="postseason-match-teams"><div>${homeMark}<strong>${esc(home)}</strong></div><b>${match.resolved ? match.finalScore.home : '–'}</b><span>vs</span><b>${match.resolved ? match.finalScore.away : '–'}</b><div>${awayMark}<strong>${esc(away)}</strong></div></div><small>${esc(status)}</small></button>`;
     }).join('')}</div></section>`;
   }).join('');
-  return `${pageHead('POSTSEASON', `${state.current.seasonLabel} Showcase Games`, 'Watch the major matches you selected. The football result is already the result generated by the normal season engine; the live view reveals how the story unfolded.')}
+  return `${pageHead('POSTSEASON', `${state.current.seasonLabel} Showcase Games`, 'Watch the major matches you selected. Two-leg ties are played in full, aggregate scores evolve naturally, and later rounds stay hidden until the teams actually qualify.')}
     <section class="postseason-progress"><div><span class="eyebrow">SHOWCASE QUEUE</span><h2>${matches.length - unresolved} of ${matches.length} complete</h2><p>Watch the clock run minute by minute, pause at the breaks, or quick simulate any unlocked match.</p></div><div class="postseason-progress-meter"><i style="width:${matches.length ? Math.round((matches.length-unresolved)/matches.length*100) : 100}%"></i></div>${unresolved === 0 ? '<button class="primary-button" data-action="postseason-to-awards">Continue to Awards Night</button>' : ''}</section>${competitionSections}`;
 }
 
@@ -1576,16 +1678,31 @@ function postseasonAwardsPage() {
   const postseason = state.current.postseason;
   if (!state.current.completed || !postseason?.prepared) return postseasonSetupPage();
   const awards = postseason.awards || [];
-  const nextIndex = awards.findIndex((award) => (award.revealStage || 0) < 3);
-  const allRevealed = nextIndex < 0;
-  const activeIndex = allRevealed ? Math.max(0, awards.length - 1) : nextIndex;
+  postseason.awardActiveIndex = Math.max(0, Math.min(Number.isInteger(postseason.awardActiveIndex) ? postseason.awardActiveIndex : 0, Math.max(0, awards.length - 1)));
+  const activeIndex = postseason.awardActiveIndex;
   const active = awards[activeIndex];
   const stage = active?.revealStage || 0;
   const podium = active?.podium || [];
   const winner = podium.find((row) => row.rank === 1) || podium[0];
-  const cards = awards.map((award, index) => `<div class="award-ceremony-chip ${index === activeIndex ? 'active' : ''} ${(award.revealStage || 0) >= 3 ? 'done' : ''}"><span>${index + 1}</span><b>${esc(award.title)}</b></div>`).join('');
-  return `${pageHead('AWARDS NIGHT', `${state.current.seasonLabel} World Awards`, 'Reveal the podium one place at a time. Third. Second. Then the winner. The Ballon d’Or closes the ceremony.')}
-    <section class="awards-night-shell"><div class="award-ceremony-progress">${cards}</div>${active ? `<div class="award-stage ${active.title === "Ballon d'Or" ? 'ballon-stage' : ''}"><span class="eyebrow">${activeIndex + 1} OF ${awards.length}</span><h1>${esc(active.title)}</h1><div class="award-podium">${postseasonPodiumEntry(podium.find((row)=>row.rank===3),3,stage>=1)}${postseasonPodiumEntry(podium.find((row)=>row.rank===2),2,stage>=2)}${postseasonPodiumEntry(winner,1,stage>=3,true)}</div>${stage >= 3 ? postseasonWinnerDetails(winner) : '<div class="award-reveal-placeholder">Podium hidden</div>'}</div>` : '<div class="empty-state">No annual awards were generated for this season.</div>'}<div class="award-ceremony-actions">${!allRevealed ? postseasonAwardAnimating ? '<span class="showcase-live-chip">Revealing podium…</span>' : '<button class="primary-button award-next-button" data-action="reveal-next-award">Next Award</button><button class="control-button" data-action="reveal-all-awards">Reveal All</button>' : '<button class="primary-button" data-action="finish-postseason">Continue to Offseason</button>'}</div></section>`;
+  const allRevealed = awards.length > 0 && awards.every((award) => (award.revealStage || 0) >= 3);
+  const cards = awards.map((award, index) => `<button type="button" class="award-ceremony-chip ${index === activeIndex ? 'active' : ''} ${(award.revealStage || 0) >= 3 ? 'done' : ''}" data-action="select-postseason-award" data-award-index="${index}"><span>${index + 1}</span><b>${esc(award.title)}</b></button>`).join('');
+  let actionMarkup = '';
+  if (postseasonAwardAnimating) {
+    actionMarkup = '<span class="showcase-live-chip">Revealing podium…</span>';
+  } else if (!active) {
+    actionMarkup = '<button class="primary-button" data-action="finish-postseason">Continue to Offseason</button>';
+  } else if (allRevealed) {
+    actionMarkup = '<button class="primary-button" data-action="finish-postseason">Continue to Offseason</button>';
+  } else if (stage < 3) {
+    actionMarkup = '<button class="primary-button award-next-button" data-action="reveal-next-award">Reveal Award</button><button class="control-button" data-action="reveal-all-awards">Reveal All</button>';
+  } else if (activeIndex < awards.length - 1) {
+    actionMarkup = '<button class="primary-button award-next-button" data-action="advance-postseason-award">Next Award</button><button class="control-button" data-action="reveal-all-awards">Reveal All</button>';
+  } else {
+    const firstHidden = awards.findIndex((award) => (award.revealStage || 0) < 3);
+    actionMarkup = `<button class="primary-button" data-action="select-postseason-award" data-award-index="${firstHidden >= 0 ? firstHidden : 0}">Go to Unrevealed Award</button><button class="control-button" data-action="reveal-all-awards">Reveal All</button>`;
+  }
+  return `${pageHead('AWARDS NIGHT', `${state.current.seasonLabel} World Awards`, 'Reveal each podium and stop on the winner. Move to the next award only when you choose to; the award tabs can also be used to revisit any category.')}
+    <section class="awards-night-shell"><div class="award-ceremony-progress">${cards}</div>${active ? `<div class="award-stage ${active.title === "Ballon d'Or" ? 'ballon-stage' : ''}"><span class="eyebrow">${activeIndex + 1} OF ${awards.length}</span><h1>${esc(active.title)}</h1><div class="award-podium">${postseasonPodiumEntry(podium.find((row)=>row.rank===3),3,stage>=1)}${postseasonPodiumEntry(podium.find((row)=>row.rank===2),2,stage>=2)}${postseasonPodiumEntry(winner,1,stage>=3,true)}</div>${stage >= 3 ? postseasonWinnerDetails(winner) : '<div class="award-reveal-placeholder">Podium hidden</div>'}</div>` : '<div class="empty-state">No annual awards were generated for this season.</div>'}<div class="award-ceremony-actions">${actionMarkup}</div></section>`;
 }
 
 function postseasonPage(section = 'setup') {
@@ -1616,7 +1733,8 @@ function postseasonMatchModal() {
   const currentGoalBanner = goalNow.length ? goalNow.map((event) => {
     const teamName = event.side === 'home' ? homeName : awayName;
     const scorer = event.scorerId ? playerById(event.scorerId)?.name : 'Squad player';
-    return `<div class="showcase-goal-flash"><span>GOAL ${esc(teamName).toUpperCase()}!</span><strong>${esc(scorer || 'Squad player')}</strong><small>${event.minute}'</small></div>`;
+    const teamId = event.side === 'home' ? match.homeId : match.awayId;
+    return `<div class="showcase-goal-flash" style="${postseasonGoalTheme(teamId, match.isInternational)}"><span>GOAL ${esc(teamName).toUpperCase()}!</span><strong>${esc(scorer || 'Squad player')}</strong><small>${event.minute}'</small></div>`;
   }).join('') : '';
   const formatEvent = (event) => {
     const scorer = event.scorerId ? playerById(event.scorerId)?.name : 'Squad player';
@@ -1626,7 +1744,9 @@ function postseasonMatchModal() {
     return `<div class="live-event ${event.side} ${event.type || ''}"><b>${event.minute}'</b><span>${icon} ${esc(copy)}</span></div>`;
   };
   const events = (tick.events || []).slice().sort((a,b)=>a.minute-b.minute).slice(-10).map(formatEvent).join('') || '<div class="live-event-empty">Match underway. No major events yet.</div>';
-  const agg = match.aggregate ? `<div class="showcase-aggregate">Aggregate ${match.aggregate.home}–${match.aggregate.away}</div>` : '';
+  const aggregateHome = match.aggregate?.leg === 2 ? Number(match.aggregate.homeBefore || 0) + Number(tick.homeGoals || 0) : null;
+  const aggregateAway = match.aggregate?.leg === 2 ? Number(match.aggregate.awayBefore || 0) + Number(tick.awayGoals || 0) : null;
+  const agg = match.aggregate?.leg === 2 ? `<div class="showcase-aggregate">Aggregate ${aggregateHome}–${aggregateAway}</div>` : match.aggregate?.leg === 1 ? '<div class="showcase-aggregate">First leg</div>' : '';
   const penaltySequence = match.penaltySequence || [];
   const visiblePenaltyCount = match.resolved ? penaltySequence.length : Math.min(postseasonPenaltyIndex, penaltySequence.length);
   const visiblePenalties = penaltySequence.slice(0, visiblePenaltyCount);
@@ -2468,10 +2588,12 @@ function clearPostseasonAwardTimer() {
 
 function revealNextPostseasonAward() {
   if (postseasonAwardAnimating) return;
-  const awards = state.current.postseason?.awards || [];
-  const index = awards.findIndex((award) => (award.revealStage || 0) < 3);
-  if (index < 0) return;
-  const award = awards[index];
+  const postseason = state.current.postseason;
+  const awards = postseason?.awards || [];
+  if (!awards.length) return;
+  postseason.awardActiveIndex = Math.max(0, Math.min(Number.isInteger(postseason.awardActiveIndex) ? postseason.awardActiveIndex : 0, awards.length - 1));
+  const award = awards[postseason.awardActiveIndex];
+  if (!award || (award.revealStage || 0) >= 3) return;
   award.revealStage = 0;
   postseasonAwardAnimating = true;
   render();
@@ -2486,6 +2608,28 @@ function revealNextPostseasonAward() {
     }
     render();
   }, delays[stageIndex]));
+}
+
+async function advancePostseasonAward() {
+  if (postseasonAwardAnimating) return;
+  const postseason = state.current.postseason;
+  const awards = postseason?.awards || [];
+  if (!awards.length) return;
+  const current = Math.max(0, Math.min(Number.isInteger(postseason.awardActiveIndex) ? postseason.awardActiveIndex : 0, awards.length - 1));
+  if ((awards[current]?.revealStage || 0) < 3) return;
+  postseason.awardActiveIndex = Math.min(awards.length - 1, current + 1);
+  await saveState();
+  render();
+}
+
+async function selectPostseasonAward(index) {
+  if (postseasonAwardAnimating) return;
+  const awards = state.current.postseason?.awards || [];
+  if (!awards.length) return;
+  const next = Math.max(0, Math.min(Number(index) || 0, awards.length - 1));
+  state.current.postseason.awardActiveIndex = next;
+  await saveState();
+  render();
 }
 
 async function revealAllPostseasonAwards() {
@@ -2768,7 +2912,9 @@ document.addEventListener('click', async (event) => {
   if (action === 'showcase-select') {
     const competitionId = target.dataset.competitionId;
     const mode = target.dataset.mode || 'none';
-    state.current.postseason ||= { selections: {}, prepared: false, phase: 'setup', showcaseMatches: [], awards: [], completed: false };
+    state.current.postseason ||= { selections: {}, prepared: false, phase: 'setup', showcaseMatches: [], awards: [], awardActiveIndex: 0, completed: false };
+    state.showcasePreferences ||= {};
+    state.showcasePreferences[competitionId] = mode;
     state.current.postseason.selections ||= {};
     state.current.postseason.selections[competitionId] = mode;
     await saveState();
@@ -2811,6 +2957,8 @@ document.addEventListener('click', async (event) => {
     window.location.hash = '#/postseason/awards';
   }
   if (action === 'reveal-next-award') revealNextPostseasonAward();
+  if (action === 'advance-postseason-award') await advancePostseasonAward();
+  if (action === 'select-postseason-award') await selectPostseasonAward(target.dataset.awardIndex);
   if (action === 'reveal-all-awards') await revealAllPostseasonAwards();
   if (action === 'finish-postseason') await finishPostseason();
   if (action === 'toggle-menu') {

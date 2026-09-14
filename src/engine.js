@@ -1880,11 +1880,12 @@ function newCurrentSeason(state) {
       }
     ],
     postseason: {
-      selections: {},
+      selections: { ...(state.showcasePreferences || {}) },
       prepared: false,
       phase: 'setup',
       showcaseMatches: [],
       awards: [],
+      awardActiveIndex: 0,
       completed: false
     },
     completed: false
@@ -1894,7 +1895,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 21,
+    dataRevision: 22,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -1913,6 +1914,7 @@ export function createWorld(seed = Date.now() % 2147483647) {
     pendingSeasonCoaches: [],
     pendingSeasonRetirements: [],
     pendingOwnerChanges: [],
+    showcasePreferences: {},
     pendingPayrollChanges: [],
     internationalCycle: { worldCupQualified: [], regionalQualified: {} },
     current: null,
@@ -5177,27 +5179,51 @@ function showcaseCompetitionObject(state, competitionId) {
 
 function showcaseAggregateContext(state, match) {
   const competition = showcaseCompetitionObject(state, match.competitionId);
-  const semiRound = competition?.knockout?.rounds?.find((round) => String(round.stage || '').toLowerCase().includes('semi'));
-  const tie = semiRound?.ties?.find((item) => item.secondLeg === match.id);
+  const rounds = competition?.knockout?.rounds || [];
+  const semiRound = rounds.find((round) => String(round.stage || '').toLowerCase().includes('semi'));
+  const tie = semiRound?.ties?.find((item) => item.firstLeg === match.id || item.secondLeg === match.id);
   if (!tie) return null;
   const first = state.current.matches.find((row) => row.id === tie.firstLeg);
   const second = state.current.matches.find((row) => row.id === tie.secondLeg);
-  if (!first || !second) return null;
-  const totals = new Map([
-    [tie.homeId, first.homeGoals + second.awayGoals],
-    [tie.awayId, first.awayGoals + second.homeGoals]
-  ]);
-  const home = totals.get(match.homeId) ?? null;
-  const away = totals.get(match.awayId) ?? null;
-  if (!Number.isFinite(home) || !Number.isFinite(away)) return null;
+  if (!first) return null;
+
+  if (tie.firstLeg === match.id) {
+    return {
+      leg: 1,
+      tieHomeId: tie.homeId,
+      tieAwayId: tie.awayId,
+      homeBefore: 0,
+      awayBefore: 0,
+      homeFinal: match.homeGoals,
+      awayFinal: match.awayGoals,
+      winnerId: null,
+      penalties: null
+    };
+  }
+
+  if (!second) return null;
+  const homeBefore = match.homeId === tie.homeId ? first.homeGoals : first.awayGoals;
+  const awayBefore = match.awayId === tie.awayId ? first.awayGoals : first.homeGoals;
+  const homeFinal = homeBefore + second.homeGoals;
+  const awayFinal = awayBefore + second.awayGoals;
   let penalties = null;
-  if (home === away && tie.winnerId) {
+  if (homeFinal === awayFinal && tie.winnerId) {
     const homeWon = tie.winnerId === match.homeId;
     const winnerPens = showcaseInt(`${match.id}-agg-pens`, 0, 4, 6);
     const loserPens = Math.max(2, winnerPens - showcaseInt(`${match.id}-agg-pens`, 1, 1, 2));
     penalties = homeWon ? { home: winnerPens, away: loserPens } : { home: loserPens, away: winnerPens };
   }
-  return { home, away, winnerId: tie.winnerId || null, penalties };
+  return {
+    leg: 2,
+    tieHomeId: tie.homeId,
+    tieAwayId: tie.awayId,
+    homeBefore,
+    awayBefore,
+    homeFinal,
+    awayFinal,
+    winnerId: tie.winnerId || null,
+    penalties
+  };
 }
 
 function deterministicShuffle(list, key) {
@@ -5602,10 +5628,10 @@ function selectedShowcaseMatches(state) {
     const finals = matches.filter((match) => /^final$/i.test(String(match.stage || '').trim())).sort((a, b) => a.week - b.week);
     const selected = [];
     if (mode === 'semis') {
-      const semis = matches.filter((match) => /semi-final/i.test(String(match.stage || '')));
-      const legTwo = semis.filter((match) => /leg 2/i.test(String(match.stage || ''))).sort((a, b) => a.week - b.week);
-      const decisiveSemis = legTwo.length >= 2 ? legTwo.slice(-2) : semis.sort((a, b) => a.week - b.week).slice(-2);
-      selected.push(...decisiveSemis);
+      const semis = matches
+        .filter((match) => /semi-final/i.test(String(match.stage || '')))
+        .sort((a, b) => a.week - b.week || String(a.stage || '').localeCompare(String(b.stage || '')));
+      selected.push(...semis);
     }
     if (finals.length) selected.push(finals[finals.length - 1]);
     const unique = [...new Map(selected.map((match) => [match.id, match])).values()];
@@ -5693,6 +5719,7 @@ function preparePostseasonExperience(state) {
   state.current.postseason.prepared = true;
   state.current.postseason.showcaseMatches = showcaseMatches;
   state.current.postseason.awards = awards;
+  state.current.postseason.awardActiveIndex = 0;
   state.current.postseason.phase = showcaseMatches.length ? 'games' : 'awards';
   state.current.postseason.completed = false;
   state.current.postseason.preparedSeason = state.season;
@@ -6361,6 +6388,15 @@ export function upgradeWorld(state) {
       match.liveProgress ||= { timelineIndex: 0, pauseReason: null, penaltyIndex: 0 };
     }
     state.dataRevision = 21;
+    invalidateRuntimeCache(state);
+  }
+  if (state.dataRevision < 22) {
+    state.showcasePreferences ||= { ...(state.current?.postseason?.selections || {}) };
+    if (state.current?.postseason) {
+      state.current.postseason.selections = { ...state.showcasePreferences, ...(state.current.postseason.selections || {}) };
+      state.current.postseason.awardActiveIndex = Number.isInteger(state.current.postseason.awardActiveIndex) ? state.current.postseason.awardActiveIndex : 0;
+    }
+    state.dataRevision = 22;
     invalidateRuntimeCache(state);
   }
   return state;

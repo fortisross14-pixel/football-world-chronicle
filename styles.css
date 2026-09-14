@@ -3714,3 +3714,63 @@ body {
   .showcase-modal-actions { flex-wrap:wrap; }
   .showcase-break-chip { width:100%;justify-content:center; }
 }
+
+/* v3.12 postseason suspense + awards navigation ------------------------- */
+.postseason-selector-card.future-showcase {
+  border-style:dashed;
+  background:linear-gradient(180deg,#fbfdff,#f4f8fc);
+}
+.postseason-selector-card.future-showcase .postseason-selector-title small {
+  color:#6d7f94;
+  font-weight:750;
+}
+.showcase-team-placeholder {
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  border-radius:12px;
+  color:#8aa0b6;
+  background:#edf3f8;
+  border:1px dashed #c8d6e3;
+  font-size:17px;
+  font-weight:900;
+}
+.award-ceremony-chip {
+  appearance:none;
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+.award-ceremony-chip:hover { transform:translateY(-1px); }
+.award-ceremony-chip:focus-visible { outline:3px solid rgba(38,135,234,.26);outline-offset:2px; }
+
+.showcase-goal-flash {
+  color:var(--goal-fg,#fff);
+  background:var(--goal-bg,linear-gradient(135deg,#217b54,#125438));
+  border-color:color-mix(in srgb,var(--goal-accent,#fff) 55%,transparent);
+  box-shadow:0 12px 28px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.14);
+}
+.showcase-goal-flash::before {
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  border-radius:inherit;
+  background:linear-gradient(115deg,rgba(255,255,255,.17),transparent 32%,rgba(0,0,0,.08));
+}
+.showcase-goal-flash { position:relative;overflow:hidden; }
+.showcase-goal-flash > * { position:relative;z-index:1; }
+.showcase-goal-flash span,
+.showcase-goal-flash small { color:var(--goal-fg,#fff);text-shadow:0 1px 2px rgba(0,0,0,.30); }
+.showcase-goal-flash strong { text-shadow:0 1px 3px rgba(0,0,0,.28); }
+.showcase-aggregate {
+  display:inline-flex;
+  justify-self:center;
+  padding:4px 9px;
+  border-radius:999px;
+  background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.09);
+  font-weight:850;
+  color:#d8e5f2;
+}
