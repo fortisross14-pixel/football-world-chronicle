@@ -3774,3 +3774,34 @@ body {
   font-weight:850;
   color:#d8e5f2;
 }
+
+
+/* v3.13 showcase spoiler embargo ----------------------------------------- */
+.showcase-embargo-panel {
+  border-color: rgba(52,118,210,.28);
+  background: linear-gradient(180deg, rgba(240,247,255,.96), rgba(255,255,255,.98));
+}
+.showcase-embargo-row {
+  border-color: rgba(52,118,210,.22) !important;
+  background: linear-gradient(180deg, rgba(245,249,255,.98), rgba(236,244,255,.96)) !important;
+}
+.showcase-embargo-row .panel-chip,
+.showcase-embargo-panel .panel-chip {
+  color:#245fae;
+  border-color:rgba(52,118,210,.28);
+  background:rgba(220,235,255,.72);
+}
+.showcase-locked-summary {
+  border:1px dashed rgba(52,118,210,.32);
+  background:linear-gradient(135deg,#f4f8ff,#fff);
+}
+@media (min-width: 901px) {
+  .topbar-sim-row .season-end-button { min-width: 250px; }
+}
+/* Small navigation refinements, preserving the existing visual identity. */
+.navigation-trail { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 16px; color:var(--muted); font-size:12px; line-height:1.6; }
+.navigation-trail a { color:var(--blue-dark); font-weight:650; }
+.navigation-trail a:hover { text-decoration:underline; text-underline-offset:3px; }
+.navigation-trail [aria-current] { color:var(--ink); overflow-wrap:anywhere; }
+.skip-link { position:fixed; left:16px; top:-80px; z-index:1000; padding:12px 18px; border-radius:8px; background:white; color:#153957; box-shadow:0 4px 20px #152f4933; }
+.skip-link:focus { top:16px; }
