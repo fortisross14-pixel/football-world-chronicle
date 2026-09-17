@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "http-server . -p 4173 -c-1",
     "start": "http-server . -p 4173 -c-1",
-    "check": "node --check src/data.js && node --check src/engine.js && node --check src/visuals.js && node --check src/app.js && node --check api/save.js && node --check api/load.js",
+    "check": "node --check src/data.js && node --check src/engine.js && node --check src/market-policy.js && node --check src/visuals.js && node --check src/app.js && node --check api/save.js && node --check api/load.js",
     "test": "node scripts/smoke-test.mjs",
     "balance": "node scripts/balance-test.mjs",
     "regression": "node scripts/regression-v315.mjs",
+    "regression-market": "node scripts/regression-market-geography.mjs",
+    "career-balance": "node scripts/market-career-balance.mjs",
     "favorite-balance": "node scripts/favorite-balance-v17.mjs",
     "market-balance": "node scripts/market-balance-v18.mjs",
     "regression-v19": "node scripts/regression-v19.mjs",

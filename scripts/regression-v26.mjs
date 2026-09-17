@@ -24,6 +24,8 @@ state.history.champions.push({season:state.season-1,competitionId:`CUP-${riser.l
 const gen = state.players.find((player) => player.rarity === 'generational' && !player.realWorldId) || state.players.find((player) => player.rarity === 'generational');
 gen.clubId = 'sporting'; gen.rating = 99; gen.baseQuality = 99; gen.careerYear = 6; gen.birthYear = state.season - 24;
 gen.happiness = 75; gen.contractYears = 4; gen.transferProtectedUntilSeason = null;
+// An established, repeatedly frustrated spell, rather than a just-signed star.
+gen.clubJoinedSeason = state.season - 4; gen.happiness = 10; gen.unhappySeasons = 2;
 state.current.completed = true;
 startNextSeason(state);
 
