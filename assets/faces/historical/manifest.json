@@ -1,0 +1,1027 @@
+{
+  "pele": {
+    "name": "Pelé",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "maradona": {
+    "name": "Diego Maradona",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "messi": {
+    "name": "Lionel Messi",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "cristiano-ronaldo": {
+    "name": "Cristiano Ronaldo",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "ronaldo-nazario": {
+    "name": "Ronaldo Nazário",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "cruyff": {
+    "name": "Johan Cruyff",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "di-stefano": {
+    "name": "Alfredo Di Stéfano",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "beckenbauer": {
+    "name": "Franz Beckenbauer",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "puskas": {
+    "name": "Ferenc Puskás",
+    "rarity": "generational",
+    "source": "curated_generated_v315"
+  },
+  "zidane": {
+    "name": "Zinedine Zidane",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "maldini": {
+    "name": "Paolo Maldini",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "yashin": {
+    "name": "Lev Yashin",
+    "rarity": "generational",
+    "source": "curated_generated_v315"
+  },
+  "buffon": {
+    "name": "Gianluigi Buffon",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "platini": {
+    "name": "Michel Platini",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "baresi": {
+    "name": "Franco Baresi",
+    "rarity": "generational",
+    "source": "curated_generated_v315"
+  },
+  "eusebio": {
+    "name": "Eusébio",
+    "rarity": "generational",
+    "source": "curated_generated"
+  },
+  "garrincha": {
+    "name": "Garrincha",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "gerd-muller": {
+    "name": "Gerd Müller",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "romario": {
+    "name": "Romário",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "ronaldinho": {
+    "name": "Ronaldinho",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "rivaldo": {
+    "name": "Rivaldo",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "kaka": {
+    "name": "Kaká",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "neymar": {
+    "name": "Neymar",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "xavi": {
+    "name": "Xavi Hernández",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "iniesta": {
+    "name": "Andrés Iniesta",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "modric": {
+    "name": "Luka Modrić",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "benzema": {
+    "name": "Karim Benzema",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "raul": {
+    "name": "Raúl González",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "michael-owen": {
+    "name": "Michael Owen",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "cannavaro": {
+    "name": "Fabio Cannavaro",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "stoichkov": {
+    "name": "Hristo Stoichkov",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "roberto-baggio": {
+    "name": "Roberto Baggio",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "van-basten": {
+    "name": "Marco van Basten",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "gullit": {
+    "name": "Ruud Gullit",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "matthaus": {
+    "name": "Lothar Matthäus",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "bobby-charlton": {
+    "name": "Bobby Charlton",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "george-best": {
+    "name": "George Best",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "bobby-moore": {
+    "name": "Bobby Moore",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "carlos-alberto": {
+    "name": "Carlos Alberto",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "cafu": {
+    "name": "Cafu",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "roberto-carlos": {
+    "name": "Roberto Carlos",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "puyol": {
+    "name": "Carles Puyol",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "sergio-ramos": {
+    "name": "Sergio Ramos",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "neuer": {
+    "name": "Manuel Neuer",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "casillas": {
+    "name": "Iker Casillas",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "dino-zoff": {
+    "name": "Dino Zoff",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "oliver-kahn": {
+    "name": "Oliver Kahn",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "peter-schmeichel": {
+    "name": "Peter Schmeichel",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "facchetti": {
+    "name": "Giacinto Facchetti",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "nesta": {
+    "name": "Alessandro Nesta",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "scirea": {
+    "name": "Gaetano Scirea",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "passarella": {
+    "name": "Daniel Passarella",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "nilton-santos": {
+    "name": "Nílton Santos",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "didi": {
+    "name": "Didi",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "jairzinho": {
+    "name": "Jairzinho",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "luis-suarez": {
+    "name": "Luis Suárez",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "lewandowski": {
+    "name": "Robert Lewandowski",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "thierry-henry": {
+    "name": "Thierry Henry",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "bergkamp": {
+    "name": "Dennis Bergkamp",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "cantona": {
+    "name": "Eric Cantona",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "dalglish": {
+    "name": "Kenny Dalglish",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "alan-shearer": {
+    "name": "Alan Shearer",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "jimmy-greaves": {
+    "name": "Jimmy Greaves",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "paolo-rossi": {
+    "name": "Paolo Rossi",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "gianni-rivera": {
+    "name": "Gianni Rivera",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "totti": {
+    "name": "Francesco Totti",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "del-piero": {
+    "name": "Alessandro Del Piero",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "pirlo": {
+    "name": "Andrea Pirlo",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "seedorf": {
+    "name": "Clarence Seedorf",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "rijkaard": {
+    "name": "Frank Rijkaard",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "robben": {
+    "name": "Arjen Robben",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "ribery": {
+    "name": "Franck Ribéry",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "figo": {
+    "name": "Luís Figo",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "hugo-sanchez": {
+    "name": "Hugo Sánchez",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "mario-kempes": {
+    "name": "Mario Kempes",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "batistuta": {
+    "name": "Gabriel Batistuta",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "rivelino": {
+    "name": "Rivellino",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "socrates": {
+    "name": "Sócrates",
+    "rarity": "legend",
+    "source": "curated_generated"
+  },
+  "zico": {
+    "name": "Zico",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "ruud-krol": {
+    "name": "Ruud Krol",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "josef-bican": {
+    "name": "Josef Bican",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "raymond-kopa": {
+    "name": "Raymond Kopa",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "just-fontaine": {
+    "name": "Just Fontaine",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "stanley-matthews": {
+    "name": "Stanley Matthews",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "giuseppe-meazza": {
+    "name": "Giuseppe Meazza",
+    "rarity": "legend",
+    "source": "curated_generated_v315"
+  },
+  "rooney": {
+    "name": "Wayne Rooney",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p011"
+  },
+  "mijatovic": {
+    "name": "Predrag Mijatović",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p025"
+  },
+  "riquelme": {
+    "name": "Juan Román Riquelme",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "forlan": {
+    "name": "Diego Forlán",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p015"
+  },
+  "etoo": {
+    "name": "Samuel Eto’o",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p019"
+  },
+  "ballack": {
+    "name": "Michael Ballack",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p034"
+  },
+  "drogba": {
+    "name": "Didier Drogba",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p016"
+  },
+  "salah": {
+    "name": "Mohamed Salah",
+    "rarity": "epic",
+    "source": "curated_generated"
+  },
+  "mbappe": {
+    "name": "Kylian Mbappé",
+    "rarity": "epic",
+    "source": "curated_generated"
+  },
+  "david-villa": {
+    "name": "David Villa",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p009"
+  },
+  "fernando-torres": {
+    "name": "Fernando Torres",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p017"
+  },
+  "aguero": {
+    "name": "Sergio Agüero",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p025"
+  },
+  "cavani": {
+    "name": "Edinson Cavani",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p029"
+  },
+  "falcao": {
+    "name": "Radamel Falcao",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "ibrahimovic": {
+    "name": "Zlatan Ibrahimović",
+    "rarity": "epic",
+    "source": "curated_generated_v315"
+  },
+  "harry-kane": {
+    "name": "Harry Kane",
+    "rarity": "epic",
+    "source": "curated_generated_v315"
+  },
+  "haaland": {
+    "name": "Erling Haaland",
+    "rarity": "epic",
+    "source": "curated_generated"
+  },
+  "vinicius": {
+    "name": "Vinícius Júnior",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p016"
+  },
+  "griezmann": {
+    "name": "Antoine Griezmann",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p002"
+  },
+  "sadio-mane": {
+    "name": "Sadio Mané",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p035"
+  },
+  "mahrez": {
+    "name": "Riyad Mahrez",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p006"
+  },
+  "son": {
+    "name": "Son Heung-min",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p005"
+  },
+  "shevchenko": {
+    "name": "Andriy Shevchenko",
+    "rarity": "epic",
+    "source": "curated_generated"
+  },
+  "suker": {
+    "name": "Davor Šuker",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p011"
+  },
+  "larsson": {
+    "name": "Henrik Larsson",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p017"
+  },
+  "kluivert": {
+    "name": "Patrick Kluivert",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p019"
+  },
+  "van-nistelrooy": {
+    "name": "Ruud van Nistelrooy",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p017"
+  },
+  "crespo": {
+    "name": "Hernán Crespo",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "vieri": {
+    "name": "Christian Vieri",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p034"
+  },
+  "inzaghi": {
+    "name": "Filippo Inzaghi",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p025"
+  },
+  "trezeguet": {
+    "name": "David Trezeguet",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p034"
+  },
+  "adriano": {
+    "name": "Adriano",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p028"
+  },
+  "tevez": {
+    "name": "Carlos Tévez",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p025"
+  },
+  "recoba": {
+    "name": "Álvaro Recoba",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p029"
+  },
+  "savicevic": {
+    "name": "Dejan Savićević",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p029"
+  },
+  "prosinecki": {
+    "name": "Robert Prosinečki",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p018"
+  },
+  "stojkovic": {
+    "name": "Dragan Stojković",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "hagi": {
+    "name": "Gheorghe Hagi",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "nedved": {
+    "name": "Pavel Nedvěd",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p018"
+  },
+  "scholes": {
+    "name": "Paul Scholes",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p003"
+  },
+  "gerrard": {
+    "name": "Steven Gerrard",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "lampard": {
+    "name": "Frank Lampard",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p034"
+  },
+  "vieira": {
+    "name": "Patrick Vieira",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p035"
+  },
+  "makelele": {
+    "name": "Claude Makélélé",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p001"
+  },
+  "yaya-toure": {
+    "name": "Yaya Touré",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p012"
+  },
+  "kante": {
+    "name": "N’Golo Kanté",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p001"
+  },
+  "kroos": {
+    "name": "Toni Kroos",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p017"
+  },
+  "schweinsteiger": {
+    "name": "Bastian Schweinsteiger",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p034"
+  },
+  "ozil": {
+    "name": "Mesut Özil",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p006"
+  },
+  "sneijder": {
+    "name": "Wesley Sneijder",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p024"
+  },
+  "xabi-alonso": {
+    "name": "Xabi Alonso",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "fabregas": {
+    "name": "Cesc Fàbregas",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p009"
+  },
+  "david-silva": {
+    "name": "David Silva",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p005"
+  },
+  "veron": {
+    "name": "Juan Sebastián Verón",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p024"
+  },
+  "aimar": {
+    "name": "Pablo Aimar",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p029"
+  },
+  "ortega": {
+    "name": "Ariel Ortega",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p025"
+  },
+  "francescoli": {
+    "name": "Enzo Francescoli",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "redondo": {
+    "name": "Fernando Redondo",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p029"
+  },
+  "guti": {
+    "name": "Guti",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p018"
+  },
+  "deco": {
+    "name": "Deco",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p009"
+  },
+  "beckham": {
+    "name": "David Beckham",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p017"
+  },
+  "keane": {
+    "name": "Roy Keane",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p034"
+  },
+  "busquets": {
+    "name": "Sergio Busquets",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p005"
+  },
+  "rodri": {
+    "name": "Rodri",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p009"
+  },
+  "bellingham": {
+    "name": "Jude Bellingham",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p028"
+  },
+  "de-bruyne": {
+    "name": "Kevin De Bruyne",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p003"
+  },
+  "bruno-fernandes": {
+    "name": "Bruno Fernandes",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "marcelo": {
+    "name": "Marcelo",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p006"
+  },
+  "dani-alves": {
+    "name": "Dani Alves",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p008"
+  },
+  "ashley-cole": {
+    "name": "Ashley Cole",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p001"
+  },
+  "evra": {
+    "name": "Patrice Evra",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p001"
+  },
+  "lahm": {
+    "name": "Philipp Lahm",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p034"
+  },
+  "zanetti": {
+    "name": "Javier Zanetti",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p029"
+  },
+  "lucio": {
+    "name": "Lúcio",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p024"
+  },
+  "thiago-silva": {
+    "name": "Thiago Silva",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p024"
+  },
+  "van-dijk": {
+    "name": "Virgil van Dijk",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p028"
+  },
+  "rio-ferdinand": {
+    "name": "Rio Ferdinand",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p019"
+  },
+  "john-terry": {
+    "name": "John Terry",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p034"
+  },
+  "vidic": {
+    "name": "Nemanja Vidić",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p005"
+  },
+  "jaap-stam": {
+    "name": "Jaap Stam",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p024"
+  },
+  "desailly": {
+    "name": "Marcel Desailly",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p001"
+  },
+  "thuram": {
+    "name": "Lilian Thuram",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p019"
+  },
+  "varane": {
+    "name": "Raphaël Varane",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p006"
+  },
+  "chiellini": {
+    "name": "Giorgio Chiellini",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p029"
+  },
+  "bonucci": {
+    "name": "Leonardo Bonucci",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p005"
+  },
+  "godin": {
+    "name": "Diego Godín",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "hierro": {
+    "name": "Fernando Hierro",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p025"
+  },
+  "koeman": {
+    "name": "Ronald Koeman",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p017"
+  },
+  "kompany": {
+    "name": "Vincent Kompany",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p001"
+  },
+  "campbell": {
+    "name": "Sol Campbell",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p019"
+  },
+  "alaba": {
+    "name": "David Alaba",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p021"
+  },
+  "hakimi": {
+    "name": "Achraf Hakimi",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p006"
+  },
+  "trent": {
+    "name": "Trent Alexander-Arnold",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p028"
+  },
+  "cech": {
+    "name": "Petr Čech",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p034"
+  },
+  "van-der-sar": {
+    "name": "Edwin van der Sar",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p017"
+  },
+  "courtois": {
+    "name": "Thibaut Courtois",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p017"
+  },
+  "alisson": {
+    "name": "Alisson Becker",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "oblak": {
+    "name": "Jan Oblak",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p005"
+  },
+  "keylor-navas": {
+    "name": "Keylor Navas",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p009"
+  },
+  "dida": {
+    "name": "Dida",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p001"
+  },
+  "valdes": {
+    "name": "Víctor Valdés",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p005"
+  },
+  "barthez": {
+    "name": "Fabien Barthez",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p024"
+  },
+  "chilavert": {
+    "name": "José Luis Chilavert",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p009"
+  },
+  "higuita": {
+    "name": "René Higuita",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p006"
+  },
+  "mendieta": {
+    "name": "Gaizka Mendieta",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p018"
+  },
+  "joaquin": {
+    "name": "Joaquín",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p025"
+  },
+  "quaresma": {
+    "name": "Ricardo Quaresma",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p009"
+  },
+  "payet": {
+    "name": "Dimitri Payet",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p006"
+  },
+  "aubameyang": {
+    "name": "Pierre-Emerick Aubameyang",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p019"
+  },
+  "kanoute": {
+    "name": "Frédéric Kanouté",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p001"
+  },
+  "okocha": {
+    "name": "Jay-Jay Okocha",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p016"
+  },
+  "essien": {
+    "name": "Michael Essien",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p001"
+  },
+  "abedi-pele": {
+    "name": "Abedi Pelé",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p019"
+  },
+  "dempsey": {
+    "name": "Clint Dempsey",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p034"
+  },
+  "donovan": {
+    "name": "Landon Donovan",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p011"
+  },
+  "rafa-marquez": {
+    "name": "Rafael Márquez",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p031"
+  },
+  "cuauhtemoc": {
+    "name": "Cuauhtémoc Blanco",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p009"
+  },
+  "nakata": {
+    "name": "Hidetoshi Nakata",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p014"
+  },
+  "park-ji-sung": {
+    "name": "Park Ji-sung",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p005"
+  },
+  "tim-cahill": {
+    "name": "Tim Cahill",
+    "rarity": "epic",
+    "source": "curated_identity_v315:p034"
+  }
+}

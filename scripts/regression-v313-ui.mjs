@@ -48,11 +48,7 @@ const hashchange = handlers['window:hashchange'];
 window.location.hash = '#/competition/UCL/history';
 hashchange();
 assert(app.innerHTML.includes('Champions and positional awards'));
-// A followed club may legitimately appear in the sidebar even when it happens
-// to be the hidden champion. Inspect the result table itself.
-const historyTable = app.innerHTML.match(/<table class="data-table history-table">[\s\S]*?<\/table>/)?.[0];
-assert(historyTable, 'competition history table must render');
-assert(!historyTable.includes(`>${championName}<`), 'current UCL champion leaked into history before showcase final');
+assert(!app.innerHTML.includes(`>${championName}<`), 'current UCL champion leaked into history before showcase final');
 
 window.location.hash = '#/competition/UCL/current';
 hashchange();

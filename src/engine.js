@@ -18,8 +18,6 @@ import {
   RIVALRY_DEFINITIONS
 } from './data.js';
 import { REAL_WORLD_STARS } from './real-stars.js';
-import { simulateMatchChances, matchEventRoll } from './match-model.js';
-import { isEstablishedDestination, clubTenure, transferCommitmentFactor } from './transfer-policy.js';
 
 const COUNTRY_TO_CODE = Object.fromEntries(
   Object.entries(COUNTRY_META).map(([country, meta]) => [country, meta.code])
@@ -204,6 +202,17 @@ function weightedPick(state, items, weightFn) {
     if (needle <= 0) return items[i];
   }
   return items[items.length - 1];
+}
+
+function poisson(state, lambda) {
+  const limit = Math.exp(-Math.max(0.05, lambda));
+  let product = 1;
+  let count = 0;
+  do {
+    count += 1;
+    product *= random(state);
+  } while (product > limit && count < 11);
+  return count - 1;
 }
 
 function slug(value) {
@@ -1886,7 +1895,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 23,
+    dataRevision: 22,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -2254,20 +2263,6 @@ function calculateUnitStrength(state, teamId, isInternational, unit) {
   return base * 0.53 + average * 0.47 * multiplier + starImpactForLineup(lineup, unit);
 }
 
-function matchTeamProfile(state, teamId, isInternational, expectedGoals) {
-  const entity = isInternational ? state.nationalTeams.find((team) => team.id === teamId) : getClub(state, teamId);
-  const lineup = isInternational ? getNationalLineup(state, teamId) : getClubLineup(state, teamId);
-  const base = entity?.strength || 70;
-  const quality = (position) => {
-    const players = lineup.filter((player) => player.position === position).map((player) => player.rating);
-    if (!players.length) return base;
-    const average = players.reduce((sum, rating) => sum + rating, 0) / players.length;
-    return average * 0.65 + Math.max(...players) * 0.35;
-  };
-  return { style: entity?.coachProfile, expectedGoals, midfield: quality('MF'), defence: quality('DF'),
-    finishing: quality('FW'), goalkeeping: quality('GK') };
-}
-
 function resolveDraw(state, homeId, awayId, homeGoals, awayGoals, isInternational) {
   let hg = homeGoals;
   let ag = awayGoals;
@@ -2352,24 +2347,13 @@ function simulateMatch(state, {
   const awayEdgeDivisor = highStakes ? (isInternational ? 37 : 42) : 50;
   const homeLambda = clamp(1.27 + (homeAttack - awayDefence) / attackDivisor + difference / homeEdgeDivisor, 0.16, 3.55);
   const awayLambda = clamp(1.01 + (awayAttack - homeDefence) / defenceDivisor - difference / awayEdgeDivisor, 0.13, 3.25);
-  const chances = simulateMatchChances(
-    matchTeamProfile(state, homeId, isInternational, homeLambda),
-    matchTeamProfile(state, awayId, isInternational, awayLambda),
-    () => random(state)
-  );
-  let homeGoals = chances.goals.home;
-  let awayGoals = chances.goals.away;
+  let homeGoals = poisson(state, homeLambda);
+  let awayGoals = poisson(state, awayLambda);
   let resolution = null;
   if (knockout) {
     resolution = resolveDraw(state, homeId, awayId, homeGoals, awayGoals, isInternational);
     homeGoals = resolution.homeGoals;
     awayGoals = resolution.awayGoals;
-  }
-  // The extra-time decider is also a shot on target, never a score-only event.
-  for (const [side, goals] of [['home', homeGoals], ['away', awayGoals]]) {
-    const extraGoals = goals - chances.goals[side];
-    chances.stats[side].shots += extraGoals;
-    chances.stats[side].onTarget += extraGoals;
   }
 
   const homeLineup = isInternational ? getNationalLineup(state, homeId) : getClubLineup(state, homeId);
@@ -2515,8 +2499,6 @@ function simulateMatch(state, {
     extraTime: resolution?.extraTime || false,
     penalties: resolution?.penalties || null,
     goalEvents,
-    stats: chances.stats,
-    cardEvents: chances.cardEvents,
     manOfMatchId,
     isInternational,
     knockout,
@@ -2633,7 +2615,7 @@ function distributeSummaryPlayerStats(state, league, row) {
     stat.starts += playerApps;
     stat.goals += goals[player.id] || 0;
     stat.assists += assists[player.id] || 0;
-    if (['GK', 'DF'].includes(player.position)) stat.cleanSheets += Math.min(playerApps, Math.round(row.cleanSheets * (0.72 + random(state) * 0.25)));
+    if (['GK', 'DF'].includes(player.position)) stat.cleanSheets += Math.round(row.cleanSheets * (0.72 + random(state) * 0.25));
     stat.ratingSum += averageRating * playerApps;
     stat.averageRating = stat.ratingSum / stat.apps;
   });
@@ -2645,18 +2627,12 @@ function simulateSummaryLeagues(state) {
     rounds.forEach((round) => round.forEach(({ homeId, awayId }) => {
       const homeStrength = calculateTeamStrength(state, homeId, false) + coachContextBonus(state, homeId, false, league.id, 'League season', false) + 1.6;
       const awayStrength = calculateTeamStrength(state, awayId, false) + coachContextBonus(state, awayId, false, league.id, 'League season', false);
-      const chances = simulateMatchChances(
-        matchTeamProfile(state, homeId, false, clamp(1.2 + (homeStrength - awayStrength) / 23.5, 0.18, 3.35)),
-        matchTeamProfile(state, awayId, false, clamp(0.95 + (awayStrength - homeStrength) / 25.5, 0.14, 3.0)),
-        () => random(state)
-      );
-      const homeGoals = chances.goals.home, awayGoals = chances.goals.away;
+      const homeGoals = poisson(state, clamp(1.2 + (homeStrength - awayStrength) / 23.5, 0.18, 3.35));
+      const awayGoals = poisson(state, clamp(0.95 + (awayStrength - homeStrength) / 25.5, 0.14, 3.0));
       updateTable(league.table, homeId, awayId, homeGoals, awayGoals);
-      if (awayGoals === 0) { const row = league.table.find((item) => item.teamId === homeId); row.cleanSheets = (row.cleanSheets || 0) + 1; }
-      if (homeGoals === 0) { const row = league.table.find((item) => item.teamId === awayId); row.cleanSheets = (row.cleanSheets || 0) + 1; }
     }));
     league.table.forEach((row) => {
-      row.cleanSheets ||= 0;
+      row.cleanSheets = Math.max(0, Math.round((row.played - row.ga * 0.58) * 0.42));
       distributeSummaryPlayerStats(state, league, row);
       const coach = getCoach(state, row.teamId, false);
       if (coach) {
@@ -4154,12 +4130,7 @@ function ensureClubRosters(state) {
       const player = positional[0] || [...freeAgents].sort(sortByFit)[0];
       if (player) {
         player.clubId = club.id;
-        player.contractYears = isEstablishedDestination(club) ? randomInt(state, 4, 5) : randomInt(state, 2, 4);
-        // Roster repair is also a signing. When run during season rollover the
-        // arrival belongs to the upcoming season, before its market opens.
-        player.joinedClubSeason = state.season + (state.current.completed ? 1 : 0);
-        player.commitmentClubId = club.id;
-        player.lastTransferSeason = player.joinedClubSeason;
+        player.contractYears = randomInt(state, 1, 4);
         player.salary = Number((player.marketValue * (0.048 + random(state) * 0.024)).toFixed(1));
         player.happiness = clamp(62 + Math.round((club.reputation - 68) * 0.35) + randomInt(state, -5, 8), 45, 95);
         freeAgents.splice(freeAgents.indexOf(player), 1);
@@ -4488,16 +4459,10 @@ function ambitionHappinessChange(state, player, club) {
   } else if (player.rarity === 'rare') {
     change -= Math.max(0, qualityGap - 10) * 0.25;
   }
-  // Signing for a major club fulfils much of a star's ambition. Give a new
-  // project time, and let trophy droughts erode happiness over several seasons.
-  if (change < 0 && isEstablishedDestination(club)) {
-    change *= clubTenure(state.season, player) < 3 ? 0.18 : 0.45;
-  }
   return Math.round(change);
 }
 
 function evolveWorld(state) {
-  initializePlayerCommitments(state);
   processPromotionRelegation(state);
   processOwnerTurnover(state);
   processCoachLifecycle(state);
@@ -4578,14 +4543,13 @@ function evolveWorld(state) {
         ? clamp(
             0.54 + player.happiness / 270 + (club.reputation - 68) / 280
             - prestigeGap / 75 - rarityAmbition * Math.max(0, 82 - club.reputation) / 70
-            - migrationPressure / 135
-            + (isEstablishedDestination(club) && player.happiness >= 50 ? 0.16 : 0),
+            - migrationPressure / 135,
             0.04,
-            0.97
+            0.9
           )
         : 0;
       if (club && random(state) < renewalChance) {
-        player.contractYears = isEstablishedDestination(club) ? randomInt(state, 3, 5) : randomInt(state, 2, 4);
+        player.contractYears = randomInt(state, 1, 4);
         player.salary = Number((player.marketValue * (0.05 + random(state) * 0.024)).toFixed(1));
         player.happiness = clamp(player.happiness + randomInt(state, 2, 10), 30, 100);
       } else {
@@ -4768,8 +4732,6 @@ function eliteMigrationPressure(state, player, club) {
   // Only major continental success truly buys patience from an all-time talent.
   if (success.titles) pressure -= success.mostRecentTitleAge <= 1 ? 70 : 44;
   pressure -= success.finals * 14;
-  if (isEstablishedDestination(club)) pressure -= 55;
-  if (clubTenure(state.season, player) < 3) pressure *= 0.45;
   return clamp(pressure, 0, 100);
 }
 
@@ -4824,46 +4786,14 @@ function positionNeedFromRoster(state, club, players = []) {
   })[0];
 }
 
-function initializePlayerCommitments(state) {
-  const latest = new Map();
-  for (const row of state.history.transfers || []) {
-    if (!latest.has(row.playerId) || row.season >= latest.get(row.playerId).season) latest.set(row.playerId, row);
-  }
-  for (const player of state.players) {
-    const transfer = latest.get(player.id);
-    if (player.lastTransferSeason == null && transfer) player.lastTransferSeason = transfer.season;
-    if (player.commitmentClubId === player.clubId && Number.isFinite(player.joinedClubSeason)) continue;
-    player.commitmentClubId = player.clubId;
-    player.joinedClubSeason = transfer?.toClubId === player.clubId ? transfer.season
-      : Math.max(player.debutSeason ?? state.season, state.season - Math.min(4, player.careerYear || 0));
-  }
-}
-
-function commitmentFactor(state, player, seller, buyer) {
-  if (player.lastTransferSeason === state.season || (player.transferProtectedUntilSeason && state.season < player.transferProtectedUntilSeason)) return 0;
-  if (!seller || isEstablishedDestination(seller)) return transferCommitmentFactor(state.season, player, seller, buyer);
-  const cache = getRuntimeCache(state);
-  cache.commitmentDestinationScores ||= new Map();
-  const score = (club) => {
-    if (!cache.commitmentDestinationScores.has(club.id)) cache.commitmentDestinationScores.set(club.id, clubDestinationScore(state, club));
-    return cache.commitmentDestinationScores.get(club.id);
-  };
-  const gain = buyer && seller ? score(buyer) - score(seller) : 0;
-  return transferCommitmentFactor(state.season, player, seller, buyer, gain);
-}
-
 function transferPlayer(state, player, buyer, seller, fee, freeTransfer = false) {
-  if (commitmentFactor(state, player, seller, buyer) === 0) return false;
   const oldClubId = player.clubId;
   invalidateRuntimeCache(state);
   if (seller) seller.finances += fee;
   buyer.finances = Math.max(0, buyer.finances - fee);
   buyer.transferBudget = Math.max(0, buyer.transferBudget - fee);
   player.clubId = buyer.id;
-  player.contractYears = isEstablishedDestination(buyer) ? randomInt(state, 4, 5) : randomInt(state, 3, 5);
-  player.joinedClubSeason = state.season;
-  player.commitmentClubId = buyer.id;
-  player.lastTransferSeason = state.season;
+  player.contractYears = randomInt(state, 2, 5);
   player.salary = Number((player.marketValue * (0.055 + random(state) * 0.025)).toFixed(1));
   const destinationGain = clubDestinationScore(state, buyer) - (seller ? clubDestinationScore(state, seller) : 60);
   player.happiness = clamp(68 + Math.round(destinationGain * 0.65) + randomInt(state, -5, 9), 42, 100);
@@ -4892,7 +4822,6 @@ function transferPlayer(state, player, buyer, seller, fee, freeTransfer = false)
       entityId: player.id
     });
   }
-  return true;
 }
 
 function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = false) {
@@ -4909,7 +4838,6 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
   const candidates = activePlayers
     .filter((player) => ['generational', 'legend', 'epic'].includes(player.rarity))
     .filter((player) => !player.transferProtectedUntilSeason || state.season >= player.transferProtectedUntilSeason)
-    .filter((player) => player.lastTransferSeason !== state.season)
     .map((player) => {
       const seller = getClub(state, player.clubId);
       const migrationPressure = eliteMigrationPressure(state, player, seller);
@@ -4940,7 +4868,6 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
     }
     let possibleBuyers = clubs.filter((buyer) => {
       if (buyer.id === seller?.id || buyer.division === 2) return false;
-      if (commitmentFactor(state, player, seller, buyer) === 0) return false;
       if (!initial && Number(buyer.payrollPressureRatio || 1) >= 1.18) return false;
       const buyerDestinationScore = clubDestinationScore(state, buyer);
       if (!primeDestinationAllowed(state, player, buyer, seller)) return false;
@@ -4999,9 +4926,9 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       0.32,
       0.998
     );
-    if (random(state) > acceptance * commitmentFactor(state, player, seller, buyer)) continue;
+    if (random(state) > acceptance) continue;
     const oldClubId = player.clubId;
-    if (!transferPlayer(state, player, buyer, seller, fee, !seller)) continue;
+    transferPlayer(state, player, buyer, seller, fee, !seller);
     if (oldClubId && rosters.has(oldClubId)) rosters.set(oldClubId, rosters.get(oldClubId).filter((item) => item.id !== player.id));
     rosters.get(buyer.id).push(player);
     moved[player.rarity] += 1;
@@ -5045,7 +4972,6 @@ function runPayrollClearanceMarket(state, clubs, rosters) {
       const sellerDestination = clubDestinationScore(state, seller);
       let buyers = healthyBuyers.filter((buyer) => {
         if (buyer.id === seller.id || buyer.division !== 1 || Number(buyer.payrollPressureRatio || 1) >= 1.22) return false;
-        if (commitmentFactor(state, player, seller, buyer) === 0) return false;
         const buyerDestination = clubDestinationScore(state, buyer);
         const stage = playerCareerStage(state, player);
         if (stage !== 'late' && player.rarity === 'generational') {
@@ -5077,8 +5003,7 @@ function runPayrollClearanceMarket(state, clubs, rosters) {
       });
       const fee = askingPrice(state, player, buyer);
       const oldSalary = Number(player.salary || 0);
-      if (random(state) > commitmentFactor(state, player, seller, buyer)) continue;
-      if (!transferPlayer(state, player, buyer, seller, fee, false)) continue;
+      transferPlayer(state, player, buyer, seller, fee, false);
       const record = state.current.transfers[state.current.transfers.length - 1];
       if (record && record.playerId === player.id) record.reason = 'Payroll pressure';
       rosters.set(seller.id, (rosters.get(seller.id) || []).filter((item) => item.id !== player.id));
@@ -5113,7 +5038,6 @@ function runPayrollClearanceMarket(state, clubs, rosters) {
         const europeRanks = new Map(leagueStrengthRows(state, 'Europe').map((row)=>[row.league.id,row.rank]));
         const buyers = healthyBuyers.filter((buyer) => {
           if (buyer.id === seller.id || Number(buyer.payrollPressureRatio || 1) >= 1.22) return false;
-          if (commitmentFactor(state, player, seller, buyer) === 0) return false;
           const buyerDestination = clubDestinationScore(state, buyer);
           const rank = europeRanks.get(buyer.leagueId) || 99;
           if (stage !== 'late' && player.rarity === 'generational') {
@@ -5143,8 +5067,7 @@ function runPayrollClearanceMarket(state, clubs, rosters) {
         })[0];
         const fee = askingPrice(state, player, buyer);
         const oldSalary = Number(player.salary || 0);
-        if (random(state) > commitmentFactor(state, player, seller, buyer)) continue;
-        if (!transferPlayer(state, player, buyer, seller, fee, false)) continue;
+        transferPlayer(state, player, buyer, seller, fee, false);
         const record = state.current.transfers[state.current.transfers.length - 1];
         if (record && record.playerId === player.id) record.reason = 'Payroll pressure';
         rosters.set(seller.id, (rosters.get(seller.id) || []).filter((item) => item.id !== player.id));
@@ -5168,7 +5091,6 @@ function lowerRarityMobilityScope(state, player) {
 }
 
 function runTransferMarket(state, initial = false) {
-  initializePlayerCommitments(state);
   const clubs = shuffle(state, [...state.clubs]).sort((a, b) => b.reputation - a.reputation + (random(state) - 0.5) * 12);
   const activePlayers = state.players.filter((player) => player.status === 'active');
   const rosters = new Map();
@@ -5197,7 +5119,6 @@ function runTransferMarket(state, initial = false) {
       if (player.clubId === buyer.id || player.position !== needPosition) return false;
       if (player.rating < minimumUpgrade + (roster.length >= target ? 2 : -3)) return false;
       const sellerClub = player.clubId ? getClub(state, player.clubId) : null;
-      if (commitmentFactor(state, player, sellerClub, buyer) === 0) return false;
       if (sellerClub && sellerClub.country !== buyer.country) {
         const scope = lowerRarityMobilityScope(state, player);
         if (scope === 'domestic') return false;
@@ -5227,9 +5148,9 @@ function runTransferMarket(state, initial = false) {
       0.12,
       0.95
     );
-    if (random(state) > acceptance * commitmentFactor(state, player, seller, buyer)) continue;
+    if (random(state) > acceptance) continue;
     const oldClubId = player.clubId;
-    if (!transferPlayer(state, player, buyer, seller, fee, !seller)) continue;
+    transferPlayer(state, player, buyer, seller, fee, !seller);
     if (oldClubId && rosters.has(oldClubId)) rosters.set(oldClubId, rosters.get(oldClubId).filter((item) => item.id !== player.id));
     rosters.get(buyer.id).push(player);
     moves += 1;
@@ -5240,7 +5161,7 @@ function runTransferMarket(state, initial = false) {
 
 
 function showcaseRoll(key, index = 0) {
-  return matchEventRoll(`${key}::${index}`);
+  return stableStringRoll(`${key}::${index}`);
 }
 
 function showcaseInt(key, index, min, max) {
@@ -5422,7 +5343,6 @@ function showcaseGoalEvents(match) {
 }
 
 function showcaseFinalStats(state, match) {
-  if (match.stats?.home && match.stats?.away) return { home: { ...match.stats.home }, away: { ...match.stats.away } };
   const homeStrength = calculateTeamStrength(state, match.homeId, match.isInternational);
   const awayStrength = calculateTeamStrength(state, match.awayId, match.isInternational);
   const diff = homeStrength - awayStrength;
@@ -5466,7 +5386,7 @@ function showcaseTicks(match, finalStats, goalEvents, aggregate = null) {
       ? 50
       : minute === finalMinute
         ? finalStats.home.possession
-        : clamp(Math.round(50 + (finalStats.home.possession - 50) * progress + (showcaseRoll(`${match.id}-live-pos`, index) - 0.5) * (5 * (1 - progress))), 22, 78);
+        : clamp(Math.round(50 + (finalStats.home.possession - 50) * progress + (showcaseRoll(`${match.id}-live-pos`, index) - 0.5) * (5 * (1 - progress))), 34, 66);
     const awayPossession = 100 - homePossession;
     const buildSide = (side, goals, possession) => {
       const source = finalStats[side];
@@ -5533,14 +5453,8 @@ function showcaseLiveTimeline(match, finalStats, goalEvents, penalties = null) {
     addEvents(side, 'shotOnTarget', Math.max(0, source.onTarget - goals), 'target');
     addEvents(side, 'shotOffTarget', Math.max(0, source.shots - source.onTarget), 'shot');
     addEvents(side, 'corner', source.corners, 'corner');
-    if (Array.isArray(match.cardEvents)) {
-      match.cardEvents.filter((event) => event.side === side).forEach((event, index) => {
-        hiddenEvents.push({ ...event, id: `${match.id}-${side}-card-${index}` });
-      });
-    } else {
-      addEvents(side, 'yellow', source.yellow, 'yellow');
-      addEvents(side, 'red', source.red, 'red');
-    }
+    addEvents(side, 'yellow', source.yellow, 'yellow');
+    addEvents(side, 'red', source.red, 'red');
   }
 
   const priority = { red: 0, yellow: 1, corner: 2, shotOffTarget: 3, shotOnTarget: 4, goal: 5 };
@@ -5594,7 +5508,7 @@ function showcaseLiveTimeline(match, finalStats, goalEvents, penalties = null) {
     const possessionWave = (showcaseRoll(`${match.id}-pos-live-minute`, minute) - 0.5) * (5.2 * (1 - progress));
     const homePossession = minute === finalMinute
       ? finalStats.home.possession
-      : clamp(Math.round(50 + (finalStats.home.possession - 50) * (0.18 + progress * 0.82) + possessionWave), 22, 78);
+      : clamp(Math.round(50 + (finalStats.home.possession - 50) * (0.18 + progress * 0.82) + possessionWave), 34, 66);
     const awayPossession = 100 - homePossession;
     timeline.push({
       minute,
@@ -5693,7 +5607,6 @@ function captureShowcaseMatch(state, match) {
     aggregate,
     goalEvents: events,
     finalStats: stats,
-    cardEvents: match.cardEvents,
     ticks,
     liveTimeline,
     penaltySequence,
@@ -6525,12 +6438,6 @@ export function upgradeWorld(state) {
     }
     state.dataRevision = 22;
     invalidateRuntimeCache(state);
-  }
-  if (state.dataRevision < 23) {
-    initializePlayerCommitments(state);
-    // Historical results and any showcase already in progress stay intact.
-    // New fixtures use the chance model and retain their own match statistics.
-    state.dataRevision = 23;
   }
   return state;
 }
