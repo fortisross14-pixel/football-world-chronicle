@@ -383,7 +383,7 @@ function icon(name) {
 }
 
 function navLink(href, label, iconName, active, child = false) {
-  return `<a href="${href}" class="nav-link ${child ? 'nav-child' : ''} ${active ? 'active' : ''}">${icon(iconName)}<span>${esc(label)}</span></a>`;
+  return `<a href="${href}" class="nav-link ${child ? 'nav-child' : ''} ${active ? 'active' : ''}"${active ? ' aria-current="page"' : ''}>${icon(iconName)}<span>${esc(label)}</span></a>`;
 }
 
 function countryNav(country, currentRoute) {
@@ -429,7 +429,7 @@ function sidebar(currentRoute) {
     ${favoriteCompetitions.map((id) => navLink(`#/competition/${id}/overview`, competitionLabel(id), 'trophy', currentRoute.page === 'competition' && currentRoute.id === id, true)).join('')}` : '';
   return `<aside class="sidebar" id="sidebar">
     <div class="brand-block"><div class="brand-mark">FW</div><div><div class="brand-title">Football World</div><div class="brand-subtitle">Chronicle</div></div><button class="sidebar-close" data-action="close-menu" aria-label="Close navigation">×</button></div>
-    <nav class="sidebar-nav">
+    <nav id="sidebar-nav" class="sidebar-nav" aria-label="Main navigation">
       <div class="nav-section-label">Universe</div>
       ${navLink('#/world', 'World', 'world', currentRoute.page === 'world')}
       ${navLink('#/magazine/results', 'Magazine', 'archive', currentRoute.page === 'magazine')}
@@ -477,7 +477,7 @@ function topbar() {
       <div class="date-block"><div class="date-kicker">${esc(state.current.seasonLabel)} · Week ${state.current.week}</div><div class="date-main">${dateLabel(state.current.date)}</div></div>
       <div class="topbar-utilities">
         <a class="mobile-home-button" href="#/world" aria-label="Go to world home">${icon('home')}<span>Home</span></a>
-        <button class="menu-button" data-action="toggle-menu" aria-label="Open navigation">${icon('menu')}<span>Menu</span></button>
+        <button class="menu-button" data-action="toggle-menu" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">${icon('menu')}<span>Menu</span></button>
         <button class="cloud-save-top" data-action="cloud-save">${icon('cloud')}<span>Save</span></button>
         <button class="search-button" data-action="toggle-search">${icon('search')}<span>Search</span></button>
       </div>
@@ -2494,8 +2494,27 @@ function mobileBottomNav(currentRoute) {
 
 function render() {
   const currentRoute = route();
-  document.getElementById('app').innerHTML = `<div class="app-shell">${sidebar(currentRoute)}<button class="sidebar-scrim" id="sidebar-scrim" data-action="close-menu" aria-label="Close navigation"></button><div class="main-shell">${topbar()}<main class="content page-enter">${page(currentRoute)}</main>${mobileBottomNav(currentRoute)}</div></div>${searchOverlay()}${clubModal()}${postseasonMatchModal()}<div id="toast-root"></div>`;
+  const sidebarScroll = document.getElementById('sidebar-nav')?.scrollTop || 0;
+  document.getElementById('app').innerHTML = `<a class="skip-link" href="#main-content">Skip to content</a><div class="app-shell">${sidebar(currentRoute)}<button class="sidebar-scrim" id="sidebar-scrim" data-action="close-menu" aria-label="Close navigation"></button><div class="main-shell">${topbar()}<main id="main-content" tabindex="-1" class="content page-enter">${navigationTrail(currentRoute)}${page(currentRoute)}</main>${mobileBottomNav(currentRoute)}</div></div>${searchOverlay()}${clubModal()}${postseasonMatchModal()}<div id="toast-root" role="status" aria-live="polite"></div>`;
+  const sidebarElement = document.getElementById('sidebar-nav');
+  if (sidebarElement) sidebarElement.scrollTop = sidebarScroll;
   bind();
+}
+
+function navigationTrail(currentRoute) {
+  const { page, id } = currentRoute;
+  const contexts = {
+    club: ['Clubs', '#/clubs', clubById(id)?.name],
+    player: ['Players', '#/people/players/overview', playerById(id)?.name],
+    coach: ['Coaches', '#/people/coaches/overview', coachById(id)?.name],
+    owner: ['Presidents', '#/people/presidents/overview', ownerById(id)?.name],
+    nation: ['International', '#/international/overview', nationalById(id)?.name],
+    league: ['Competitions', '#/competitions', state.current.leagues[id]?.name],
+    competition: ['Competitions', '#/competitions', competitionLabel(id)]
+  };
+  const context = contexts[page];
+  if (!context?.[2]) return '';
+  return `<nav class="navigation-trail" aria-label="Breadcrumb"><a href="#/world">World</a><span aria-hidden="true">/</span><a href="${context[1]}">${esc(context[0])}</a><span aria-hidden="true">/</span><span aria-current="page">${esc(context[2])}</span></nav>`;
 }
 
 function toast(message, type = 'normal') {
@@ -3001,6 +3020,11 @@ function searchResults(query) {
 }
 
 document.addEventListener('click', async (event) => {
+  if (event.target.closest?.('.skip-link')) {
+    event.preventDefault();
+    document.getElementById('main-content')?.focus();
+    return;
+  }
   const target = event.target.closest('[data-action]');
   if (!target) return;
   const action = target.dataset.action;
@@ -3067,10 +3091,12 @@ document.addEventListener('click', async (event) => {
     sidebarElement?.classList.toggle('open', open);
     scrim?.classList.toggle('open', open);
     document.body.classList.toggle('nav-open', open);
+    document.querySelectorAll('[data-action="toggle-menu"]').forEach((button) => button.setAttribute('aria-expanded', String(open)));
   }
   if (action === 'close-menu') {
     document.getElementById('sidebar')?.classList.remove('open');
     document.getElementById('sidebar-scrim')?.classList.remove('open');
+    document.querySelectorAll('[data-action="toggle-menu"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
     document.body.classList.remove('nav-open');
   }
   if (action === 'toggle-search') { searchOpen = !searchOpen; render(); }
@@ -3095,6 +3121,15 @@ document.addEventListener('click', async (event) => {
     location.hash = '#/world';
     render();
   }
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !document.body.classList.contains('nav-open')) return;
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('sidebar-scrim')?.classList.remove('open');
+  document.body.classList.remove('nav-open');
+  document.querySelectorAll('[data-action="toggle-menu"]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+  document.querySelectorAll('.menu-button').forEach((button) => button.focus());
 });
 
 window.addEventListener('hashchange', () => {

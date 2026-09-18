@@ -48,7 +48,10 @@ const hashchange = handlers['window:hashchange'];
 window.location.hash = '#/competition/UCL/history';
 hashchange();
 assert(app.innerHTML.includes('Champions and positional awards'));
-assert(!app.innerHTML.includes(`>${championName}<`), 'current UCL champion leaked into history before showcase final');
+const historyTable = app.innerHTML.match(/<table class="data-table history-table">[\s\S]*?<\/table>/)?.[0];
+assert(historyTable, 'competition history table must render');
+// The same club can legitimately appear in the Following sidebar.
+assert(!historyTable.includes(`>${championName}<`), 'current UCL champion leaked into history before showcase final');
 
 window.location.hash = '#/competition/UCL/current';
 hashchange();

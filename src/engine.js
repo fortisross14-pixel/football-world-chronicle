@@ -18,6 +18,7 @@ import {
   RIVALRY_DEFINITIONS
 } from './data.js';
 import { REAL_WORLD_STARS } from './real-stars.js';
+import { simulateMatchChances, matchEventRoll } from './match-model.js';
 import { countryAffinity, domesticMobilityChance, eliteDepartureChance } from './market-policy.js';
 
 const COUNTRY_TO_CODE = Object.fromEntries(
@@ -203,17 +204,6 @@ function weightedPick(state, items, weightFn) {
     if (needle <= 0) return items[i];
   }
   return items[items.length - 1];
-}
-
-function poisson(state, lambda) {
-  const limit = Math.exp(-Math.max(0.05, lambda));
-  let product = 1;
-  let count = 0;
-  do {
-    count += 1;
-    product *= random(state);
-  } while (product > limit && count < 11);
-  return count - 1;
 }
 
 function slug(value) {
@@ -2301,6 +2291,20 @@ function calculateUnitStrength(state, teamId, isInternational, unit) {
   return base * 0.53 + average * 0.47 * multiplier + starImpactForLineup(lineup, unit);
 }
 
+function matchTeamProfile(state, teamId, isInternational, expectedGoals) {
+  const entity = isInternational ? state.nationalTeams.find((team) => team.id === teamId) : getClub(state, teamId);
+  const lineup = isInternational ? getNationalLineup(state, teamId) : getClubLineup(state, teamId);
+  const base = entity?.strength || 70;
+  const quality = (position) => {
+    const players = lineup.filter((player) => player.position === position).map((player) => player.rating);
+    if (!players.length) return base;
+    const average = players.reduce((sum, rating) => sum + rating, 0) / players.length;
+    return average * 0.65 + Math.max(...players) * 0.35;
+  };
+  return { style: entity?.coachProfile, expectedGoals, midfield: quality('MF'), defence: quality('DF'),
+    finishing: quality('FW'), goalkeeping: quality('GK') };
+}
+
 function resolveDraw(state, homeId, awayId, homeGoals, awayGoals, isInternational) {
   let hg = homeGoals;
   let ag = awayGoals;
@@ -2385,13 +2389,24 @@ function simulateMatch(state, {
   const awayEdgeDivisor = highStakes ? (isInternational ? 37 : 42) : 50;
   const homeLambda = clamp(1.27 + (homeAttack - awayDefence) / attackDivisor + difference / homeEdgeDivisor, 0.16, 3.55);
   const awayLambda = clamp(1.01 + (awayAttack - homeDefence) / defenceDivisor - difference / awayEdgeDivisor, 0.13, 3.25);
-  let homeGoals = poisson(state, homeLambda);
-  let awayGoals = poisson(state, awayLambda);
+  const chances = simulateMatchChances(
+    matchTeamProfile(state, homeId, isInternational, homeLambda),
+    matchTeamProfile(state, awayId, isInternational, awayLambda),
+    () => random(state)
+  );
+  let homeGoals = chances.goals.home;
+  let awayGoals = chances.goals.away;
   let resolution = null;
   if (knockout) {
     resolution = resolveDraw(state, homeId, awayId, homeGoals, awayGoals, isInternational);
     homeGoals = resolution.homeGoals;
     awayGoals = resolution.awayGoals;
+  }
+  // The extra-time decider is also a shot on target, never a score-only event.
+  for (const [side, goals] of [['home', homeGoals], ['away', awayGoals]]) {
+    const extraGoals = goals - chances.goals[side];
+    chances.stats[side].shots += extraGoals;
+    chances.stats[side].onTarget += extraGoals;
   }
 
   const homeLineup = isInternational ? getNationalLineup(state, homeId) : getClubLineup(state, homeId);
@@ -2537,6 +2552,8 @@ function simulateMatch(state, {
     extraTime: resolution?.extraTime || false,
     penalties: resolution?.penalties || null,
     goalEvents,
+    stats: chances.stats,
+    cardEvents: chances.cardEvents,
     manOfMatchId,
     isInternational,
     knockout,
@@ -2653,7 +2670,7 @@ function distributeSummaryPlayerStats(state, league, row) {
     stat.starts += playerApps;
     stat.goals += goals[player.id] || 0;
     stat.assists += assists[player.id] || 0;
-    if (['GK', 'DF'].includes(player.position)) stat.cleanSheets += Math.round(row.cleanSheets * (0.72 + random(state) * 0.25));
+    if (['GK', 'DF'].includes(player.position)) stat.cleanSheets += Math.min(playerApps, Math.round(row.cleanSheets * (0.72 + random(state) * 0.25)));
     stat.ratingSum += averageRating * playerApps;
     stat.averageRating = stat.ratingSum / stat.apps;
   });
@@ -2665,12 +2682,18 @@ function simulateSummaryLeagues(state) {
     rounds.forEach((round) => round.forEach(({ homeId, awayId }) => {
       const homeStrength = calculateTeamStrength(state, homeId, false) + coachContextBonus(state, homeId, false, league.id, 'League season', false) + 1.6;
       const awayStrength = calculateTeamStrength(state, awayId, false) + coachContextBonus(state, awayId, false, league.id, 'League season', false);
-      const homeGoals = poisson(state, clamp(1.2 + (homeStrength - awayStrength) / 23.5, 0.18, 3.35));
-      const awayGoals = poisson(state, clamp(0.95 + (awayStrength - homeStrength) / 25.5, 0.14, 3.0));
+      const chances = simulateMatchChances(
+        matchTeamProfile(state, homeId, false, clamp(1.2 + (homeStrength - awayStrength) / 23.5, 0.18, 3.35)),
+        matchTeamProfile(state, awayId, false, clamp(0.95 + (awayStrength - homeStrength) / 25.5, 0.14, 3.0)),
+        () => random(state)
+      );
+      const homeGoals = chances.goals.home, awayGoals = chances.goals.away;
       updateTable(league.table, homeId, awayId, homeGoals, awayGoals);
+      if (awayGoals === 0) { const row = league.table.find((item) => item.teamId === homeId); row.cleanSheets = (row.cleanSheets || 0) + 1; }
+      if (homeGoals === 0) { const row = league.table.find((item) => item.teamId === awayId); row.cleanSheets = (row.cleanSheets || 0) + 1; }
     }));
     league.table.forEach((row) => {
-      row.cleanSheets = Math.max(0, Math.round((row.played - row.ga * 0.58) * 0.42));
+      row.cleanSheets ||= 0;
       distributeSummaryPlayerStats(state, league, row);
       const coach = getCoach(state, row.teamId, false);
       if (coach) {
@@ -5267,7 +5290,7 @@ function runTransferMarket(state, initial = false) {
 
 
 function showcaseRoll(key, index = 0) {
-  return stableStringRoll(`${key}::${index}`);
+  return matchEventRoll(`${key}::${index}`);
 }
 
 function showcaseInt(key, index, min, max) {
@@ -5449,6 +5472,7 @@ function showcaseGoalEvents(match) {
 }
 
 function showcaseFinalStats(state, match) {
+  if (match.stats?.home && match.stats?.away) return { home: { ...match.stats.home }, away: { ...match.stats.away } };
   const homeStrength = calculateTeamStrength(state, match.homeId, match.isInternational);
   const awayStrength = calculateTeamStrength(state, match.awayId, match.isInternational);
   const diff = homeStrength - awayStrength;
@@ -5492,7 +5516,7 @@ function showcaseTicks(match, finalStats, goalEvents, aggregate = null) {
       ? 50
       : minute === finalMinute
         ? finalStats.home.possession
-        : clamp(Math.round(50 + (finalStats.home.possession - 50) * progress + (showcaseRoll(`${match.id}-live-pos`, index) - 0.5) * (5 * (1 - progress))), 34, 66);
+        : clamp(Math.round(50 + (finalStats.home.possession - 50) * progress + (showcaseRoll(`${match.id}-live-pos`, index) - 0.5) * (5 * (1 - progress))), 22, 78);
     const awayPossession = 100 - homePossession;
     const buildSide = (side, goals, possession) => {
       const source = finalStats[side];
@@ -5559,8 +5583,14 @@ function showcaseLiveTimeline(match, finalStats, goalEvents, penalties = null) {
     addEvents(side, 'shotOnTarget', Math.max(0, source.onTarget - goals), 'target');
     addEvents(side, 'shotOffTarget', Math.max(0, source.shots - source.onTarget), 'shot');
     addEvents(side, 'corner', source.corners, 'corner');
-    addEvents(side, 'yellow', source.yellow, 'yellow');
-    addEvents(side, 'red', source.red, 'red');
+    if (Array.isArray(match.cardEvents)) {
+      match.cardEvents.filter((event) => event.side === side).forEach((event, index) => {
+        hiddenEvents.push({ ...event, id: `${match.id}-${side}-card-${index}` });
+      });
+    } else {
+      addEvents(side, 'yellow', source.yellow, 'yellow');
+      addEvents(side, 'red', source.red, 'red');
+    }
   }
 
   const priority = { red: 0, yellow: 1, corner: 2, shotOffTarget: 3, shotOnTarget: 4, goal: 5 };
@@ -5614,7 +5644,7 @@ function showcaseLiveTimeline(match, finalStats, goalEvents, penalties = null) {
     const possessionWave = (showcaseRoll(`${match.id}-pos-live-minute`, minute) - 0.5) * (5.2 * (1 - progress));
     const homePossession = minute === finalMinute
       ? finalStats.home.possession
-      : clamp(Math.round(50 + (finalStats.home.possession - 50) * (0.18 + progress * 0.82) + possessionWave), 34, 66);
+      : clamp(Math.round(50 + (finalStats.home.possession - 50) * (0.18 + progress * 0.82) + possessionWave), 22, 78);
     const awayPossession = 100 - homePossession;
     timeline.push({
       minute,
@@ -5713,6 +5743,7 @@ function captureShowcaseMatch(state, match) {
     aggregate,
     goalEvents: events,
     finalStats: stats,
+    cardEvents: match.cardEvents,
     ticks,
     liveTimeline,
     penaltySequence,
