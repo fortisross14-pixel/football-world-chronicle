@@ -1,6 +1,27 @@
-# Football World Chronicle — v0.21
+# Football World Chronicle — v3.16.1
 
 A browser-first football universe simulator with 137 domestic systems, continental club football, international cycles, long player careers, transfers, club staff, historical records and optional Neon cloud saves.
+
+## v3.16.1 offseason editor
+
+- Menu now has an explicit **Home** destination and reveals **Editor** only during the offseason, before Week 1.
+- Editor can add club cash (and matching transfer budget), create a player transfer, or cancel any transfer from the current offseason.
+- Editor-made changes save immediately and are recorded in the current offseason news and market list.
+- Transfer cancellation restores the player's pre-move club, contract and salary state, and reverses the fee where possible.
+- Existing saves upgrade automatically to data revision 25 so current-market transfers receive stable IDs.
+
+## v3.16 dynasty cycles, league eras and world headlines
+
+- Successful squads receive compounding salary resets, and every transfer or renewal must now fit under a club's sustainable total payroll.
+- Expiring elite contracts can become free-agent and rival-switch stories; distressed dynasties must sell or wait for expensive contracts to clear before rebuilding.
+- Every confederation receives rotating 6–8 season league eras. The active league gains ecosystem money, squad depth and market pull without a hidden match bonus.
+- Institutional giants can remain elite outside their league's golden era, allowing separated club peaks across a 20-year history.
+- Magazine → Headlines is a permanent archive for landmark transfers, contract drama, coaches, retirements and league-era changes.
+- Offseason Summary now opens with a curated “Summer That Changed Football” report.
+- Hall of Fame admission is reserved for exceptional completed careers, and older saves rebuild their Hall and club-legends lists under the new standards.
+- Season-end archive, award and ranking work has been indexed so rollover remains responsive deep into a save.
+- Existing saves upgrade automatically to data revision 24. No Neon schema changes are required.
+- Run `npm run balance-v316` for the multi-seed 20-season dynasty, semifinal, era and payroll check.
 
 
 ## v0.21 domestic spawning and preseason lifecycle

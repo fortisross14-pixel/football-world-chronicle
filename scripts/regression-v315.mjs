@@ -7,7 +7,7 @@ import { playerPortrait, getHistoricalPortraitPlan } from '../src/visuals.js';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'..');
 const pkg=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
-assert.equal(pkg.version,'3.15.0');
+assert.equal(pkg.version,'3.16.1');
 assert.deepEqual(REAL_WORLD_STAR_COUNTS,{generational:16,legend:69,epic:120});
 assert.equal(REAL_WORLD_STARS.length,205);
 const plan=getHistoricalPortraitPlan();

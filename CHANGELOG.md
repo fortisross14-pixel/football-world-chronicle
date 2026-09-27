@@ -1,3 +1,15 @@
+# v3.16.0 — Dynasty cycles, league eras and world headlines
+
+- Added a hard total-payroll affordability check to transfers, renewals and free-agent signings.
+- Preserved institutional giants outside the current dominant league while making repeated success force sales and contract exits.
+- Added deterministic 6–8 season league eras with a two-era no-repeat rule and no hidden match modifier.
+- Added contract-expiry, rival free-transfer and changing-era stories.
+- Added a persistent Magazine → Headlines archive and curated offseason lead stories.
+- Rebuilt the global Hall of Fame around exceptional Legend/Generational careers, with only historic Epic outliers admitted; existing saves are cleaned automatically.
+- Removed repeated full-history scans from season archiving, awards, tournament selection and dynasty scoring; 20-year tests averaged 1.7–1.9 seconds to close a season and 6.4–7.1 seconds for the full offseason.
+- Added data revision 24 migration and a 20-season multi-seed balance harness.
+- No Neon schema changes required.
+
 # v0.21.0 — Domestic spawning and preseason lifecycle
 
 - Procedural players now begin in their country of origin 90% of the time; the remaining 10% represents diaspora and unusual academy paths.

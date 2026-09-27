@@ -39,6 +39,10 @@ import {
   getLeagueMarketRankings,
   getClubFinancialStatus,
   upgradeWorld,
+  isOffseasonEditorAvailable,
+  editorAddClubMoney,
+  editorCreateTransfer,
+  editorCancelTransfer,
   isShowcaseMatchEmbargoed,
   isShowcaseCompetitionEmbargoed
 } from './engine.js';
@@ -89,7 +93,7 @@ let postseasonPlaybackSpeed = 1;
 let postseasonAwardTimers = [];
 let postseasonAwardAnimating = false;
 
-const APP_VERSION = '3.15';
+const APP_VERSION = '3.16.1';
 const DB_NAME = 'football-world-chronicle-v4';
 const DB_STORE = 'worlds';
 const DB_KEY = 'expanded-world-v4';
@@ -377,7 +381,7 @@ function icon(name) {
   const icons = {
     home: '⌂', world: '◎', awards: '★', region: '◈', intl: '◉', trophy: '◆', reset: '↺',
     menu: '☰', search: '⌕', other: '…', players: '●', archive: '▤',
-    transfer: '⇄', cloud: '☁', load: '⇩', save: '⇧'
+    transfer: '⇄', cloud: '☁', load: '⇩', save: '⇧', editor: '✎'
   };
   return `<span class="nav-icon">${icons[name] || '•'}</span>`;
 }
@@ -431,8 +435,8 @@ function sidebar(currentRoute) {
     <div class="brand-block"><div class="brand-mark">FW</div><div><div class="brand-title">Football World</div><div class="brand-subtitle">Chronicle</div></div><button class="sidebar-close" data-action="close-menu" aria-label="Close navigation">×</button></div>
     <nav id="sidebar-nav" class="sidebar-nav" aria-label="Main navigation">
       <div class="nav-section-label">Universe</div>
-      ${navLink('#/world', 'World', 'world', currentRoute.page === 'world')}
-      ${navLink('#/magazine/results', 'Magazine', 'archive', currentRoute.page === 'magazine')}
+      ${navLink('#/world', 'Home', 'home', currentRoute.page === 'world')}
+      ${navLink('#/magazine/headlines', 'Magazine', 'archive', currentRoute.page === 'magazine')}
       ${navLink('#/competitions', 'Competitions', 'trophy', ['competitions','league','competition','country','region'].includes(currentRoute.page))}
       ${navLink('#/clubs', 'Clubs', 'trophy', currentRoute.page === 'clubs' || currentRoute.page === 'club')}
       ${navLink('#/people/players/overview', 'People', 'players', ['people','players','player','coach','owner'].includes(currentRoute.page))}
@@ -444,6 +448,7 @@ function sidebar(currentRoute) {
       ${navLink('#/awards/current', 'Annual Awards', 'awards', currentRoute.page === 'awards')}
       ${navLink('#/transfers', 'Transfer Market', 'transfer', currentRoute.page === 'transfers')}
       ${navLink('#/offseason', 'Offseason', 'archive', currentRoute.page === 'offseason')}
+      ${isOffseasonEditorAvailable(state) ? navLink('#/editor', 'Editor', 'editor', currentRoute.page === 'editor') : ''}
       ${favorites}
     </nav>
     <div class="sidebar-foot">
@@ -603,7 +608,7 @@ function worldPage() {
       return `<a class="region-card" href="${leagues.length ? `#/region/${encodeURIComponent(region)}` : '#/international'}"><span>◈</span><div><h3>${esc(region)}</h3><p>${leagues.length} domestic systems · ${nations} national teams</p></div><b>›</b></a>`;
     }).join('')}</div>
     <div class="two-column section-gap">
-      <section class="panel"><div class="panel-head"><div><span class="eyebrow">WORLD FOOTBALL MAGAZINE</span><h3><a href="#/magazine/results">Latest stories</a></h3></div><span class="panel-chip">Week ${state.current.week}</span></div><div class="story-list">${publicNewsRows().slice(0, 8).map((story, index) => `<article class="story-card ${story.importance} ${index === 0 ? 'lead' : ''}"><div class="story-category">${esc(story.category)}</div><h4>${esc(story.headline)}</h4><p>${esc(story.body)}</p>${story.entityType === 'player' && story.entityId ? `<a href="#/player/${esc(story.entityId)}/overview">Open player →</a>` : ''}</article>`).join('')}</div></section>
+      <section class="panel"><div class="panel-head"><div><span class="eyebrow">WORLD FOOTBALL MAGAZINE</span><h3><a href="#/magazine/headlines">Latest stories</a></h3></div><span class="panel-chip">Week ${state.current.week}</span></div><div class="story-list">${publicNewsRows().slice(0, 8).map((story, index) => `<article class="story-card ${story.importance} ${index === 0 ? 'lead' : ''}"><div class="story-category">${esc(story.category)}</div><h4>${esc(story.headline)}</h4><p>${esc(story.body)}</p>${story.entityType === 'player' && story.entityId ? `<a href="#/player/${esc(story.entityId)}/overview">Open player →</a>` : ''}</article>`).join('')}</div></section>
       <section class="panel"><div class="panel-head"><div><span class="eyebrow">OPENING MARKET</span><h3>Major moves</h3></div><a href="#/transfers">All transfers</a></div>${transferList(state.current.transfers.slice(-12).reverse(), true)}</section>
     </div>`;
 }
@@ -676,7 +681,7 @@ function currentLeaguePowerRows() {
 function rankingsHubPage(tabRaw='clubs') {
   const tab=['clubs','leagues','history'].includes(tabRaw)?tabRaw:'clubs';
   const tabs=`<nav class="competition-tabs"><a href="#/rankings/clubs" class="${tab==='clubs'?'active':''}">Club Power</a><a href="#/rankings/leagues" class="${tab==='leagues'?'active':''}">League Strength</a><a href="#/rankings/history" class="${tab==='history'?'active':''}">Historical Evolution</a></nav>`;
-  if(tab==='leagues') {const all=currentLeaguePowerRows(); const rows=all.filter((row)=>leagueRegionFilter==='ALL'||row.league.confederation===leagueRegionFilter).slice(0,50); const regionalRank=new Map(); for(const region of REGION_ORDER){all.filter((row)=>row.league.confederation===region).forEach((row,index)=>regionalRank.set(row.league.id,index+1));} return `${pageHead('WORLD POWER INDEX','League strength','A snapshot of where football power currently lives. Elite players use this hierarchy when judging whether their current league matches their ambition.')}${tabs}<section class="panel"><div class="filter-toolbar"><label>Continent<select id="league-region-filter"><option value="ALL">All continents</option>${REGION_ORDER.map((region)=>`<option value="${esc(region)}" ${leagueRegionFilter===region?'selected':''}>${esc(region)}</option>`).join('')}</select></label><span>${rows.length} leagues shown</span></div><div class="ranking-stack">${rows.map((row,index)=>`<a class="ranking-row" href="#/country/${encodeURIComponent(row.league.country)}/overview"><b>${leagueRegionFilter==='ALL'?index+1:regionalRank.get(row.league.id)}</b>${flag(row.league.country,'xs')}<div><strong>${esc(row.league.name)}</strong><small>${esc(row.league.country)} · ${esc(row.league.confederation)} · #${regionalRank.get(row.league.id)} in continent · ${money(row.financialPool || 0)} annual pool</small></div><span>${row.score.toFixed(1)}</span></a>`).join('')}</div></section>`;}
+  if(tab==='leagues') {const all=currentLeaguePowerRows(); const rows=all.filter((row)=>leagueRegionFilter==='ALL'||row.league.confederation===leagueRegionFilter).slice(0,50); const regionalRank=new Map(); for(const region of REGION_ORDER){all.filter((row)=>row.league.confederation===region).forEach((row,index)=>regionalRank.set(row.league.id,index+1));} return `${pageHead('WORLD POWER INDEX','League strength','A snapshot of where football power currently lives. Golden eras strengthen a league ecosystem, while historic clubs can remain elite outside the current boom.')}${tabs}<section class="panel"><div class="filter-toolbar"><label>Continent<select id="league-region-filter"><option value="ALL">All continents</option>${REGION_ORDER.map((region)=>`<option value="${esc(region)}" ${leagueRegionFilter===region?'selected':''}>${esc(region)}</option>`).join('')}</select></label><span>${rows.length} leagues shown</span></div><div class="ranking-stack">${rows.map((row,index)=>`<a class="ranking-row" href="#/country/${encodeURIComponent(row.league.country)}/overview"><b>${leagueRegionFilter==='ALL'?index+1:regionalRank.get(row.league.id)}</b>${flag(row.league.country,'xs')}<div><strong>${esc(row.league.name)} ${row.eraActive?'<span class="panel-chip">GOLDEN ERA</span>':''}</strong><small>${esc(row.league.country)} · ${esc(row.league.confederation)} · #${regionalRank.get(row.league.id)} in continent · ${money(row.financialPool || 0)} annual pool${row.eraActive?` · Era through ${getSeasonLabel(row.eraEndSeason)}`:''}</small></div><span>${row.score.toFixed(1)}</span></a>`).join('')}</div></section>`;}
   if(tab==='history') {
     const clubRows=[...(state.history.clubPowerRankings||[])].sort((a,b)=>b.season-a.season||a.rank-b.rank).slice(0,150);
     const leagueRows=[...(state.history.leaguePowerRankings||[])].sort((a,b)=>b.season-a.season||b.score-a.score).slice(0,100);
@@ -697,7 +702,7 @@ function countryPage(raw, tabRaw = 'overview') {
   const reserveClubs = clubs.filter((club) => club.division === 2);
   const tabs = `<nav class="competition-tabs"><a href="#/country/${encodeURIComponent(country)}/overview" class="${tab==='overview'?'active':''}">Overview</a><a href="#/country/${encodeURIComponent(country)}/teams" class="${tab==='teams'?'active':''}">Teams</a><a href="#/country/${encodeURIComponent(country)}/history" class="${tab==='history'?'active':''}">History</a></nav>`;
   const marketRow = getLeagueMarketRankings(state, league.confederation).find((row)=>row.leagueId===league.id);
-  const head = `${pageHead(`${countryMeta(country)?.region || 'WORLD'} · COUNTRY`, country, `${league.tier === 'detailed' ? `Full ${league.activeCount}-club league with promotion and relegation` : `Condensed national system with ${clubs.length} visible leading clubs`}. League market rank #${marketRow?.rank || '—'} in ${league.confederation} · ${money(marketRow?.financialPool || 0)} annual national pool.`)}<div class="country-title-flag">${flag(country, 'lg')}</div>${tabs}`;
+  const head = `${pageHead(`${countryMeta(country)?.region || 'WORLD'} · COUNTRY`, country, `${league.tier === 'detailed' ? `Full ${league.activeCount}-club league with promotion and relegation` : `Condensed national system with ${clubs.length} visible leading clubs`}. League market rank #${marketRow?.rank || '—'} in ${league.confederation} · ${money(marketRow?.financialPool || 0)} annual national pool.${marketRow?.eraActive ? ` GOLDEN ERA through ${getSeasonLabel(marketRow.eraEndSeason)}.` : ''}`)}<div class="country-title-flag">${flag(country, 'lg')}</div>${tabs}`;
   if (tab === 'teams') return `${head}<section class="panel"><div class="panel-head"><div><span class="eyebrow">CLUB DIRECTORY</span><h3>${clubs.length} visible clubs</h3></div></div><div class="club-directory">${clubs.map((club) => `<a class="club-directory-card" href="#/club/${club.id}/overview">${crest(club.id)}<div><strong>${esc(club.name)}</strong><span>${club.division === 1 ? 'Top division' : 'Promotion pool'} · ${esc(club.city)} · ${esc(getClubFinancialStatus(state,club.id)?.label || 'Remaining')} · Rating ${club.strength} · ${money(club.finances)}</span></div><b>›</b></a>`).join('')}</div></section>`;
   if (tab === 'history') {
     const ids = new Set([league.id, `CUP-${league.id}`, ...(superCup ? [superCup.id] : []), ...(country === 'Spain' ? ['SUPERCUP'] : [])]);
@@ -1338,7 +1343,7 @@ function fhofPage(){
 }
 
 function magazineTabs(active) {
-  return `<nav class="competition-tabs"><a href="#/magazine/preseason" class="${active === 'preseason' ? 'active' : ''}">Preseason</a><a href="#/magazine/transfers" class="${active === 'transfers' ? 'active' : ''}">Transfers</a><a href="#/magazine/results" class="${active === 'results' ? 'active' : ''}">Results</a><a href="#/magazine/rankings" class="${active === 'rankings' ? 'active' : ''}">Rankings</a><a href="#/magazine/compare" class="${active === 'compare' ? 'active' : ''}">Comparator</a><a href="#/magazine/fhof" class="${active === 'fhof' ? 'active' : ''}">FHoF</a></nav>`;
+  return `<nav class="competition-tabs"><a href="#/magazine/headlines" class="${active === 'headlines' ? 'active' : ''}">Headlines</a><a href="#/magazine/preseason" class="${active === 'preseason' ? 'active' : ''}">Preseason</a><a href="#/magazine/transfers" class="${active === 'transfers' ? 'active' : ''}">Transfers</a><a href="#/magazine/results" class="${active === 'results' ? 'active' : ''}">Results</a><a href="#/magazine/rankings" class="${active === 'rankings' ? 'active' : ''}">Rankings</a><a href="#/magazine/compare" class="${active === 'compare' ? 'active' : ''}">Comparator</a><a href="#/magazine/fhof" class="${active === 'fhof' ? 'active' : ''}">FHoF</a></nav>`;
 }
 
 
@@ -1448,12 +1453,19 @@ function recentCompletedCompetitionCards() {
 }
 
 function magazinePage(tabRaw = 'results') {
-  const tab = ['preseason','transfers','results','rankings','compare','fhof'].includes(tabRaw) ? tabRaw : 'results';
+  const tab = ['headlines','preseason','transfers','results','rankings','compare','fhof'].includes(tabRaw) ? tabRaw : 'headlines';
   if (tab === 'compare') return comparatorPage();
   if (tab === 'fhof') return fhofPage();
   if (tab === 'rankings') return magazineRankingsPage();
   const lastWeek = state.current.week;
   const firstWeek = Math.max(0, lastWeek - 3);
+  if (tab === 'headlines') {
+    const rows = [...(state.history.news || []), ...publicNewsRows()]
+      .filter((story, index, all) => all.findLastIndex((item) => item.id === story.id) === index)
+      .sort((a, b) => Number(b.season || state.season) - Number(a.season || state.season) || Number(b.week || 0) - Number(a.week || 0))
+      .slice(0, 120);
+    return `${pageHead('WORLD FOOTBALL MAGAZINE', 'Headlines', 'The permanent narrative archive: landmark transfers, contract drama, coaching changes, retirements and changing league eras.')}${magazineTabs(tab)}<section class="panel"><div class="panel-head"><div><span class="eyebrow">WORLD NEWS ARCHIVE</span><h3>${rows.length} latest major stories</h3></div><span class="panel-chip">Persistent</span></div><div class="story-list magazine-list">${rows.map((story) => `<article class="story-card ${story.importance || 'digest'}"><div class="story-category">${esc(story.seasonLabel || getSeasonLabel(story.season || state.season))} · ${esc(story.category)}</div><h4>${esc(story.headline)}</h4><p>${esc(story.body)}</p>${story.entityType === 'player' && story.entityId ? `<a href="#/player/${esc(story.entityId)}/overview">Open player →</a>` : ''}</article>`).join('') || '<div class="empty-state">The first major stories will appear as the world develops.</div>'}</div></section>`;
+  }
   if (tab === 'preseason') {
     const newStars = (state.current.newStars || [])
       .map((row) => ({ ...row, player: playerById(row.playerId) }))
@@ -2424,6 +2436,7 @@ function offseasonPage(tabRaw='summary') {
   const ownerChanges = (data.ownerChanges||[]).slice(0,120);
   const payrollChanges = [...(data.payrollChanges||[])].sort((a,b)=>(b.pressure||0)-(a.pressure||0));
   const coachMoves = (data.coachMoves||[]).slice(-100).reverse();
+  const headlines = (data.headlines||[]).slice(0,16);
   const rowPlayers=(rows,mode='new')=>rows.map((player)=>`<a class="squad-row squad-row-wide portrait-row" href="#/player/${player.id}/overview">${playerPortrait(player,'sm')}<span class="position-chip">${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${flag(player.nationality,'xs')} ${mode==='new'?(player.clubId?esc(clubById(player.clubId)?.name):'Free agent'):'Retired'} · Age ${state.season-player.birthYear}</small></div><b>${player.rating}</b></a>`).join('')||'<div class="empty-state compact">None this offseason.</div>';
   const head = `${pageHead('OFFSEASON',`${esc(data.seasonLabel)} lifecycle`,`The complete transition between seasons, split into markets, arrivals, retirements and leadership changes.`)}${offseasonTabs(tab)}`;
   if (tab === 'signings') {
@@ -2437,13 +2450,30 @@ function offseasonPage(tabRaw='summary') {
     return `${head}<div class="two-column"><section class="panel"><div class="panel-head"><div><span class="eyebrow">NEW GENERATION</span><h3>Players entering football</h3></div></div><div class="squad-list">${rowPlayers(newcomers,'new')}</div></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">PLAYER RETIREMENTS</span><h3>Careers completed</h3></div></div><div class="squad-list">${rowPlayers(retiredPlayers,'retired')}</div></section></div><section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">COACH RETIREMENTS</span><h3>Managers leaving football</h3></div></div><div class="archive-list">${retiredCoaches.map((coach)=>`<div class="archive-row archive-row-portrait"><div class="archive-person">${coachPortrait(coach,'sm')}<strong>${coachLink(coach.id)}</strong></div><span>${esc(COACH_PROFILES[coach.profile]?.label||coach.profile)}</span><b>${staffRarityBadge(coach.rarity)}</b></div>`).join('')||'<div class="empty-state compact">No coach retirements.</div>'}</div></section>`;
   }
   if (tab === 'payroll') {
-    const rows = payrollChanges.map((row)=>{const club=clubById(row.clubId); return `<tr><td>${teamLink(row.clubId)}</td><td>${row.goodSeasonsLast4}/4</td><td><strong>+${row.risePct}%</strong></td><td>${money(row.wageBefore)}</td><td>${money(row.wageAfter)}</td><td><span class="panel-chip">${Number(row.pressure||1).toFixed(2)}×</span></td><td>${money(club?.transferBudget||0)}</td></tr>`;}).join('');
-    return `${head}<div class="stats-ribbon">${statCard('Salary resets',payrollChanges.length,'Successful clubs renegotiating')}${statCard('High pressure',payrollChanges.filter((row)=>row.pressure>=1.2).length,'May need to sell')}${statCard('Severe pressure',payrollChanges.filter((row)=>row.pressure>=1.4).length,'Little room to rebuild')}</div><section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">DYNASTY COST</span><h3>Success raises the wage bill</h3></div><span class="muted">Repeated elite seasons compound salary pressure</span></div><p class="role-copy">One great season earns the squad a raise. Two strong seasons in three make the increase larger; three in four can seriously restrict the transfer budget and push valuable players onto the market. Overpaid low-rarity squad players are deliberately hard to move.</p><div class="table-scroll"><table class="data-table"><thead><tr><th>Club</th><th>Good seasons</th><th>Raise</th><th>Before</th><th>After</th><th>Pressure</th><th>Transfer budget</th></tr></thead><tbody>${rows||'<tr><td colspan="7">No club triggered a major salary reset this offseason.</td></tr>'}</tbody></table></div></section>`;
+    const rows = payrollChanges.map((row)=>{const club=clubById(row.clubId), finance=getClubFinancialStatus(state,row.clubId); return `<tr><td>${teamLink(row.clubId)}</td><td>${row.goodSeasonsLast4}/4</td><td><strong>+${row.risePct}%</strong></td><td>${money(row.wageBefore)}</td><td>${money(row.wageAfter)}</td><td>${money(finance?.currentPayroll||0)} / ${money(finance?.payrollLimit||0)}</td><td><span class="panel-chip">${Number(finance?.payrollPressure||row.pressure||1).toFixed(2)}×</span></td><td>${money(club?.transferBudget||0)}</td></tr>`;}).join('');
+    return `${head}<div class="stats-ribbon">${statCard('Salary resets',payrollChanges.length,'Successful clubs renegotiating')}${statCard('High pressure',payrollChanges.filter((row)=>row.pressure>=1.2).length,'May need to sell')}${statCard('Severe pressure',payrollChanges.filter((row)=>row.pressure>=1.4).length,'Little room to rebuild')}</div><section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">DYNASTY COST</span><h3>Success raises the wage bill</h3></div><span class="muted">Repeated elite seasons compound salary pressure</span></div><p class="role-copy">One great season earns the squad a raise. Clubs cannot complete a signing or renewal that would take them beyond sustainable payroll. Repeated winners eventually have to sell, lose an expiring contract or wait for an expensive generation to leave—then they can rebuild for another golden age.</p><div class="table-scroll"><table class="data-table"><thead><tr><th>Club</th><th>Good seasons</th><th>Raise</th><th>Before</th><th>After raise</th><th>Current / cap</th><th>Pressure</th><th>Transfer budget</th></tr></thead><tbody>${rows||'<tr><td colspan="8">No club triggered a major salary reset this offseason.</td></tr>'}</tbody></table></div></section>`;
   }
   if (tab === 'boardroom') {
     return `${head}<section class="panel"><div class="panel-head"><div><span class="eyebrow">BOARDROOM</span><h3>President / owner succession</h3></div><span class="muted">Terms last 4-12 years</span></div><div class="archive-list">${ownerChanges.map((change)=>{const next=ownerById(change.ownerId), former=ownerById(change.formerOwnerId), club=clubById(change.clubId); return `<div class="archive-row"><strong>${teamLink(change.clubId)}</strong><span>${former?esc(former.name):'—'} → ${next?esc(next.name):'New president'}${next?.profile==='billionaire'?` · ${money(club?.ownerAnnualInjection||0)}/yr injection`:''}</span><b>${next?staffRarityBadge(next.rarity):''}</b></div>`;}).join('')||'<div class="empty-state compact">No board changes this offseason.</div>'}</div></section>`;
   }
-  return `${head}<div class="stats-ribbon">${statCard('Retirements',data.retirements.length,`${retiredPlayers.length} players · ${retiredCoaches.length} coaches`)}${statCard('New stars',data.newStars.length,'Rookie intake')}${statCard('Transfers',data.transfers.length,'Opening market')}${statCard('Payroll resets',payrollChanges.length,'Dynasty wage pressure')}</div><div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><span class="eyebrow">BIGGEST SIGNINGS</span><h3>Offseason headlines</h3></div><a href="#/offseason/signings">Full signings</a></div>${transferList(transfers.slice(0,12),true)}</section><section class="panel"><div class="panel-head"><div><span class="eyebrow">LIFECYCLE</span><h3>Arrivals and departures</h3></div><a href="#/offseason/lifecycle">Full lifecycle</a></div><p class="role-copy">${newcomers.length} elite/new tracked players entered the world while ${retiredPlayers.length} players and ${retiredCoaches.length} coaches retired.</p><div class="squad-list">${rowPlayers(newcomers.slice(0,8),'new')}</div></section></div>`;
+  return `${head}<div class="stats-ribbon">${statCard('Retirements',data.retirements.length,`${retiredPlayers.length} players · ${retiredCoaches.length} coaches`)}${statCard('New stars',data.newStars.length,'Rookie intake')}${statCard('Transfers',data.transfers.length,'Opening market')}${statCard('Payroll resets',payrollChanges.length,'Dynasty wage pressure')}</div><section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">THE SUMMER THAT CHANGED FOOTBALL</span><h3>Offseason headlines</h3></div><a href="#/magazine/headlines">Full archive</a></div><div class="story-list magazine-list">${headlines.slice(0,10).map((story,index)=>`<article class="story-card ${story.importance||'digest'} ${index===0?'lead':''}"><div class="story-category">${esc(story.category)}</div><h4>${esc(story.headline)}</h4><p>${esc(story.body)}</p></article>`).join('')||'<div class="empty-state compact">No major world-changing story this summer.</div>'}</div></section><div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><span class="eyebrow">BIGGEST SIGNINGS</span><h3>Market moves</h3></div><a href="#/offseason/signings">Full signings</a></div>${transferList(transfers.slice(0,12),true)}</section><section class="panel"><div class="panel-head"><div><span class="eyebrow">LIFECYCLE</span><h3>Arrivals and departures</h3></div><a href="#/offseason/lifecycle">Full lifecycle</a></div><p class="role-copy">${newcomers.length} elite/new tracked players entered the world while ${retiredPlayers.length} players and ${retiredCoaches.length} coaches retired.</p><div class="squad-list">${rowPlayers(newcomers.slice(0,8),'new')}</div></section></div>`;
+}
+
+function editorPage() {
+  if (!isOffseasonEditorAvailable(state)) {
+    return `${pageHead('EDITOR', 'Offseason only', 'These manual controls are available after the new season is generated and before Week 1 begins.')}<section class="panel"><div class="empty-state">Finish the current season, run the offseason, then return here to adjust club money or the new season's transfers.<br><br><a class="primary-button" href="#/world">Go Home</a></div></section>`;
+  }
+  const clubs = [...state.clubs].sort((a, b) => a.name.localeCompare(b.name));
+  const players = state.players.filter((player) => player.status === 'active' && player.clubId).sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name));
+  const moves = (state.current.transfers || []).map((move, index) => ({ ...move, ref: move.id || `legacy-${index}` })).sort((a, b) => b.fee - a.fee);
+  const clubOptions = `<option value="">Choose a club…</option>${clubs.map((club) => `<option value="${esc(club.id)}">${esc(club.name)} · ${esc(club.country)} · ${money(club.finances)}</option>`).join('')}`;
+  const playerOptions = `<option value="">Choose a player…</option>${players.map((player) => `<option value="${esc(player.id)}">${esc(player.name)} · ${esc(clubById(player.clubId)?.name || 'Free agent')} · ${player.position} ${player.rating}</option>`).join('')}`;
+  const rows = moves.map((move) => {
+    const player = playerById(move.playerId);
+    const atDestination = player?.status === 'active' && player.clubId === move.toClubId;
+    return `<tr><td>${playerLink(move.playerId)}</td><td>${move.fromClubId ? teamLink(move.fromClubId) : '<span class="muted">Free agency</span>'}</td><td>${teamLink(move.toClubId)}</td><td><strong>${move.freeTransfer ? 'Free' : money(move.fee)}</strong></td><td>${move.editorCreated ? '<span class="panel-chip">Editor</span>' : '<span class="muted">Market</span>'}</td><td><button class="secondary-button compact-action" data-action="editor-cancel-transfer" data-transfer-ref="${esc(move.ref)}" ${atDestination ? '' : 'disabled'}>${atDestination ? 'Cancel' : 'Moved again'}</button></td></tr>`;
+  }).join('');
+  return `${pageHead('OFFSEASON EDITOR', `${esc(state.current.seasonLabel)} controls`, 'Manual changes save immediately. Add funds, create a transfer, or cancel any move in this season’s offseason market.')}<div class="editor-notice"><span>OFFSEASON WINDOW</span><strong>Open until the first simulated week</strong><a href="#/world">Home</a></div><div class="two-column editor-grid section-gap"><section class="panel"><div class="panel-head"><div><span class="eyebrow">1 · CLUB FINANCES</span><h3>Add money</h3></div></div><p class="role-copy">Funds are added to both club cash and transfer budget. Salary limits still apply.</p><form id="editor-money-form" class="editor-form"><label>Club<select name="clubId" required>${clubOptions}</select></label><label>Amount ($m)<input name="amount" type="number" min="0.1" step="0.1" placeholder="50.0" required></label><button class="primary-button" type="submit">Add funds</button></form></section><section class="panel"><div class="panel-head"><div><span class="eyebrow">2 · PLAYER MARKET</span><h3>Create a transfer</h3></div></div><p class="role-copy">Use a zero fee for a manually agreed free move. The destination must have enough cash for any fee you enter.</p><form id="editor-transfer-form" class="editor-form"><label>Player<select name="playerId" required>${playerOptions}</select></label><label>Destination<select name="toClubId" required>${clubOptions}</select></label><label>Fee ($m)<input name="fee" type="number" min="0" step="0.1" value="0" required></label><button class="primary-button" type="submit">Create transfer</button></form></section></div><section class="panel section-gap"><div class="panel-head"><div><span class="eyebrow">3 · THIS SEASON</span><h3>Cancel a transfer</h3></div><span class="muted">${moves.length} move${moves.length === 1 ? '' : 's'} in the current offseason</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>From</th><th>To</th><th>Fee</th><th>Source</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6">No transfers to cancel in this offseason.</td></tr>'}</tbody></table></div></section>`;
 }
 
 
@@ -2470,6 +2500,7 @@ function page(currentRoute) {
   if (currentRoute.page === 'postseason') return postseasonPage(currentRoute.id || 'setup');
   if (currentRoute.page === 'transfers') return transfersPage(currentRoute.id);
   if (currentRoute.page === 'offseason') return offseasonPage(currentRoute.id || 'summary');
+  if (currentRoute.page === 'editor') return editorPage();
   if (currentRoute.page === 'people') return peoplePage(currentRoute.id, currentRoute.tab);
   if (currentRoute.page === 'players') return peoplePage('players', currentRoute.id);
   if (currentRoute.page === 'player') return playerPage(currentRoute.id, currentRoute.tab);
@@ -2484,7 +2515,7 @@ function page(currentRoute) {
 function mobileBottomNav(currentRoute) {
   const items = [
     ['#/world','World','◎',currentRoute.page === 'world'],
-    ['#/magazine/results','Magazine','▤',currentRoute.page === 'magazine'],
+    ['#/magazine/headlines','Magazine','▤',currentRoute.page === 'magazine'],
     ['#/competitions','Competitions','◆',['competitions','league','competition','country','region'].includes(currentRoute.page)],
     ['#/clubs','Clubs','⬡',['clubs','club'].includes(currentRoute.page)],
     ['#/people/players/overview','People','●',['people','players','player','coach','owner'].includes(currentRoute.page)]
@@ -2510,7 +2541,8 @@ function navigationTrail(currentRoute) {
     owner: ['Presidents', '#/people/presidents/overview', ownerById(id)?.name],
     nation: ['International', '#/international/overview', nationalById(id)?.name],
     league: ['Competitions', '#/competitions', state.current.leagues[id]?.name],
-    competition: ['Competitions', '#/competitions', competitionLabel(id)]
+    competition: ['Competitions', '#/competitions', competitionLabel(id)],
+    editor: ['Offseason', '#/offseason', 'Editor']
   };
   const context = contexts[page];
   if (!context?.[2]) return '';
@@ -3002,6 +3034,33 @@ function bind() {
   if (clubCountry) clubCountry.addEventListener('change', (event) => { clubCountryFilter = event.target.value; render(); });
   const clubSearchInput = document.getElementById('club-search');
   if (clubSearchInput) { const apply=()=>{clubSearch=clubSearchInput.value;render();}; clubSearchInput.addEventListener('change',apply); clubSearchInput.addEventListener('keydown',(event)=>{if(event.key==='Enter')apply();}); }
+  const editorMoneyForm = document.getElementById('editor-money-form');
+  if (editorMoneyForm) editorMoneyForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      const form = new FormData(editorMoneyForm);
+      const result = editorAddClubMoney(state, form.get('clubId'), form.get('amount'));
+      await saveState();
+      render();
+      toast(`${result.club.name} received ${money(result.amount)}.`,'success');
+    } catch (error) {
+      toast(error.message || 'Unable to add money.','error');
+    }
+  });
+  const editorTransferForm = document.getElementById('editor-transfer-form');
+  if (editorTransferForm) editorTransferForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      const form = new FormData(editorTransferForm);
+      const result = editorCreateTransfer(state, form.get('playerId'), form.get('toClubId'), form.get('fee'));
+      const player = playerById(result.playerId);
+      await saveState();
+      render();
+      toast(`${player?.name || 'Player'} transfer created.`,'success');
+    } catch (error) {
+      toast(error.message || 'Unable to create the transfer.','error');
+    }
+  });
 }
 
 function searchResults(query) {
@@ -3104,6 +3163,17 @@ document.addEventListener('click', async (event) => {
   if (action === 'open-club-modal') { event.preventDefault(); clubModalId = target.dataset.id; searchOpen = false; render(); }
   if (action === 'close-club-modal') { clubModalId = null; render(); }
   if (action === 'remove-comparison') { comparatorIds = comparatorIds.filter((id) => id !== target.dataset.id); render(); }
+  if (action === 'editor-cancel-transfer') {
+    try {
+      const record = editorCancelTransfer(state, target.dataset.transferRef);
+      const player = playerById(record.playerId);
+      await saveState();
+      render();
+      toast(`${player?.name || 'Transfer'} returned to its previous state.`,'success');
+    } catch (error) {
+      toast(error.message || 'Unable to cancel the transfer.','error');
+    }
+  }
   if (action === 'toggle-favorite') {
     const type=target.dataset.type,id=target.dataset.id;
     const key=type==='club'?'favoriteClubIds':type==='player'?'favoritePlayerIds':type==='coach'?'favoriteCoachIds':type==='nation'?'favoriteNationIds':'favoriteCompetitionIds';
