@@ -54,7 +54,26 @@ const squad = visit(`#/club/${club.id}/squad`);
 expect('club squad', squad, ['Starting XI', 'formation-pitch', 'pitch-player', 'Substitutes', 'fit ']);
 expect('club staff formation', squad, ['Formation ']);
 expect('club overview formation', visit(`#/club/${club.id}/overview`), ['Formation']);
-expect('coach profile formation', visit(`#/coach/${club.coachId}/overview`), ['Formation ']);
+expect('coach profile formation', visit(`#/coach/${club.coachId}/overview`), ['Formation ', 'Tactical matchups', 'Strong against']);
 expect('nation XI', visit('#/nation/bra'), ['Selected XI', 'formation-pitch']);
+
+// Phase 2: the Showcase replays the real match, with line-ups, substitutions and cards.
+const showcase = world.current.postseason.showcaseMatches;
+assert(showcase.length > 0, 'the reference world prepared a showcase');
+visit('#/postseason/games');
+const opened = await click({ action: 'open-postseason-match', matchId: showcase[0].id });
+expect('showcase line-ups', opened, ['showcase-lineups', 'formation-pitch', 'showcase-tactics']);
+const resolved = await click({ action: 'quick-postseason-match' });
+const original = world.current.archivedKnockoutMatches.find((match) => match.id === showcase[0].matchId);
+expect('showcase final events', resolved, original.subs?.length ? ['Sub: '] : ['live-event']);
+const scorer = original.goalEvents.find((goal) => goal.scorerId);
+if (scorer) {
+  const name = world.players.find((player) => player.id === scorer.scorerId)?.name;
+  expect('showcase real scorer', resolved, [name]);
+}
+const taker = world.history.shootouts?.[0]?.kicks?.[0]?.[1];
+const shootoutPlayer = world.players.find((player) => player.id === taker);
+if (shootoutPlayer) expect('player shootout record', visit(`#/player/${shootoutPlayer.id}/statistics`), ['Shootout']);
+expect('club records shootouts', visit(`#/club/${club.id}/legacy`), ['Penalty shootouts']);
 
 console.log(JSON.stringify({ checks, passed: true }, null, 2));

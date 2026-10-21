@@ -5,6 +5,7 @@ A browser-first football universe simulator with 137 domestic systems, continent
 ## v4 match engine and player model (in progress)
 
 - **Squads:** top-flight clubs name 15 players (11 + 4). Coaches have preferred and fallback formations, and formation fit shapes lineups, strength, transfers and coach appointments. Condensed and second-division clubs keep four named players plus unnamed depth ratings.
+- **Matches:** a minute-by-minute engine with substitutions, game-state tactics, red-card effects, real extra time and kick-by-kick shootouts. Coaching styles counter each other rock-paper-scissors style. The Showcase replays the real match timeline.
 - `npm run calibration` reports match realism and award spread; `npm run perf` times 20 seasons. Results are in docs/CALIBRATION.md.
 - `node scripts/run-regressions.mjs` runs the regression suite, including the v4 phase scripts.
 - Existing saves upgrade automatically (data revision 26 and later). No Neon schema changes.

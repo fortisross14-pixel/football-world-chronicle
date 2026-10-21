@@ -1,5 +1,22 @@
 # v4 match engine and player model (in progress)
 
+## Phase 2 — Minute-by-minute match engine
+
+- New `src/match-engine.js`: matches are played in ten-minute slices (five-minute slices before half-time and full-time carry stoppage time). Each slice's chances come from the kickoff expectation adjusted by who is on the pitch, fatigue, red cards, substitutions, the score and the clock.
+- Leading sides protect a lead late on (fewer chances both ways), trailing sides push (more chances both ways), level sides grow cautious after the hour. A red card changes the rest of the match from that minute.
+- Coaches make up to four substitutions for fatigue, injuries, chasing a game or protecting a lead; substitutes score and assist.
+- Every goal (minute, stoppage time, scorer, assister, penalty), card (with player; second bookings recorded as yellow then red), substitution and big chance is stored. Knockout and semi/final matches also keep every shot and corner, per-slice possession, line-ups and styles.
+- Extra time is 30 more minutes with heavier fatigue. Shootouts are kick by kick (taker penalty skill and composure against the goalkeeper, rising pressure, sudden death). Two-legged ties play extra time and penalties in the second leg when level on aggregate.
+- Shootout records for players, goalkeepers, clubs and nations (embargoed with the Showcase).
+- Tactical matchups, rock-paper-scissors style: each core style beats two and loses to two (possession beats direct and counter-attack but loses to a defensive rock and to pressing; see `STYLE_BEATS`). Non-tactical coach profiles lean towards one style at half strength; adaptive coaches gain a small edge against everyone.
+- Match ratings come from events (goals, assists, chances created, shots on target, saves, blocks, tackles, mistakes, cards, clean sheets, result); Man of the Match is the best-rated named player.
+- Expected goals follow a saturating curve so mismatches stay football scores.
+- Condensed leagues are played by the same engine (tables and player statistics only).
+- The Showcase replays the stored timeline exactly; matches saved before this version keep the old reconstruction.
+- Model win/draw/loss probabilities are stored on each match.
+- UI: Showcase shows line-ups, substitutions, named card recipients, big chances, stoppage-time minutes, shootout details and the tactical edge; coach profiles list strong and weak matchups; player profiles show minutes and shootout records; club and nation pages show shootout records.
+- Data revision 27 (shootout archive).
+
 ## Phase 1 — Squads of 11 + 4, formations and coach fit
 
 - Top-flight clubs in the 29 full leagues now carry a named 15-player squad (11 starters + 4 substitutes) instead of 7; national teams pick a matchday 15.

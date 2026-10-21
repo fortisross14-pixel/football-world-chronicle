@@ -110,6 +110,7 @@ const styleRows = new Map();
 const ratingByPosition = new Map();
 const ballonPositions = new Map();
 const subsPerTeam = { subs: 0, teams: 0 };
+const availability = { changed: [0, 0], full: [0, 0], injuries: 0, teamSeasons: 0 };
 const scorerClubSpread = [];
 
 for (const seed of seeds) {
@@ -136,6 +137,15 @@ for (const seed of seeds) {
     const clubStyle = new Map(world.clubs.map((club) => [club.id, club.coachProfile || 'none']));
     for (const match of matches) {
       if (Array.isArray(match.subs)) { subsPerTeam.subs += match.subs.length; subsPerTeam.teams += 2; }
+      if (!match.knockout && LEAGUE_TIER.get(match.competitionId) === 'detailed') {
+        for (const side of ['home', 'away']) {
+          const own = side === 'home' ? match.homeGoals : match.awayGoals;
+          const other = side === 'home' ? match.awayGoals : match.homeGoals;
+          const points = own > other ? 3 : own === other ? 1 : 0;
+          const bucket = match.rotation?.[side] ? availability.changed : availability.full;
+          bucket[0] += points; bucket[1] += 1;
+        }
+      }
       if (!match.isInternational) {
         for (const [id, own, other] of [[match.homeId, match.homeGoals, match.awayGoals], [match.awayId, match.awayGoals, match.homeGoals]]) {
           const style = clubStyle.get(id) || styleOf(id, false);
@@ -172,6 +182,7 @@ for (const seed of seeds) {
       }
     }
 
+    for (const player of world.players) availability.injuries += (player.injuries || []).filter(([season]) => season === world.season).length;
     const positionById = new Map(world.players.map((player) => [player.id, player.position]));
     for (const stat of world.current.archivedPlayerStats || []) {
       if (!stat.apps) continue;
@@ -270,6 +281,12 @@ const report = {
   }])),
   averageRatingByPosition: Object.fromEntries([...ratingByPosition].map(([position, row]) => [position, Number((row.weighted / Math.max(1, row.apps)).toFixed(2))])),
   ballonDorPodiumPositions: Object.fromEntries(ballonPositions),
+  availability: availability.full[1] ? {
+    injuriesPerSeason: Math.round(availability.injuries / (seeds.length * seasons)),
+    pointsPerGameFullStrength: Number((availability.full[0] / Math.max(1, availability.full[1])).toFixed(3)),
+    pointsPerGameWithForcedChanges: Number((availability.changed[0] / Math.max(1, availability.changed[1])).toFixed(3)),
+    shareOfLeagueGamesWithForcedChanges: Number((availability.changed[1] / Math.max(1, availability.changed[1] + availability.full[1])).toFixed(3))
+  } : null,
   substitutionsPerTeam: subsPerTeam.teams ? Number((subsPerTeam.subs / subsPerTeam.teams).toFixed(2)) : null,
   timing: {
     averageSeasonSeconds: Number(average(timings.seasonSeconds).toFixed(2)),

@@ -1379,3 +1379,5 @@ input::placeholder { color: var(--text-3); }
   .pitch-player { width: 64px; }
   .pitch-player span { max-width: 64px; }
 }
+.showcase-tactics { display: block; margin-top: 4px; color: var(--text-3); font-size: var(--fs-12); font-weight: 600; }
+

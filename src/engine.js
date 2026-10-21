@@ -19,6 +19,7 @@ import {
 } from './data.js';
 import { REAL_WORLD_STARS } from './real-stars.js';
 import { simulateMatchChances, matchEventRoll } from './match-model.js';
+import { playMatch } from './match-engine.js';
 import {
   FORMATIONS,
   SQUAD_SIZE,
@@ -51,6 +52,21 @@ const RARITY_ORDER = ['generational', 'legend', 'epic', 'rare', 'uncommon', 'com
 // matchday by unnamed depth ratings derived from the club (see clubDepthSquad).
 const CLUB_ROSTER_TARGET = { detailed: SQUAD_SIZE, summary: 4, reserve: 4 };
 const SMALL_CORE_BLUEPRINT = ['GK', 'DF', 'MF', 'FW'];
+// Kickoff expected-goal model (tuned with scripts/calibration.mjs).
+const MATCH_CALIBRATION = {
+  homeGoals: 1.48,
+  awayGoals: 1.14,
+  homeStrengthEdge: 2.0,
+  lambdaAmplitude: 0.9,
+  contextPerPoint: 0.035,
+  lambdaScale: 0.85,
+  attackDivisor: 24,
+  defenceDivisor: 25,
+  attackDivisorKnockout: 19.5,
+  defenceDivisorKnockout: 20.5,
+  attackDivisorKnockoutIntl: 18.5,
+  defenceDivisorKnockoutIntl: 19.5
+};
 // Role families per squad slot so a generated 15 has centre-backs and full-backs,
 // holding and creative midfielders, and both central and wide forwards.
 const SQUAD_ROLE_HINTS = [
@@ -2163,7 +2179,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 26,
+    dataRevision: 27,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -2208,7 +2224,8 @@ export function createWorld(seed = Date.now() % 2147483647) {
       leaguePowerRankings: [],
       leagueEras: [],
       news: [],
-      postseasons: []
+      postseasons: [],
+      shootouts: []
     },
     preferences: {
       favoriteClubIds: ['real-madrid'],
@@ -2617,13 +2634,23 @@ function formationFitBonus(fit) {
   return clamp(((fit ?? 85) - 84) * 0.06, -1.6, 0.9);
 }
 
-function calculateTeamStrength(state, teamId, isInternational) {
-  const squad = getTeamSquad(state, teamId, isInternational);
+function teamForm(state, teamId, isInternational) {
+  return (isInternational ? getRuntimeCache(state).nationalById.get(teamId)?.form : getClub(state, teamId)?.form) || 0;
+}
+
+// Everything in team strength except form is fixed while the squad is (roster,
+// coach, owner, payroll and club strength only change between squad rebuilds), so it
+// is computed once per squad and form is added on each call.
+function staticTeamStrength(state, teamId, isInternational, squad) {
+  if (squad.strengthStatic !== undefined) return squad.strengthStatic;
   const lineup = squad.starters;
   const base = isInternational
     ? getRuntimeCache(state).nationalById.get(teamId)?.strength || 62
     : getClub(state, teamId)?.strength || 65;
-  if (!squad.xi.length) return base - 5;
+  if (!squad.xi.length) {
+    squad.strengthStatic = base - 5;
+    return squad.strengthStatic;
+  }
   const tactics = tacticalModifiers(state, teamId, isInternational);
   const values = squad.xi.map((row) => {
     const line = slotLine(row.slotType);
@@ -2637,29 +2664,37 @@ function calculateTeamStrength(state, teamId, isInternational) {
   const coreAverage = core.reduce((sum, value) => sum + value, 0) / core.length;
   const weighted = rest.length ? coreAverage * 0.7 + (rest.reduce((sum, value) => sum + value, 0) / rest.length) * 0.3 : coreAverage;
   const namedInfluence = isInternational ? Math.min(0.64, 0.27 + lineup.length * 0.052) : Math.min(0.52, 0.34 + lineup.length * 0.025);
-  const form = isInternational
-    ? getRuntimeCache(state).nationalById.get(teamId)?.form || 0
-    : getClub(state, teamId)?.form || 0;
   const coachBonus = tactics.coach ? (tactics.coach.quality - 65) * 0.07 : 0;
-  const ownerBonus = isInternational ? 0 : (getClub(state, teamId)?.ownerSportingBonus || 0);
   const club = isInternational ? null : getClub(state, teamId);
+  const ownerBonus = club?.ownerSportingBonus || 0;
   const payrollRatio = club ? Number(club.currentPayroll || 0) / Math.max(1, Number(club.payrollLimit || clubPayrollLimit(club))) : 1;
   const payrollInstability = isInternational ? 0 : Math.min(5.5, Math.max(0, payrollRatio - 1.1) * 2.4);
   const starImpact = starImpactForLineup(lineup, 'overall');
-  return base * (1 - namedInfluence) + weighted * namedInfluence + form + coachBonus + ownerBonus + starImpact - payrollInstability + formationFitBonus(squad.fit);
+  squad.strengthStatic = base * (1 - namedInfluence) + weighted * namedInfluence + coachBonus + ownerBonus + starImpact - payrollInstability + formationFitBonus(squad.fit);
+  return squad.strengthStatic;
+}
+
+function calculateTeamStrength(state, teamId, isInternational) {
+  const squad = getTeamSquad(state, teamId, isInternational);
+  return staticTeamStrength(state, teamId, isInternational, squad) + (squad.xi.length ? teamForm(state, teamId, isInternational) : 0);
 }
 
 function calculateUnitStrength(state, teamId, isInternational, unit, baseStrength = null) {
   const squad = getTeamSquad(state, teamId, isInternational);
-  const lineup = squad.starters;
   const base = baseStrength ?? calculateTeamStrength(state, teamId, isInternational);
   if (!squad.xi.length) return base;
-  const tactics = tacticalModifiers(state, teamId, isInternational);
-  const positionSet = unit === 'attack' ? ['FW', 'MF'] : unit === 'midfield' ? ['MF', 'DF'] : ['GK', 'DF'];
-  const rows = squad.xi.filter((row) => positionSet.includes(slotLine(row.slotType)));
-  const average = rows.length ? rows.reduce((sum, row) => sum + row.effective, 0) / rows.length : base;
-  const multiplier = unit === 'attack' ? tactics.attack : unit === 'midfield' ? tactics.midfield : tactics.defence;
-  return base * 0.53 + average * 0.47 * multiplier + starImpactForLineup(lineup, unit);
+  squad.unitStatic ||= {};
+  if (squad.unitStatic[unit] === undefined) {
+    const tactics = tacticalModifiers(state, teamId, isInternational);
+    const positionSet = unit === 'attack' ? ['FW', 'MF'] : unit === 'midfield' ? ['MF', 'DF'] : ['GK', 'DF'];
+    const rows = squad.xi.filter((row) => positionSet.includes(slotLine(row.slotType)));
+    const multiplier = unit === 'attack' ? tactics.attack : unit === 'midfield' ? tactics.midfield : tactics.defence;
+    squad.unitStatic[unit] = rows.length
+      ? { average: rows.reduce((sum, row) => sum + row.effective, 0) / rows.length * 0.47 * multiplier + starImpactForLineup(squad.starters, unit), empty: false }
+      : { average: starImpactForLineup(squad.starters, unit), empty: true };
+  }
+  const cached = squad.unitStatic[unit];
+  return cached.empty ? base * 0.53 + base * 0.47 + cached.average : base * 0.53 + cached.average;
 }
 
 function matchTeamProfile(state, teamId, isInternational, expectedGoals) {
@@ -2734,8 +2769,17 @@ function tournamentFavoriteBonus(state, competitionId, teamId, isInternational) 
 }
 
 // Goal and assist weights adjusted for the slot a player fills tonight.
-const SLOT_GOAL_FACTOR = { GK: 1, CB: 0.85, FB: 0.85, WB: 0.92, DM: 0.6, CM: 0.82, WM: 0.88, AM: 1.06, W: 1.0, ST: 1.14 };
+const SLOT_GOAL_FACTOR = { GK: 1, CB: 0.85, FB: 0.85, WB: 0.92, DM: 0.6, CM: 0.82, WM: 0.95, AM: 1.15, W: 1.05, ST: 1.25 };
 const SLOT_ASSIST_FACTOR = { GK: 1, CB: 0.7, FB: 1.0, WB: 1.12, DM: 0.85, CM: 1.0, WM: 1.12, AM: 1.15, W: 1.08, ST: 0.85 };
+
+// Share of a side's shots a player takes. Flatter than goalWeight: quality still
+// matters a lot, but one star does not take every chance.
+function matchGoalWeight(player) {
+  const base = player.position === 'FW' ? 6 : player.position === 'MF' ? 3.2 : player.position === 'DF' ? 1.1 : 0.08;
+  const quality = clamp((player.rating - 54) / 46, 0.08, 1.05);
+  const rarity = 1 + Math.max(0, (STAR_RARITIES[player.rarity]?.rank || 1) - 3) * 0.06;
+  return base * (player.depth ? 1 : roleData(player).goal) * (0.4 + quality ** 1.6 * 1.1) * rarity;
+}
 
 function penaltySkill(player) {
   if (player.depth) return player.rating - 6;
@@ -2754,7 +2798,7 @@ function matchSource(player, slotType, effective) {
     slotType: slotType || null,
     rating: player.rating,
     effective,
-    goalW: goalWeight(player) * (slotType ? SLOT_GOAL_FACTOR[slotType] ?? 1 : 1),
+    goalW: matchGoalWeight(player) * (slotType ? SLOT_GOAL_FACTOR[slotType] ?? 1 : 1),
     assistW: assistWeight(player) * (slotType ? SLOT_ASSIST_FACTOR[slotType] ?? 1 : 1),
     defendW: player.depth ? 1 : roleData(player).defence,
     penalty: penaltySkill(player)
@@ -2794,14 +2838,18 @@ function matchExpectations(state, { homeId, awayId, competitionId, stage, knocko
   const homeBase = calculateTeamStrength(state, homeId, isInternational);
   const awayBase = calculateTeamStrength(state, awayId, isInternational);
   const homeEdge = neutral ? 0 : MATCH_CALIBRATION.homeStrengthEdge;
-  const homeStrength = homeBase + homeFavoriteBonus + homeCoachContext - homeDynastyPressure + homeEdge;
-  const awayStrength = awayBase + awayFavoriteBonus + awayCoachContext - awayDynastyPressure;
-  const unitContext = (favorite, coachContext, dynasty) => favorite * 0.72 + coachContext * 0.56 - dynasty * 0.45;
-  const homeAttack = calculateUnitStrength(state, homeId, isInternational, 'attack', homeBase) + unitContext(homeFavoriteBonus, homeCoachContext, homeDynastyPressure);
-  const awayAttack = calculateUnitStrength(state, awayId, isInternational, 'attack', awayBase) + unitContext(awayFavoriteBonus, awayCoachContext, awayDynastyPressure);
-  const homeDefence = calculateUnitStrength(state, homeId, isInternational, 'defence', homeBase) + unitContext(homeFavoriteBonus, homeCoachContext, homeDynastyPressure);
-  const awayDefence = calculateUnitStrength(state, awayId, isInternational, 'defence', awayBase) + unitContext(awayFavoriteBonus, awayCoachContext, awayDynastyPressure);
-  const difference = homeStrength - awayStrength;
+  const homeContext = homeFavoriteBonus + homeCoachContext - homeDynastyPressure;
+  const awayContext = awayFavoriteBonus + awayCoachContext - awayDynastyPressure;
+  const homeStrength = homeBase + homeContext + homeEdge;
+  const awayStrength = awayBase + awayContext;
+  // Squad quality and the home edge go through the saturating curve below; coach
+  // focus, tournament-favourite and dynasty-pressure context multiply expected goals
+  // directly so they keep their full weight even in mismatches.
+  const homeAttack = calculateUnitStrength(state, homeId, isInternational, 'attack', homeBase);
+  const awayAttack = calculateUnitStrength(state, awayId, isInternational, 'attack', awayBase);
+  const homeDefence = calculateUnitStrength(state, homeId, isInternational, 'defence', homeBase);
+  const awayDefence = calculateUnitStrength(state, awayId, isInternational, 'defence', awayBase);
+  const difference = homeBase + homeEdge - awayBase;
   const highStakes = knockout || /Leg|Round of 16|Quarter|Semi|Final/i.test(stage || '');
   const c = MATCH_CALIBRATION;
   const attackDivisor = highStakes ? (isInternational ? c.attackDivisorKnockoutIntl : c.attackDivisorKnockout) : c.attackDivisor;
@@ -2810,8 +2858,12 @@ function matchExpectations(state, { homeId, awayId, competitionId, stage, knocko
   const awayEdgeDivisor = highStakes ? (isInternational ? 37 : 42) : 50;
   const homeBaseGoals = neutral ? (c.homeGoals + c.awayGoals) / 2 : c.homeGoals;
   const awayBaseGoals = neutral ? (c.homeGoals + c.awayGoals) / 2 : c.awayGoals;
-  const homeLambda = clamp(homeBaseGoals + (homeAttack - awayDefence) / attackDivisor + difference / homeEdgeDivisor, 0.18, 3.6);
-  const awayLambda = clamp(awayBaseGoals + (awayAttack - homeDefence) / defenceDivisor - difference / awayEdgeDivisor, 0.15, 3.3);
+  // Quality gaps move expected goals along a saturating curve: a mismatch is lopsided
+  // but still a football score (around 2.6 vs 0.4), not 3.5 vs 0.15.
+  const shape = (base, delta) => base * (1 + c.lambdaAmplitude * Math.tanh(delta / base * c.lambdaScale));
+  const contextFactor = Math.exp(c.contextPerPoint * (homeContext - awayContext));
+  const homeLambda = clamp(shape(homeBaseGoals, (homeAttack - awayDefence) / attackDivisor + difference / homeEdgeDivisor) * contextFactor, 0.2, 3.6);
+  const awayLambda = clamp(shape(awayBaseGoals, (awayAttack - homeDefence) / defenceDivisor - difference / awayEdgeDivisor) / contextFactor, 0.18, 3.3);
   return { homeStrength, awayStrength, homeLambda, awayLambda };
 }
 
@@ -2825,181 +2877,103 @@ function simulateMatch(state, {
   isInternational = false,
   stage = null,
   table = null,
-  neutral = false
+  neutral = false,
+  aggregate = null,
+  record = true
 }) {
-  const homeFavoriteBonus = tournamentFavoriteBonus(state, competitionId, homeId, isInternational);
-  const awayFavoriteBonus = tournamentFavoriteBonus(state, competitionId, awayId, isInternational);
-  const homeCoachContext = coachContextBonus(state, homeId, isInternational, competitionId, stage, knockout);
-  const awayCoachContext = coachContextBonus(state, awayId, isInternational, competitionId, stage, knockout);
-  const homeDynastyPressure = isInternational ? 0 : continentalDynastyPressure(state, homeId, competitionId);
-  const awayDynastyPressure = isInternational ? 0 : continentalDynastyPressure(state, awayId, competitionId);
-  const homeBase = calculateTeamStrength(state, homeId, isInternational);
-  const awayBase = calculateTeamStrength(state, awayId, isInternational);
-  const homeStrength = homeBase + homeFavoriteBonus + homeCoachContext - homeDynastyPressure + (neutral ? 0 : 2.0);
-  const awayStrength = awayBase + awayFavoriteBonus + awayCoachContext - awayDynastyPressure;
-  const homeAttack = calculateUnitStrength(state, homeId, isInternational, 'attack', homeBase) + homeFavoriteBonus * 0.72 + homeCoachContext * 0.56 - homeDynastyPressure * 0.45;
-  const awayAttack = calculateUnitStrength(state, awayId, isInternational, 'attack', awayBase) + awayFavoriteBonus * 0.72 + awayCoachContext * 0.56 - awayDynastyPressure * 0.45;
-  const homeDefence = calculateUnitStrength(state, homeId, isInternational, 'defence', homeBase) + homeFavoriteBonus * 0.72 + homeCoachContext * 0.56 - homeDynastyPressure * 0.45;
-  const awayDefence = calculateUnitStrength(state, awayId, isInternational, 'defence', awayBase) + awayFavoriteBonus * 0.72 + awayCoachContext * 0.56 - awayDynastyPressure * 0.45;
-  const difference = homeStrength - awayStrength;
-  // Quality gaps should matter across a full competition without making upsets impossible.
-  // High-stakes knockout matches expose squad and coaching differences a little more;
-  // finals remain one-off games, so dark horses can still finish the story.
-  const highStakes = knockout || /Leg|Round of 16|Quarter|Semi|Final/i.test(stage || '');
-  const attackDivisor = highStakes ? (isInternational ? 18.5 : 19.5) : 22;
-  const defenceDivisor = highStakes ? (isInternational ? 19.5 : 20.5) : 23;
-  const homeEdgeDivisor = highStakes ? (isInternational ? 33 : 37) : 44;
-  const awayEdgeDivisor = highStakes ? (isInternational ? 37 : 42) : 50;
-  const homeLambda = clamp(1.27 + (homeAttack - awayDefence) / attackDivisor + difference / homeEdgeDivisor, 0.16, 3.55);
-  const awayLambda = clamp(1.01 + (awayAttack - homeDefence) / defenceDivisor - difference / awayEdgeDivisor, 0.13, 3.25);
-  const chances = simulateMatchChances(
-    matchTeamProfile(state, homeId, isInternational, homeLambda),
-    matchTeamProfile(state, awayId, isInternational, awayLambda),
-    () => random(state)
-  );
-  let homeGoals = chances.goals.home;
-  let awayGoals = chances.goals.away;
-  let resolution = null;
-  if (knockout) {
-    resolution = resolveDraw(state, homeId, awayId, homeGoals, awayGoals, isInternational);
-    homeGoals = resolution.homeGoals;
-    awayGoals = resolution.awayGoals;
-  }
-  // The extra-time decider is also a shot on target, never a score-only event.
-  for (const [side, goals] of [['home', homeGoals], ['away', awayGoals]]) {
-    const extraGoals = goals - chances.goals[side];
-    chances.stats[side].shots += extraGoals;
-    chances.stats[side].onTarget += extraGoals;
-  }
+  const expectations = matchExpectations(state, { homeId, awayId, competitionId, stage, knockout: knockout || Boolean(aggregate), isInternational, neutral });
+  const homeSquad = getTeamSquad(state, homeId, isInternational);
+  const awaySquad = getTeamSquad(state, awayId, isInternational);
+  const homeSources = squadMatchSources(homeSquad);
+  const awaySources = squadMatchSources(awaySquad);
+  const homeCoach = getCoach(state, homeId, isInternational);
+  const awayCoach = getCoach(state, awayId, isInternational);
+  const detail = record && (knockout || Boolean(aggregate) || /Semi|Final|Quarter/i.test(stage || ''));
+  const firstLeg = /Leg 1/i.test(stage || '');
+  const result = playMatch({
+    home: { teamId: homeId, lambda: expectations.homeLambda, style: homeCoach?.profile || null, xi: homeSources.xi, bench: homeSources.bench },
+    away: { teamId: awayId, lambda: expectations.awayLambda, style: awayCoach?.profile || null, xi: awaySources.xi, bench: awaySources.bench },
+    knockout: knockout || Boolean(aggregate),
+    aggregate,
+    detail,
+    legStakes: firstLeg ? 0.5 : 1
+  }, () => random(state));
 
-  const homeLineup = isInternational ? getNationalLineup(state, homeId) : getClubLineup(state, homeId);
-  const awayLineup = isInternational ? getNationalLineup(state, awayId) : getClubLineup(state, awayId);
-  const contributions = new Map();
-  const goalEvents = [];
-  const addContribution = (playerId, type) => {
-    const item = contributions.get(playerId) || { goals: 0, assists: 0 };
-    item[type] += 1;
-    contributions.set(playerId, item);
-  };
-  const createGoals = (teamId, opponentId, count, lineup, side) => {
-    for (let i = 0; i < count; i += 1) {
-      if (!lineup.length) continue;
-      // Named stars represent only part of the full squad. Some goals belong to
-      // anonymous squad players so a four-to-seven-star roster does not funnel
-      // every team goal into the same few careers.
-      const namedScorerChance = isInternational ? 0.82 : lineup.length >= 7 ? 0.72 : 0.58;
-      const scorer = random(state) < namedScorerChance ? weightedPick(state, lineup, goalWeight) : null;
-      if (scorer) addContribution(scorer.id, 'goals');
-      let assister = null;
-      if (scorer && random(state) < 0.7 && lineup.length > 1) {
-        const options = lineup.filter((player) => player.id !== scorer.id);
-        assister = weightedPick(state, options, assistWeight);
-        addContribution(assister.id, 'assists');
-      }
-      goalEvents.push({
-        teamId,
-        opponentId,
-        side,
-        scorerId: scorer?.id || null,
-        assistId: assister?.id || null,
-        minute: randomInt(state, 4, resolution?.extraTime ? 118 : 90)
-      });
-    }
-  };
-  createGoals(homeId, awayId, homeGoals, homeLineup, 'home');
-  createGoals(awayId, homeId, awayGoals, awayLineup, 'away');
-  goalEvents.sort((a, b) => a.minute - b.minute);
+  const homeGoals = result.homeGoals;
+  const awayGoals = result.awayGoals;
+  const decidedLate = result.extraTime || result.penalties;
+  const tieWinnerId = result.winnerSide === 'home' ? homeId : result.winnerSide === 'away' ? awayId : null;
+  const legWinnerId = homeGoals > awayGoals ? homeId : awayGoals > homeGoals ? awayId : null;
+  const winnerId = knockout ? tieWinnerId : aggregate ? (decidedLate ? tieWinnerId : legWinnerId) : legWinnerId;
+  const teamIdFor = (side) => (side === 'home' ? homeId : awayId);
+  const goalEvents = result.goals.map((goal) => ({
+    teamId: teamIdFor(goal.side),
+    opponentId: teamIdFor(goal.side === 'home' ? 'away' : 'home'),
+    side: goal.side,
+    scorerId: goal.scorerId,
+    assistId: goal.assistId,
+    minute: goal.minute,
+    ...(goal.added ? { added: goal.added } : {}),
+    ...(goal.penalty ? { penalty: true } : {}),
+    ...(goal.extraTime ? { extraTime: true } : {})
+  }));
 
-  const winnerSide = homeGoals > awayGoals ? 'home' : awayGoals > homeGoals ? 'away' : 'draw';
-  const matchRatings = new Map();
-  const rateLineup = (lineup, teamId, side, goalsFor, goalsAgainst) => {
-    lineup.forEach((player) => {
-      const contribution = contributions.get(player.id) || { goals: 0, assists: 0 };
-      let rating = 6.15 + random(state) * 0.9;
-      // Goals and assists matter, but do not define the whole performance. A brace
-      // can rescue a mediocre display without automatically producing a 9+ rating.
-      rating += contribution.goals * 0.28 + contribution.assists * 0.24;
-      rating += (player.rating - 70) / 82;
-      rating += { GK: -0.08, DF: -0.03, MF: 0.08, FW: 0.05 }[player.position] || 0;
-      if (winnerSide === side || resolution?.winnerId === teamId) rating += 0.26;
-      if (winnerSide !== 'draw' && winnerSide !== side && !resolution) rating -= 0.22;
-      if (player.position === 'GK') {
-        if (goalsAgainst === 0) rating += 0.25 * roleData(player).defence;
-        else rating -= Math.max(0, goalsAgainst - 1) * 0.13;
-      }
-      if (player.position === 'DF') {
-        if (goalsAgainst === 0) rating += 0.15 * roleData(player).defence;
-        else rating -= Math.max(0, goalsAgainst - 1) * 0.055;
-      }
-      rating = clamp(rating, 5.1, 10);
-      matchRatings.set(player.id, rating);
-      const stat = ensurePlayerStat(state, player.id, competitionId, teamId, isInternational);
-      stat.apps += 1;
-      stat.starts += 1;
-      stat.goals += contribution.goals;
-      stat.assists += contribution.assists;
-      if ((player.position === 'GK' || player.position === 'DF') && goalsAgainst === 0) stat.cleanSheets += 1;
-      stat.ratingSum += rating;
-      stat.averageRating = stat.ratingSum / stat.apps;
-      addPlayerLog(state, player.id, {
-        matchId: null,
-        week,
-        competitionId,
-        competitionName,
-        stage,
-        teamId,
-        opponentId: teamId === homeId ? awayId : homeId,
-        home: teamId === homeId,
-        goals: contribution.goals,
-        assists: contribution.assists,
-        cleanSheet: (player.position === 'GK' || player.position === 'DF') && goalsAgainst === 0,
-        rating,
-        score: `${homeGoals}-${awayGoals}`,
-        result: resolution?.winnerId
-          ? resolution.winnerId === teamId ? 'W' : 'L'
-          : goalsFor > goalsAgainst ? 'W' : goalsFor < goalsAgainst ? 'L' : 'D',
-        isInternational
-      });
-    });
-  };
-  rateLineup(homeLineup, homeId, 'home', homeGoals, awayGoals);
-  rateLineup(awayLineup, awayId, 'away', awayGoals, homeGoals);
+  const id = record ? `m-${state.season}-${week}-${state.current.matches.length + 1}` : null;
 
-  let manOfMatchId = null;
-  const participants = [...homeLineup, ...awayLineup];
-  if (participants.length) {
-    const candidates = participants
-      .map((player) => {
-        const contribution = contributions.get(player.id) || { goals: 0, assists: 0 };
-        return {
-          id: player.id,
-          score: (matchRatings.get(player.id) || 6.5) + contribution.goals * 0.55 + contribution.assists * 0.35 + random(state) * 0.35
-        };
-      })
-      .sort((a, b) => b.score - a.score);
-    manOfMatchId = candidates[0].id;
-    const stat = ensurePlayerStat(
-      state,
-      manOfMatchId,
+  const outcomeFor = (teamId, goalsFor, goalsAgainst) => {
+    if (knockout && tieWinnerId) return tieWinnerId === teamId ? 'W' : 'L';
+    if (aggregate && decidedLate && tieWinnerId) return tieWinnerId === teamId ? 'W' : 'L';
+    return goalsFor > goalsAgainst ? 'W' : goalsFor < goalsAgainst ? 'L' : 'D';
+  };
+  for (const row of result.players) {
+    if (!row.id) continue;
+    const teamId = teamIdFor(row.side);
+    const stat = ensurePlayerStat(state, row.id, competitionId, teamId, isInternational);
+    stat.apps += 1;
+    if (row.started) stat.starts += 1;
+    stat.goals += row.goals;
+    stat.assists += row.assists;
+    if (row.cleanSheet) stat.cleanSheets += 1;
+    stat.ratingSum += row.rating;
+    stat.averageRating = stat.ratingSum / stat.apps;
+    stat.minutes = (stat.minutes || 0) + row.minutes;
+    if (row.yellow) stat.yellow = (stat.yellow || 0) + 1;
+    if (row.red) stat.red = (stat.red || 0) + 1;
+    const goalsFor = row.side === 'home' ? homeGoals : awayGoals;
+    const goalsAgainst = row.side === 'home' ? awayGoals : homeGoals;
+    if (record) addPlayerLog(state, row.id, {
+      matchId: id,
+      week,
       competitionId,
-      homeLineup.some((player) => player.id === manOfMatchId) ? homeId : awayId,
+      competitionName,
+      stage,
+      teamId,
+      opponentId: row.side === 'home' ? awayId : homeId,
+      home: row.side === 'home',
+      goals: row.goals,
+      assists: row.assists,
+      cleanSheet: row.cleanSheet,
+      rating: row.rating,
+      minutes: row.minutes,
+      started: row.started,
+      score: `${homeGoals}-${awayGoals}`,
+      result: outcomeFor(teamId, goalsFor, goalsAgainst),
       isInternational
-    );
-    stat.manOfTheMatch += 1;
+    });
+  }
+  const manOfMatchId = result.manOfMatchId;
+  if (!record) {
+    if (manOfMatchId) {
+      const side = result.players.find((row) => row.id === manOfMatchId)?.side;
+      ensurePlayerStat(state, manOfMatchId, competitionId, teamIdFor(side), isInternational).manOfTheMatch += 1;
+    }
+    return { result, homeGoals, awayGoals, winnerId, expectations };
+  }
+  if (manOfMatchId) {
+    const side = result.players.find((row) => row.id === manOfMatchId)?.side;
+    ensurePlayerStat(state, manOfMatchId, competitionId, teamIdFor(side), isInternational).manOfTheMatch += 1;
   }
 
-  const id = `m-${state.season}-${week}-${state.current.matches.length + 1}`;
-  for (const player of participants) {
-    const log = state.current.playerMatchLogs[player.id];
-    const last = log?.[log.length - 1];
-    if (
-      last &&
-      last.matchId === null &&
-      last.week === week &&
-      last.competitionId === competitionId &&
-      [homeId, awayId].includes(last.teamId)
-    ) last.matchId = id;
-  }
   const match = {
     id,
     season: state.season,
@@ -3011,23 +2985,38 @@ function simulateMatch(state, {
     awayId,
     homeGoals,
     awayGoals,
-    winnerId: resolution?.winnerId || (homeGoals > awayGoals ? homeId : awayGoals > homeGoals ? awayId : null),
-    extraTime: resolution?.extraTime || false,
-    penalties: resolution?.penalties || null,
+    winnerId,
+    extraTime: result.extraTime,
+    penalties: result.penalties,
     goalEvents,
-    stats: chances.stats,
-    cardEvents: chances.cardEvents,
+    stats: result.stats,
+    cardEvents: result.cards.map((card) => ({ side: card.side, type: card.type, minute: card.minute, ...(card.added ? { added: card.added } : {}), playerId: card.playerId })),
+    subs: result.subs.map((sub) => ({ side: sub.side, minute: sub.minute, outId: sub.outId, inId: sub.inId, reason: sub.reason })),
+    keyChances: result.keyChances.map((chance) => ({ side: chance.side, minute: chance.minute, playerId: chance.playerId, outcome: chance.outcome })),
     manOfMatchId,
+    motmRating: result.players.find((row) => row.id === manOfMatchId)?.rating ?? null,
     isInternational,
     knockout,
-    landmark: knockout && /Final|Semi-final/i.test(stage || '')
+    landmark: knockout && /Final|Semi-final/i.test(stage || ''),
+    engine: 2,
+    odds: matchOdds(expectations)
   };
+  if (aggregate) {
+    match.aggregate = { home: aggregate.home + homeGoals, away: aggregate.away + awayGoals };
+    match.tieWinnerId = tieWinnerId;
+  }
+  if (result.shootout) match.shootout = result.shootout.map((kick) => ({ round: kick.round, side: kick.side, playerId: kick.playerId, keeperId: kick.keeperId, outcome: kick.outcome, home: kick.home, away: kick.away }));
+  if (detail) {
+    match.timeline = result.timeline;
+    match.possessionSlices = result.possessionSlices;
+    match.lineups = { home: lineupSnapshot(homeSquad), away: lineupSnapshot(awaySquad) };
+    match.styles = { home: homeCoach?.profile || null, away: awayCoach?.profile || null };
+  }
   state.current.matches.push(match);
+  if (match.shootout) recordShootout(state, match);
   if (table) updateTable(table, homeId, awayId, homeGoals, awayGoals);
 
-  const homeCoach = getCoach(state, homeId, isInternational);
-  const awayCoach = getCoach(state, awayId, isInternational);
-  const homeOutcome = homeGoals > awayGoals ? 'W' : homeGoals < awayGoals ? 'L' : resolution?.winnerId === homeId ? 'W' : resolution?.winnerId === awayId ? 'L' : 'D';
+  const homeOutcome = outcomeFor(homeId, homeGoals, awayGoals);
   const awayOutcome = homeOutcome === 'W' ? 'L' : homeOutcome === 'L' ? 'W' : 'D';
   recordCoachResult(state, homeCoach, competitionId, homeId, isInternational, homeGoals, awayGoals, homeOutcome);
   recordCoachResult(state, awayCoach, competitionId, awayId, isInternational, awayGoals, homeGoals, awayOutcome);
@@ -3048,8 +3037,34 @@ function simulateMatch(state, {
     if (awayTeam) awayTeam.form = clamp(awayTeam.form * 0.7 - resultDelta, -2, 2);
   }
 
-  generateMatchNews(state, match, homeStrength, awayStrength);
+  generateMatchNews(state, match, expectations.homeStrength, expectations.awayStrength);
   return match;
+}
+
+// Model probabilities for home win / draw / away win from the kickoff expectations
+// (independent Poisson goals with a small draw correction for game-state caution).
+function outcomeProbabilities(homeLambda, awayLambda) {
+  const pmf = (lambda) => {
+    const values = [Math.exp(-lambda)];
+    for (let goals = 1; goals <= 10; goals += 1) values.push(values[goals - 1] * lambda / goals);
+    return values;
+  };
+  const home = pmf(homeLambda), away = pmf(awayLambda);
+  let win = 0, draw = 0, loss = 0;
+  for (let h = 0; h <= 10; h += 1) for (let a = 0; a <= 10; a += 1) {
+    const p = home[h] * away[a];
+    if (h > a) win += p; else if (h === a) draw += p; else loss += p;
+  }
+  const extraDraw = Math.min(0.05, draw * 0.12);
+  const total = win + draw + loss;
+  win = win / total; draw = draw / total; loss = loss / total;
+  const share = win + loss || 1;
+  return { home: win - extraDraw * win / share, draw: draw + extraDraw, away: loss - extraDraw * loss / share };
+}
+
+function matchOdds(expectations) {
+  const probabilities = outcomeProbabilities(expectations.homeLambda, expectations.awayLambda);
+  return [probabilities.home, probabilities.draw, probabilities.away].map((value) => Number(value.toFixed(3)));
 }
 
 function generateMatchNews(state, match, homeStrength, awayStrength) {
@@ -3142,22 +3157,19 @@ function distributeSummaryPlayerStats(state, league, row) {
 function simulateSummaryLeagues(state) {
   for (const league of Object.values(state.current.leagues).filter((item) => item.tier === 'summary' && !item.completed)) {
     const rounds = roundRobin(league.table.map((row) => row.teamId), true);
-    rounds.forEach((round) => round.forEach(({ homeId, awayId }) => {
-      const homeStrength = calculateTeamStrength(state, homeId, false) + coachContextBonus(state, homeId, false, league.id, 'League season', false) + 1.6;
-      const awayStrength = calculateTeamStrength(state, awayId, false) + coachContextBonus(state, awayId, false, league.id, 'League season', false);
-      const chances = simulateMatchChances(
-        matchTeamProfile(state, homeId, false, clamp(1.2 + (homeStrength - awayStrength) / 23.5, 0.18, 3.35)),
-        matchTeamProfile(state, awayId, false, clamp(0.95 + (awayStrength - homeStrength) / 25.5, 0.14, 3.0)),
-        () => random(state)
-      );
-      const homeGoals = chances.goals.home, awayGoals = chances.goals.away;
+    rounds.forEach((round, roundIndex) => round.forEach(({ homeId, awayId }) => {
+      // Condensed leagues are played by the same minute engine. Only tables and player
+      // statistics are kept; no per-match records are stored for them.
+      const { homeGoals, awayGoals } = simulateMatch(state, {
+        homeId, awayId, competitionId: league.id, competitionName: league.name,
+        week: 36, stage: `Matchday ${roundIndex + 1}`, record: false
+      });
       updateTable(league.table, homeId, awayId, homeGoals, awayGoals);
       if (awayGoals === 0) { const row = league.table.find((item) => item.teamId === homeId); row.cleanSheets = (row.cleanSheets || 0) + 1; }
       if (homeGoals === 0) { const row = league.table.find((item) => item.teamId === awayId); row.cleanSheets = (row.cleanSheets || 0) + 1; }
     }));
     league.table.forEach((row) => {
       row.cleanSheets ||= 0;
-      distributeSummaryPlayerStats(state, league, row);
       const coach = getCoach(state, row.teamId, false);
       if (coach) {
         const stat = ensureCoachStat(state, coach.id, league.id, row.teamId, false);
@@ -3417,9 +3429,14 @@ function simulateClubTwoLegRound(state, comp, week, leg) {
   const knockout = comp.knockout;
   if (!knockout || knockout.round === 'Final') return;
   const stage = knockout.round;
+  const matchIndex = leg === 2 ? new Map(state.current.matches.map((item) => [item.id, item])) : null;
   knockout.ties.forEach((tie) => {
     const homeId = leg === 1 ? tie.homeId : tie.awayId;
     const awayId = leg === 1 ? tie.awayId : tie.homeId;
+    // The second leg knows the first-leg score: extra time and penalties are played
+    // in it when the aggregate is level after 90 minutes.
+    const first = leg === 2 ? matchIndex.get(tie.firstLeg) : null;
+    const aggregate = first ? { home: first.awayGoals, away: first.homeGoals } : null;
     const match = simulateMatch(state, {
       homeId,
       awayId,
@@ -3427,24 +3444,27 @@ function simulateClubTwoLegRound(state, comp, week, leg) {
       competitionName: comp.name,
       week,
       stage: `${stage} · Leg ${leg}`,
-      // Individual legs may finish level; extra time and penalties apply only
-      // after the second-leg aggregate is tied.
-      knockout: false
+      knockout: false,
+      aggregate
     });
+    if (leg === 2 && first) tie.winnerId = match.tieWinnerId || null;
     if (leg === 1) tie.firstLeg = match.id;
     else tie.secondLeg = match.id;
   });
   if (leg !== 2) return;
   const winners = [];
   knockout.ties.forEach((tie) => {
-    const first = state.current.matches.find((match) => match.id === tie.firstLeg);
-    const second = state.current.matches.find((match) => match.id === tie.secondLeg);
-    if (!first || !second) return;
-    const homeAggregate = first.homeGoals + second.awayGoals;
-    const awayAggregate = first.awayGoals + second.homeGoals;
-    tie.winnerId = homeAggregate === awayAggregate
-      ? resolveDraw(state, tie.homeId, tie.awayId, 0, 0, false).winnerId
-      : homeAggregate > awayAggregate ? tie.homeId : tie.awayId;
+    if (!tie.winnerId) {
+      // Legacy safety net: a tie whose second leg predates the minute engine.
+      const first = matchIndex.get(tie.firstLeg);
+      const second = state.current.matches.find((match) => match.id === tie.secondLeg);
+      if (!first || !second) return;
+      const homeAggregate = first.homeGoals + second.awayGoals;
+      const awayAggregate = first.awayGoals + second.homeGoals;
+      tie.winnerId = homeAggregate === awayAggregate
+        ? resolveDraw(state, tie.homeId, tie.awayId, 0, 0, false).winnerId
+        : homeAggregate > awayAggregate ? tie.homeId : tie.awayId;
+    }
     winners.push(tie.winnerId);
   });
   knockout.rounds.push({ stage, ties: structuredClone(knockout.ties) });
@@ -3902,7 +3922,11 @@ function buildAnnualAwardRace(state) {
     const finalImpact = (state.current.playerMatchLogs?.[item.playerId] || [])
       .filter((log) => String(log.stage || '').toLowerCase() === 'final')
       .reduce((sum, log) => sum + Math.max(0, (log.rating || 0) - 7.0) * (log.isInternational ? 4.5 : 3.2), 0);
-    const score = item.competitionScore * openAwardPositionWeight(player?.position) + trophies + finalImpact + average * 0.9 + Math.min(3, item.eliteApps * 0.03) + (player?.fame || 0) * 0.025;
+    // Voters notice goals: with event-based ratings a creative midfielder can match a
+    // prolific forward on rating alone, so weighted goals add a modest extra.
+    const goalEmphasis = item.weightedGoals * 0.4 + item.weightedAssists * 0.08;
+    const ballonPositionWeight = { GK: 0.82, DF: 0.92, MF: 0.98, FW: 1.03 }[player?.position] || 1;
+    const score = item.competitionScore * ballonPositionWeight + goalEmphasis + trophies + finalImpact + average * 0.9 + Math.min(3, item.eliteApps * 0.03) + (player?.fame || 0) * 0.025;
     const components = { apps: item.apps, goals: item.goals, assists: item.assists, weightedGoals: Number(item.weightedGoals.toFixed(2)), averageRating: Number(average.toFixed(2)), performanceScore: Number(item.competitionScore.toFixed(1)), trophyBonus: Number(trophies.toFixed(1)), finalImpact: Number(finalImpact.toFixed(1)), score: Number(score.toFixed(2)) };
     const primaryClubId = Object.entries(item.clubApps || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || player?.clubId || null;
     return { ...item, primaryClubId, average, score, components, age: state.season + 1 - (player?.birthYear || state.season) };
@@ -4321,6 +4345,14 @@ function archiveCoachSummaries(state) {
   state.history.coachSeasons.push(...byJob.values());
 }
 
+// Archived matches keep the result, events and statistics but drop the replay detail
+// (every shot, per-slice possession, full line-ups); the Showcase keeps its own copy.
+function compactArchivedMatch(match) {
+  const { timeline, possessionSlices, lineups, keyChances, ...rest } = match;
+  if (lineups) rest.formations = { home: lineups.home?.formationId || null, away: lineups.away?.formationId || null };
+  return rest;
+}
+
 function archiveSeason(state) {
   CONTRIBUTOR_INDEX.delete(state.current.playerStats);
   Object.values(state.current.playerStats).forEach((stat) => {
@@ -4384,7 +4416,7 @@ function archiveSeason(state) {
   archiveCoachSummaries(state);
   const landmarks = state.current.matches
     .filter((match) => match.landmark || match.stage === 'Final' || (!match.isInternational && rivalryDefinitionForIds(match.homeId, match.awayId)))
-    .map((match) => ({ ...match }));
+    .map((match) => compactArchivedMatch(match));
   state.history.landmarkMatches.push(...landmarks);
   archivePowerRankings(state);
 }
@@ -6265,8 +6297,8 @@ function showcaseAggregateContext(state, match) {
   const awayBefore = match.awayId === tie.awayId ? first.awayGoals : first.homeGoals;
   const homeFinal = homeBefore + second.homeGoals;
   const awayFinal = awayBefore + second.awayGoals;
-  let penalties = null;
-  if (homeFinal === awayFinal && tie.winnerId) {
+  let penalties = match.engine >= 2 && match.penalties ? { ...match.penalties } : null;
+  if (!penalties && homeFinal === awayFinal && tie.winnerId && match.engine !== 2) {
     const homeWon = tie.winnerId === match.homeId;
     const winnerPens = showcaseInt(`${match.id}-agg-pens`, 0, 4, 6);
     const loserPens = Math.max(2, winnerPens - showcaseInt(`${match.id}-agg-pens`, 1, 1, 2));
@@ -6648,7 +6680,189 @@ function showcasePenaltySequence(state, match, penalties) {
   return sequence;
 }
 
+// Matches played by the minute engine (engine: 2) carry their real timeline. The
+// Showcase replays exactly those events; older saved matches keep the story-based
+// reconstruction below.
+function showcaseRealEvents(match) {
+  const events = [];
+  (match.goalEvents || []).forEach((goal, index) => events.push({
+    id: `${match.id}-goal-${index}`, type: 'goal', side: goal.side, teamId: goal.teamId, minute: goal.minute,
+    ...(goal.added ? { added: goal.added } : {}), scorerId: goal.scorerId || null, assistId: goal.assistId || null,
+    ...(goal.penalty ? { penalty: true } : {})
+  }));
+  (match.timeline || []).forEach(([minute, code, side, playerId], index) => events.push({
+    id: `${match.id}-t-${index}`, type: code === 's' ? 'shotOffTarget' : code === 't' ? 'shotOnTarget' : 'corner', side, minute,
+    ...(playerId ? { playerId } : {})
+  }));
+  (match.cardEvents || []).forEach((card, index) => events.push({ ...card, id: `${match.id}-${card.side}-card-${index}` }));
+  (match.subs || []).forEach((sub, index) => events.push({ id: `${match.id}-sub-${index}`, type: 'sub', side: sub.side, minute: sub.minute, outId: sub.outId, inId: sub.inId, reason: sub.reason }));
+  (match.keyChances || []).forEach((chance, index) => events.push({ id: `${match.id}-chance-${index}`, type: 'chance', side: chance.side, minute: chance.minute, playerId: chance.playerId, outcome: chance.outcome }));
+  return events;
+}
+
+function showcaseRealTimeline(match, finalStats) {
+  const finalMinute = match.extraTime ? 120 : 90;
+  const events = showcaseRealEvents(match);
+  const priority = { red: 0, yellow: 1, sub: 2, corner: 3, shotOffTarget: 4, shotOnTarget: 5, chance: 6, goal: 7 };
+  events.sort((a, b) => a.minute - b.minute || (a.added || 0) - (b.added || 0) || (priority[a.type] ?? 9) - (priority[b.type] ?? 9));
+  const byMinute = new Map();
+  for (const event of events) {
+    const minute = clamp(event.minute, 1, finalMinute);
+    if (!byMinute.has(minute)) byMinute.set(minute, []);
+    byMinute.get(minute).push(event);
+  }
+  const slices = Array.isArray(match.possessionSlices) ? match.possessionSlices : [];
+  // possessionSlices: [slice end minute, home possession] in order.
+  const possessionAt = (minute) => {
+    if (!slices.length) return finalStats.home.possession;
+    let sum = 0, weight = 0, previous = 0;
+    for (const [end, value] of slices) {
+      const length = end - previous;
+      sum += value * length; weight += length; previous = end;
+      if (end >= minute) break;
+    }
+    return Math.round(sum / Math.max(1, weight));
+  };
+  const running = {
+    home: { shots: 0, onTarget: 0, corners: 0, yellow: 0, red: 0 },
+    away: { shots: 0, onTarget: 0, corners: 0, yellow: 0, red: 0 }
+  };
+  let homeGoals = 0;
+  let awayGoals = 0;
+  const majorEvents = [];
+  const timeline = [{ minute: 0, label: "0'", homeGoals: 0, awayGoals: 0, home: { ...running.home, possession: 50 }, away: { ...running.away, possession: 50 }, events: [], minuteEvents: [] }];
+  for (let minute = 1; minute <= finalMinute; minute += 1) {
+    const minuteEvents = byMinute.get(minute) || [];
+    for (const event of minuteEvents) {
+      const side = running[event.side];
+      if (!side) continue;
+      if (event.type === 'goal') {
+        side.shots += 1; side.onTarget += 1;
+        if (event.side === 'home') homeGoals += 1; else awayGoals += 1;
+        majorEvents.push({ ...event });
+      } else if (event.type === 'shotOnTarget') { side.shots += 1; side.onTarget += 1; }
+      else if (event.type === 'shotOffTarget') side.shots += 1;
+      else if (event.type === 'corner') side.corners += 1;
+      else if (event.type === 'yellow') { side.yellow += 1; majorEvents.push({ ...event }); }
+      else if (event.type === 'red') { side.red += 1; majorEvents.push({ ...event }); }
+      else if (event.type === 'sub' || event.type === 'chance') majorEvents.push({ ...event });
+    }
+    const homePossession = minute === finalMinute ? finalStats.home.possession : clamp(possessionAt(minute), 22, 78);
+    timeline.push({
+      minute,
+      label: `${minute}'`,
+      homeGoals,
+      awayGoals,
+      home: { ...running.home, possession: homePossession },
+      away: { ...running.away, possession: 100 - homePossession },
+      events: majorEvents.map((event) => ({ ...event })),
+      minuteEvents: minuteEvents.map((event) => ({ ...event }))
+    });
+  }
+  const last = timeline[timeline.length - 1];
+  last.homeGoals = match.homeGoals;
+  last.awayGoals = match.awayGoals;
+  last.home = { ...finalStats.home };
+  last.away = { ...finalStats.away };
+  return timeline;
+}
+
+function showcaseRealPenaltySequence(match) {
+  return (match.shootout || []).map((kick, index) => ({
+    index,
+    round: kick.round,
+    side: kick.side,
+    scored: kick.outcome === 'scored',
+    outcome: kick.outcome,
+    playerId: kick.playerId || null,
+    keeperId: kick.keeperId || null,
+    home: kick.home,
+    away: kick.away
+  }));
+}
+
+// Shootouts are archived as they happen. Rows for an unplayed Showcase match stay
+// hidden by the same embargo test the rest of the interface uses.
+function recordShootout(state, match) {
+  state.history.shootouts ||= [];
+  const kicks = match.shootout || [];
+  state.history.shootouts.push({
+    season: state.season,
+    matchId: match.id,
+    competitionId: match.competitionId,
+    competitionName: match.competitionName,
+    stage: match.stage,
+    isInternational: Boolean(match.isInternational),
+    homeId: match.homeId,
+    awayId: match.awayId,
+    winnerId: match.tieWinnerId || match.winnerId,
+    score: { ...match.penalties },
+    kicks: kicks.map((kick) => [kick.side === 'home' ? 0 : 1, kick.playerId || null, kick.keeperId || null, kick.outcome === 'scored' ? 1 : kick.outcome === 'saved' ? 2 : 0])
+  });
+}
+
+function visibleShootouts(state) {
+  return (state.history?.shootouts || []).filter((row) => row.season !== state.season
+    || !isShowcaseMatchEmbargoed(state, { id: row.matchId, competitionId: row.competitionId, stage: row.stage }));
+}
+
+export function getShootoutRecord(state, entityId, kind = 'player') {
+  const record = { shootouts: 0, won: 0, lost: 0, taken: 0, scored: 0, faced: 0, saved: 0 };
+  for (const row of visibleShootouts(state)) {
+    if (kind === 'team') {
+      if (row.homeId !== entityId && row.awayId !== entityId) continue;
+      record.shootouts += 1;
+      if (row.winnerId === entityId) record.won += 1; else record.lost += 1;
+      continue;
+    }
+    let involved = false;
+    for (const [, playerId, keeperId, outcome] of row.kicks) {
+      if (playerId === entityId) { record.taken += 1; if (outcome === 1) record.scored += 1; involved = true; }
+      if (keeperId === entityId) { record.faced += 1; if (outcome === 2) record.saved += 1; involved = true; }
+    }
+    if (involved) {
+      record.shootouts += 1;
+      const side = row.kicks.find(([, playerId, keeperId]) => playerId === entityId || keeperId === entityId);
+      const teamId = side ? (side[1] === entityId ? (side[0] === 0 ? row.homeId : row.awayId) : (side[0] === 0 ? row.awayId : row.homeId)) : null;
+      if (teamId && row.winnerId === teamId) record.won += 1; else record.lost += 1;
+    }
+  }
+  return record;
+}
+
+export function getShootoutLeaders(state, limit = 10) {
+  const takers = new Map();
+  const keepers = new Map();
+  const teams = new Map();
+  for (const row of visibleShootouts(state)) {
+    for (const id of [row.homeId, row.awayId]) {
+      const item = teams.get(id) || { id, isInternational: row.isInternational, won: 0, lost: 0 };
+      if (row.winnerId === id) item.won += 1; else item.lost += 1;
+      teams.set(id, item);
+    }
+    for (const [, playerId, keeperId, outcome] of row.kicks) {
+      if (playerId) {
+        const item = takers.get(playerId) || { id: playerId, taken: 0, scored: 0 };
+        item.taken += 1; if (outcome === 1) item.scored += 1;
+        takers.set(playerId, item);
+      }
+      if (keeperId) {
+        const item = keepers.get(keeperId) || { id: keeperId, faced: 0, saved: 0 };
+        item.faced += 1; if (outcome === 2) item.saved += 1;
+        keepers.set(keeperId, item);
+      }
+    }
+  }
+  return {
+    takers: [...takers.values()].sort((a, b) => b.scored - a.scored || a.taken - b.taken).slice(0, limit),
+    keepers: [...keepers.values()].sort((a, b) => b.saved - a.saved || a.faced - b.faced).slice(0, limit),
+    teams: [...teams.values()].sort((a, b) => b.won - a.won || a.lost - b.lost).slice(0, limit),
+    total: visibleShootouts(state).length
+  };
+}
+
 function captureShowcaseMatch(state, match) {
+  if (match.engine >= 2) return captureRealShowcaseMatch(state, match);
   const aggregate = showcaseAggregateContext(state, match);
   const events = showcaseGoalEvents(match);
   const stats = showcaseFinalStats(state, match);
@@ -6683,6 +6897,48 @@ function captureShowcaseMatch(state, match) {
       home: getTeamSquadView(state, match.homeId, match.isInternational),
       away: getTeamSquadView(state, match.awayId, match.isInternational)
     },
+    resolved: false,
+    resolutionMode: null
+  };
+}
+
+function captureRealShowcaseMatch(state, match) {
+  const aggregate = showcaseAggregateContext(state, match);
+  const stats = { home: { ...match.stats.home }, away: { ...match.stats.away } };
+  const events = (match.goalEvents || []).map((goal) => ({ side: goal.side, teamId: goal.teamId, scorerId: goal.scorerId || null, assistId: goal.assistId || null, minute: goal.minute, ...(goal.added ? { added: goal.added } : {}), ...(goal.penalty ? { penalty: true } : {}) }));
+  const penalties = match.penalties ? { ...match.penalties } : null;
+  return {
+    id: `showcase-${match.id}`,
+    matchId: match.id,
+    competitionId: match.competitionId,
+    competitionName: match.competitionName,
+    stage: match.stage,
+    week: match.week,
+    homeId: match.homeId,
+    awayId: match.awayId,
+    isInternational: Boolean(match.isInternational),
+    winnerId: match.tieWinnerId || aggregate?.winnerId || match.winnerId || null,
+    finalScore: { home: match.homeGoals, away: match.awayGoals },
+    extraTime: Boolean(match.extraTime),
+    penalties,
+    aggregate,
+    goalEvents: events,
+    finalStats: stats,
+    cardEvents: match.cardEvents,
+    subs: match.subs || [],
+    keyChances: match.keyChances || [],
+    ticks: showcaseTicks(match, stats, events, aggregate),
+    liveTimeline: showcaseRealTimeline(match, stats),
+    penaltySequence: showcaseRealPenaltySequence(match),
+    liveProgress: { timelineIndex: 0, pauseReason: null, penaltyIndex: 0 },
+    manOfMatchId: match.manOfMatchId || null,
+    odds: match.odds || null,
+    styles: match.styles || null,
+    lineups: match.lineups || {
+      home: getTeamSquadView(state, match.homeId, match.isInternational),
+      away: getTeamSquadView(state, match.awayId, match.isInternational)
+    },
+    engine: 2,
     resolved: false,
     resolutionMode: null
   };
@@ -6881,7 +7137,7 @@ function closeSeason(state) {
   });
 
   state.current.archivedMatchCount = state.current.matches.length;
-  state.current.archivedKnockoutMatches = state.current.matches.filter((match) => match.knockout || match.landmark || isShowcaseSelectedMatch(state, match));
+  state.current.archivedKnockoutMatches = state.current.matches.filter((match) => match.knockout || match.landmark || isShowcaseSelectedMatch(state, match)).map(compactArchivedMatch);
   state.current.archivedPlayerStats = Object.values(state.current.playerStats);
   state.current.matches = [];
   state.current.playerStats = {};
@@ -7641,6 +7897,14 @@ export function upgradeWorld(state) {
     invalidateRuntimeCache(state);
     recalculateClubPayrollPressure(state);
     state.dataRevision = 26;
+  }
+  if (state.dataRevision < 27) {
+    // v4 Phase 2: minute-by-minute matches. Matches already played keep their stored
+    // form and replay through the legacy Showcase reconstruction; new ones carry
+    // their own timeline. Shootouts are archived from now on.
+    state.history ||= {};
+    state.history.shootouts ||= [];
+    state.dataRevision = 27;
   }
   return state;
 }

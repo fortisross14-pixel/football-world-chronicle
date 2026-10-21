@@ -106,3 +106,65 @@ Why condensed clubs stay at four named players: naming 15 for all 1,431 clubs wo
 about 21,000 active players (≈ 2.8× v3.16). Condensed and second-division clubs are mostly
 seen through tables and the occasional continental tie, so their matchday 15 is completed
 by unnamed depth ratings computed from club strength (nothing stored).
+
+## Phase 2 — minute-by-minute engine
+
+Three seeds × six seasons, 238,385 detailed matches. Every overall metric is inside its
+target band.
+
+| Metric | Baseline | Phase 2 | Target |
+|---|---:|---:|---|
+| Goals / match | 2.42 | 2.76 | 2.6–2.8 |
+| Home / draw / away | 44.6 / 21.7 / 33.7 | 45.4 / 24.9 / 29.8 | 45 / 27 / 28 |
+| Shots / team | 9.3 | 12.3 | 12–13 |
+| On target / team | 3.7 | 4.3 | 4–5 |
+| Corners / team | 2.8 | 5.1 | 4.5–5.5 |
+| Yellows / team | 1.65 | 1.96 | ~2 |
+| Reds / match | 0.11 | 0.11 | ~0.1 |
+| Clean-sheet rate | 40.2 % | 29.7 % | 26–32 % |
+| Extra time / penalties (knockouts) | 20.4 / 13.3 % | 23.5 / 14.3 % | — |
+| Substitutions / team | none | 2.5 | — |
+
+Per tier the bands hold too (elite leagues 2.79 goals, 45.8 / 23.6 / 30.6, cups 2.91 goals,
+condensed leagues 2.72 goals and 27.5 % draws).
+
+Favourites by strength gap: 0–3: 40 %, 3–6: 48 %, 6–10: 56 %, 10–15: 64 %, 15+: 77 %
+(upsets 6.7 %, was 1.1 %). League champions still finish on roughly 85–95 points.
+
+Tactical styles (points per game across all matches, confounded by squad quality):
+1.34–1.44 for every style. In isolated equal-team tests every style averages 1.31–1.40
+while head-to-heads swing 0.15–0.35 points per game (pressing 1.47 v possession 1.25;
+defensive rock 1.41 v possession 1.27).
+
+Spread: 4.7 distinct Ballon d'Or winners from 4.7 clubs per seed (baseline 4.7 / 4.3), 5.0
+UCL winners (4.0), 2.6 champions per elite league (2.7), elite top scorers 41 goals (41),
+World Golden Boot 53 weighted-league goals (58). Ballon d'Or podiums: 28 FW, 26 MF.
+Average match rating GK 6.63, DF 6.66, MF 6.71, FW 6.65. balance-v316 passes on both
+seeds with no warnings.
+
+### What was tuned and why
+
+- **Expected-goals curve.** The v3.16 linear formula produced 130–19 seasons and 3.5 v 0.15
+  expected goals in mismatches once every chance was simulated. Quality now goes through
+  a saturating curve; coach focus, tournament-favourite and dynasty pressure multiply
+  expected goals directly (3.5 % per strength point) so they keep their old weight. Without
+  that, one seed produced a seven-title Bayern age.
+- **Shot share.** Goals are split among eleven starters with a flatter weighting than the
+  award-era `goalWeight`, but a Generational star still dominates a weak league
+  (balance-v20 superstar scenario).
+- **Draws.** Level sides grow cautious after 55 minutes; leading sides protect harder.
+- **Ratings.** Goal weight in match ratings is moderate (MVP = top scorer in 26 % of
+  competitions, baseline 29 %). The Ballon d'Or adds a modest weighted-goals term because
+  event ratings otherwise favour creative midfielders.
+
+### Performance
+
+| Seed | Season | Offseason | Slowest offseason | Save after 20 seasons |
+|---:|---:|---:|---:|---:|
+| 271828 | 2.94 s (+38 %) | 5.00 s (−42 %) | 6.83 s | 242 MB |
+| 314159 | 2.80 s (+52 %) | 4.77 s (−41 %) | 6.07 s | 242 MB |
+
+The season is over the +30 % budget (season plus offseason together is 25 % faster than
+v3.16). The engine itself costs about 0.07 ms per match; the rest is per-player
+bookkeeping for 11 starters plus substitutes. The save grows because substitutes create
+real appearance rows; replay detail is dropped when matches are archived.
