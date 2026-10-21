@@ -1,3 +1,22 @@
+# v4 match engine and player model (in progress)
+
+## Phase 1 — Squads of 11 + 4, formations and coach fit
+
+- Top-flight clubs in the 29 full leagues now carry a named 15-player squad (11 starters + 4 substitutes) instead of 7; national teams pick a matchday 15.
+- Condensed-league and second-division clubs keep a named core of four. Their matchday 15 is completed by unnamed depth ratings derived from club strength, so nothing extra is stored (measured: naming 15 players for all 1,431 clubs would have roughly tripled the player population).
+- Every coach has a preferred and a fallback formation (4-4-2, 4-3-3, 4-2-3-1, 3-5-2, 5-3-2, 4-1-4-1, 3-4-3) weighted by tactical style.
+- Formation fit (0–100) compares the best XI for a shape with the squad's raw quality; out-of-position players, missing wingers or wing-backs and thin lines lower it. Coaches fall back to their second shape when the first fits below 80 and the second is clearly better. Fit adjusts team strength by up to about ±1.5.
+- Lineups pick the best XI for the formation and respect availability; benches name a reserve goalkeeper first.
+- Transfers, free-agent signings and generated squad players follow the coach's system; boards weigh squad fit when appointing a coach.
+- Medals go to every named squad member who played in the winning competition.
+- UI: Starting XI pitch, formation and fit on club Squad, club overview, nation pages and Showcase; preferred formation on coach profiles and staff cards.
+- Faster offseasons: roster changes patch the runtime cache instead of rebuilding it, and several full-history scans (major titles, coach lookups, payroll recalculation, rookie placement) are now indexed.
+- Data revision 26: existing coaches receive formations; top-flight clubs in existing saves are completed to 15 with squad players near the club's level, and payroll anchors and the population target grow with them.
+
+## Phase 0 — Calibration harness
+
+- `npm run calibration` and `npm run perf` with the recorded v3.16.1 baseline in docs/CALIBRATION.md.
+
 # Unreleased — Game UI redesign
 
 - New dark game interface: one token-based stylesheet replaces the layered overrides; Archivo variable font bundled locally (OFL, assets/fonts).

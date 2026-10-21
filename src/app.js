@@ -36,6 +36,8 @@ import {
   getCompetitionCoachLeaderboard,
   getAnnualAwardRace,
   getTeamPower,
+  getTeamSquadView,
+  getCoachFormations,
   getLeagueMarketRankings,
   getClubFinancialStatus,
   upgradeWorld,
@@ -2052,6 +2054,13 @@ function postseasonPage(section = 'setup') {
   return postseasonGamesPage();
 }
 
+function showcaseLineups(match, homeName, awayName) {
+  const lineups = match.lineups;
+  if (!lineups?.home?.xi?.length || !lineups?.away?.xi?.length) return '';
+  const side = (view, name) => `<div class="showcase-lineup"><span class="block-label">${esc(name)} · ${esc(view.formationId)} · fit ${view.fit}</span>${formationPitch(view, { compact: true })}</div>`;
+  return `<div class="showcase-lineups">${side(lineups.home, homeName)}${side(lineups.away, awayName)}</div>`;
+}
+
 function postseasonMatchModal() {
   if (!postseasonMatchModalId || !state?.current?.postseason?.prepared) return '';
   const match = (state.current.postseason.showcaseMatches || []).find((row) => row.id === postseasonMatchModalId);
@@ -2113,7 +2122,7 @@ function postseasonMatchModal() {
   } else {
     actionMarkup = '<button class="primary-button" data-action="watch-postseason-match">Simulate Game</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
   }
-  return `<div class="showcase-modal-backdrop${overlayEnter ? ' overlay-enter' : ''}"><section class="showcase-match-modal"><button class="close-button showcase-close" data-action="close-postseason-match" ${postseasonAnimating ? 'disabled' : ''}>${icon('close')}</button><div class="showcase-modal-head"><span class="showcase-comp">${esc(match.competitionName)}</span><h3>${esc(match.stage || 'Knockout')}</h3></div>${currentGoalBanner}<div class="showcase-scoreboard"><div>${postseasonTeamMark(match.homeId,match.isInternational,'lg')}<strong>${esc(homeName)}</strong></div><div class="showcase-score"><span>${esc(clockLabel)}</span><b>${tick.homeGoals}</b><i>–</i><b>${tick.awayGoals}</b>${agg}${pen}</div><div>${postseasonTeamMark(match.awayId,match.isInternational,'lg')}<strong>${esc(awayName)}</strong></div></div><div class="showcase-live-grid"><div class="showcase-events"><span class="block-label">Match events</span>${events}${penaltyFeed}</div><div class="showcase-stats"><span class="block-label">Live stats</span>${statRows.map(([label,key]) => `<div class="showcase-stat-row"><strong>${key === 'possession' ? `${tick.home?.[key] ?? 50}%` : tick.home?.[key] ?? 0}</strong><span>${label}</span><strong>${key === 'possession' ? `${tick.away?.[key] ?? 50}%` : tick.away?.[key] ?? 0}</strong></div>`).join('')}</div></div><div class="showcase-modal-actions">${actionMarkup}</div></section></div>`;
+  return `<div class="showcase-modal-backdrop${overlayEnter ? ' overlay-enter' : ''}"><section class="showcase-match-modal"><button class="close-button showcase-close" data-action="close-postseason-match" ${postseasonAnimating ? 'disabled' : ''}>${icon('close')}</button><div class="showcase-modal-head"><span class="showcase-comp">${esc(match.competitionName)}</span><h3>${esc(match.stage || 'Knockout')}</h3></div>${currentGoalBanner}<div class="showcase-scoreboard"><div>${postseasonTeamMark(match.homeId,match.isInternational,'lg')}<strong>${esc(homeName)}</strong></div><div class="showcase-score"><span>${esc(clockLabel)}</span><b>${tick.homeGoals}</b><i>–</i><b>${tick.awayGoals}</b>${agg}${pen}</div><div>${postseasonTeamMark(match.awayId,match.isInternational,'lg')}<strong>${esc(awayName)}</strong></div></div><div class="showcase-live-grid"><div class="showcase-events"><span class="block-label">Match events</span>${events}${penaltyFeed}</div><div class="showcase-stats"><span class="block-label">Live stats</span>${statRows.map(([label,key]) => `<div class="showcase-stat-row"><strong>${key === 'possession' ? `${tick.home?.[key] ?? 50}%` : tick.home?.[key] ?? 0}</strong><span>${label}</span><strong>${key === 'possession' ? `${tick.away?.[key] ?? 50}%` : tick.away?.[key] ?? 0}</strong></div>`).join('')}</div></div>${showcaseLineups(match, homeName, awayName)}<div class="showcase-modal-actions">${actionMarkup}</div></section></div>`;
 }
 
 function transferList(transfers, compact = false) {
@@ -2469,7 +2478,8 @@ function coachPage(id, tabRaw = 'overview') {
   const meta = [
     nationLink(coach.nationality),
     `<span class="hero-job">${coachJob(coach)}</span>`,
-    `<span>${esc(profile?.label || coach.profileLabel)} · ${esc(focus.label)}</span>`
+    `<span>${esc(profile?.label || coach.profileLabel)} · ${esc(focus.label)}</span>`,
+    `<span>Formation ${esc(coachFormationText(coach))}</span>`
   ].join('');
   const hero = profileHero({
     kind: 'coach', rarity: coach.rarity, portrait: coachPortrait(coach, 'xl'),
@@ -2560,6 +2570,60 @@ function clubRivalries(clubId) {
 
 const CLUB_TAB_GROUPS = { overview: 'overview', squad: 'squad', staff: 'squad', season: 'season', history: 'history', honours: 'history', records: 'legacy', legends: 'legacy', rivalries: 'legacy', legacy: 'legacy' };
 
+// Formation fit label and pitch layout for a matchday XI.
+function formationFitLabel(fit) {
+  return fit >= 92 ? 'Excellent fit' : fit >= 84 ? 'Good fit' : fit >= 74 ? 'Workable fit' : 'Poor fit';
+}
+
+function pitchSurname(name = '') {
+  const parts = String(name).trim().split(/\s+/);
+  return parts.length > 1 ? parts.slice(1).join(' ') : parts[0] || '';
+}
+
+function slotLineCode(slotType) {
+  if (slotType === 'GK') return 'gk';
+  if (['FB', 'CB', 'WB'].includes(slotType)) return 'df';
+  if (['DM', 'CM', 'AM', 'WM'].includes(slotType)) return 'mf';
+  return 'fw';
+}
+
+function formationPitch(view, { compact = false } = {}) {
+  if (!view?.xi?.length) return '<div class="empty-state compact">No starting XI available.</div>';
+  const tokens = view.xi.map((row) => {
+    const player = row.playerId ? playerById(row.playerId) : null;
+    const line = slotLineCode(row.slotType);
+    const style = `left:${row.x}%;top:${100 - row.y}%`;
+    const label = player ? esc(pitchSurname(player.name)) : 'Squad player';
+    const off = row.slotFit < 0.9 ? ' off-position' : '';
+    const inner = `<b>${row.rating}</b><span>${label}</span>${compact ? '' : `<small>${esc(row.slotType)}</small>`}`;
+    return player
+      ? `<a class="pitch-player pos-ring-${line}${off}" style="${style}" href="#/player/${esc(player.id)}/overview" title="${esc(player.name)} · ${esc(row.slotType)}${off ? ' (out of position)' : ''}">${inner}</a>`
+      : `<span class="pitch-player pos-ring-${line} depth" style="${style}" title="Unnamed squad player">${inner}</span>`;
+  }).join('');
+  return `<div class="formation-pitch${compact ? ' compact' : ''}" role="img" aria-label="Starting XI in a ${esc(view.formationId)}"><span class="pitch-lines" aria-hidden="true"><i class="pitch-half"></i><i class="pitch-circle"></i><i class="pitch-box top"></i><i class="pitch-box bottom"></i></span>${tokens}</div>`;
+}
+
+function formationSummary(view) {
+  if (!view) return '';
+  const fallback = view.fallback && view.preferredFormation !== view.formationId ? ` · preferred ${esc(view.preferredFormation)} does not suit this squad` : '';
+  return `${esc(view.formationId)} · fit ${view.fit} (${formationFitLabel(view.fit)})${fallback}`;
+}
+
+function startingElevenPanel(teamId, isInternational = false, title = 'Starting XI') {
+  const view = getTeamSquadView(state, teamId, isInternational);
+  if (!view?.xi?.length) return '';
+  const benchRows = view.bench.map((row) => {
+    const player = row.playerId ? playerById(row.playerId) : null;
+    return player ? squadRow(player) : `<div class="squad-row"><span class="position-pill pos-${row.position.toLowerCase()}">${row.position}</span><div><strong>Squad player</strong><small>Unnamed depth</small></div><b>${row.rating}</b></div>`;
+  }).join('');
+  return `<section class="panel"><div class="panel-head"><h3>${esc(title)}</h3><span class="panel-meta">${formationSummary(view)}</span></div><div class="lineup-layout"><div>${formationPitch(view)}</div><div><div class="stats-ribbon compact-ribbon">${statCard('Formation', esc(view.formationId), view.fallback ? 'Fallback shape' : 'Coach preference')}${statCard('Fit', view.fit, formationFitLabel(view.fit))}</div><span class="block-label lineup-bench-label">Substitutes</span><div class="squad-list">${benchRows || '<div class="empty-state compact">No substitutes named.</div>'}</div></div></div></section>`;
+}
+
+function coachFormationText(coach) {
+  const formations = coach ? getCoachFormations(state, coach.id) : null;
+  return formations ? `${formations.primary} (alt ${formations.secondary})` : '—';
+}
+
 function squadRow(player, extra = '') {
   return `<a class="squad-row squad-row-wide squad-row-visual" href="#/player/${player.id}/overview">${playerPortrait(player, 'sm')}<span class="position-pill pos-${player.position.toLowerCase()}">${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${esc(player.roleLabel)}${extra}</small></div><b>${player.rating}</b></a>`;
 }
@@ -2569,7 +2633,7 @@ function formPills(form = []) {
 }
 
 function clubStaffCards(club, owner, coach) {
-  return `<div class="staff-grid"><section class="staff-card"><span class="block-label">President</span><div class="staff-card-head"><div class="staff-avatar">${icon('person')}</div><div><h3>${owner ? ownerLink(owner.id) : 'Vacant'}</h3>${owner ? staffRarityBadge(owner.rarity) : ''}</div></div><strong>${esc(OWNER_PROFILES[owner?.profile]?.label || 'No profile')}</strong><p>${esc(OWNER_PROFILES[owner?.profile]?.description || 'The club is awaiting leadership.')}</p><div class="staff-effects"><span>Money ×${Number(club.ownerMoneyMultiplier || 1).toFixed(2)}</span><span>Negotiation +${Math.round((club.ownerNegotiationBonus || 0) * 100)}%</span><span>Patience ×${Number(club.ownerPatience || 1).toFixed(2)}</span><span>${money(club.ownerAnnualInjection || 0)}/yr cash</span><span>${owner?.yearsRemaining ?? '—'} years remaining</span></div></section><section class="staff-card"><span class="block-label">Head coach</span><div class="staff-card-head">${coach ? coachPortrait(coach, 'lg') : `<div class="staff-avatar">${icon('whistle')}</div>`}<div><h3>${coach ? coachLink(coach.id, false) : 'Vacant'}</h3>${coach ? staffRarityBadge(coach.rarity) : ''}</div></div><strong>${esc(COACH_PROFILES[coach?.profile]?.label || 'No tactical identity')}</strong><p>${esc(COACH_PROFILES[coach?.profile]?.description || 'The club is searching for a coach.')}</p><div class="staff-effects"><span>Quality ${coach?.quality || '—'}</span><span>${coach ? `Focus ${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')}` : '—'}</span><span>${coach?.seasonsInRole || 0} seasons in role</span><span>${coach ? `Career Y${Math.min((coach.careerYear || 0) + 1, coach.careerLength || 1)}/${coach.careerLength || '—'}` : '—'}</span></div></section></div>`;
+  return `<div class="staff-grid"><section class="staff-card"><span class="block-label">President</span><div class="staff-card-head"><div class="staff-avatar">${icon('person')}</div><div><h3>${owner ? ownerLink(owner.id) : 'Vacant'}</h3>${owner ? staffRarityBadge(owner.rarity) : ''}</div></div><strong>${esc(OWNER_PROFILES[owner?.profile]?.label || 'No profile')}</strong><p>${esc(OWNER_PROFILES[owner?.profile]?.description || 'The club is awaiting leadership.')}</p><div class="staff-effects"><span>Money ×${Number(club.ownerMoneyMultiplier || 1).toFixed(2)}</span><span>Negotiation +${Math.round((club.ownerNegotiationBonus || 0) * 100)}%</span><span>Patience ×${Number(club.ownerPatience || 1).toFixed(2)}</span><span>${money(club.ownerAnnualInjection || 0)}/yr cash</span><span>${owner?.yearsRemaining ?? '—'} years remaining</span></div></section><section class="staff-card"><span class="block-label">Head coach</span><div class="staff-card-head">${coach ? coachPortrait(coach, 'lg') : `<div class="staff-avatar">${icon('whistle')}</div>`}<div><h3>${coach ? coachLink(coach.id, false) : 'Vacant'}</h3>${coach ? staffRarityBadge(coach.rarity) : ''}</div></div><strong>${esc(COACH_PROFILES[coach?.profile]?.label || 'No tactical identity')}</strong><p>${esc(COACH_PROFILES[coach?.profile]?.description || 'The club is searching for a coach.')}</p><div class="staff-effects"><span>Quality ${coach?.quality || '—'}</span><span>${coach ? `Focus ${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')}` : '—'}</span><span>Formation ${esc(coachFormationText(coach))}</span><span>${coach?.seasonsInRole || 0} seasons in role</span><span>${coach ? `Career Y${Math.min((coach.careerYear || 0) + 1, coach.careerLength || 1)}/${coach.careerLength || '—'}` : '—'}</span></div></section></div>`;
 }
 
 function clubHistoryTable(club, honours) {
@@ -2635,7 +2699,7 @@ function clubPage(id, tabRaw = 'overview') {
 
   if (tab === 'squad') {
     const groups = [['GK', 'Goalkeepers'], ['DF', 'Defenders'], ['MF', 'Midfielders'], ['FW', 'Forwards']];
-    return `${head}<section class="panel"><div class="panel-head"><h3>First-team squad</h3><span class="panel-meta">${history.allCurrentPlayers.length} named players</span></div><div class="squad-groups">${groups.map(([code, label]) => {
+    return `${head}${startingElevenPanel(club.id, false)}<section class="panel section-gap"><div class="panel-head"><h3>First-team squad</h3><span class="panel-meta">${history.allCurrentPlayers.length} named players</span></div><div class="squad-groups">${groups.map(([code, label]) => {
       const rows = history.allCurrentPlayers.filter((player) => player.position === code);
       return rows.length ? `<div class="squad-group"><h4>${label}</h4><div class="squad-list">${rows.map((player) => squadRow(player, ` · ${player.contractYears ? `${player.contractYears} yr` : 'Free'} · ${money(player.marketValue)}`)).join('')}</div></div>` : '';
     }).join('')}</div></section>
@@ -2662,7 +2726,7 @@ function clubPage(id, tabRaw = 'overview') {
   const recent = (state.current.matches || []).filter((m) => !isShowcaseMatchEmbargoed(state, m) && !m.isInternational && [m.homeId, m.awayId].includes(club.id)).sort((a, b) => b.week - a.week).slice(0, 4);
   return `${head}<div class="two-column wide-left"><section class="panel"><div class="panel-head"><h3>Current core</h3><a href="#/club/${club.id}/squad">Full squad</a></div><div class="squad-list">${history.allCurrentPlayers.slice(0, 8).map((player) => squadRow(player)).join('')}</div></section>
     <div class="stack"><section class="panel"><div class="panel-head"><h3>Season so far</h3><a href="#/club/${club.id}/season">Season</a></div><div class="identity-list"><div><span>League</span><strong>${club.division === 1 ? (position ? `#${position} · ${tableRow?.points ?? 0} pts` : '—') : 'Promotion pool'}</strong></div><div><span>Record</span><strong>${tableRow ? `${tableRow.wins}W ${tableRow.draws}D ${tableRow.losses}L` : '—'}</strong></div><div><span>Form</span>${formPills(tableRow?.form || [])}</div></div>${recent.length ? `<div class="matches-list tight">${recent.map((m) => matchRow(m, true)).join('')}</div>` : ''}</section>
-    <section class="panel"><div class="panel-head"><h3>Leadership</h3><a href="#/club/${club.id}/staff">Staff</a></div><div class="identity-list"><div><span>President</span><strong>${owner ? ownerLink(owner.id) : 'Vacant'}</strong></div><div><span>Coach</span><strong>${coach ? coachLink(coach.id) : 'Vacant'}</strong></div><div><span>Coach focus</span><strong>${esc(COACH_FOCUSES[coach?.focus]?.label || '—')}</strong></div></div></section>
+    <section class="panel"><div class="panel-head"><h3>Leadership</h3><a href="#/club/${club.id}/staff">Staff</a></div><div class="identity-list"><div><span>President</span><strong>${owner ? ownerLink(owner.id) : 'Vacant'}</strong></div><div><span>Coach</span><strong>${coach ? coachLink(coach.id) : 'Vacant'}</strong></div><div><span>Coach focus</span><strong>${esc(COACH_FOCUSES[coach?.focus]?.label || '—')}</strong></div><div><span>Formation</span><strong>${esc(formationSummary(getTeamSquadView(state, club.id, false)))}</strong></div></div></section>
     <section class="panel"><div class="panel-head"><h3>Trophy cabinet</h3><a href="#/club/${club.id}/history">History</a></div>${trophyCabinet(honours)}</section></div></div>`;
 }
 
@@ -2670,11 +2734,10 @@ function clubPlayerLeadersTable(clubId){const rows=clubAllTimePlayerRows(clubId)
 
 function clubRecordsPage(club){const seasons=clubSeasonRows(club);const players=clubAllTimePlayerRows(club.id);const bestPoints=[...seasons].sort((a,b)=>b.points-a.points)[0],bestWins=[...seasons].sort((a,b)=>b.wins-a.wins)[0],bestGoals=[...seasons].sort((a,b)=>b.gf-a.gf)[0];const scorer=[...players].sort((a,b)=>b.goals-a.goals)[0],apps=[...players].sort((a,b)=>b.games-a.games)[0],assists=[...players].sort((a,b)=>b.assists-a.assists)[0];const transfer=[...(state.history.transfers||[])].filter((t)=>t.toClubId===club.id).sort((a,b)=>b.fee-a.fee)[0];return `<div class="record-grid">${statCard('Highest points',bestPoints?.points??'—',bestPoints?.seasonLabel||'')}${statCard('Most league wins',bestWins?.wins??'—',bestWins?.seasonLabel||'')}${statCard('Most league goals',bestGoals?.gf??'—',bestGoals?.seasonLabel||'')}${statCard('All-time scorer',scorer?scorer.goals:'—',scorer?playerById(scorer.playerId)?.name:'')}${statCard('Most appearances',apps?apps.games:'—',apps?playerById(apps.playerId)?.name:'')}${statCard('Most assists',assists?assists.assists:'—',assists?playerById(assists.playerId)?.name:'')}${statCard('Record signing',transfer?money(transfer.fee):'—',transfer?playerById(transfer.playerId)?.name:'')}</div>`;}
 
+// The national coach's matchday 15 (starters first, then substitutes).
 function nationalLineup(id) {
-  const active = state.players.filter((player) => player.nationality === id && player.status === 'active').sort((a, b) => b.rating - a.rating);
-  const goalkeeper = active.find((player) => player.position === 'GK');
-  const outfield = active.filter((player) => player.position !== 'GK').slice(0, goalkeeper ? 7 : 8);
-  return goalkeeper ? [goalkeeper, ...outfield] : outfield;
+  const view = getTeamSquadView(state, id, true);
+  return [...view.xi, ...view.bench].map((row) => (row.playerId ? playerById(row.playerId) : null)).filter(Boolean);
 }
 
 function nationPage(id) {
@@ -2687,8 +2750,9 @@ function nationPage(id) {
   const coach = coachById(nation.coachId);
   const coachProfile = COACH_PROFILES[coach?.profile];
   return `${profileHero({ kind:'nation', rarity:'nation', portrait: flag(id,'xl'), badges:'<span class="status-pill">Generation tier '+nation.tier+'</span>', name: nation.name, meta: '<span>'+esc(nation.region)+'</span><span>'+pool.length+' active named players</span>', facts:[['Selected', lineup.length],['Honours', honours.length],['Best player', pool[0] ? pool[0].rating : '—']], rating: nation.strength, ratingLabel:'STRENGTH', follow: favoriteButton('nation', nation.id) })}
-    <section class="staff-card section-gap national-coach-card"><span class="block-label">National coach</span><div class="staff-card-head">${coach ? coachPortrait(coach, 'lg') : '<div class="staff-avatar">⌁</div>'}<div><h3>${coach ? coachLink(coach.id, false) : 'Vacant'}</h3>${coach ? staffRarityBadge(coach.rarity) : ''}</div></div><strong>${esc(coachProfile?.label || 'No tactical identity')}</strong><p>${esc(coachProfile?.description || 'The federation is searching for a coach.')}</p><div class="staff-effects"><span>Quality ${coach?.quality || '—'}</span><span>${coach ? `Focus ${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')}` : '—'}</span><span>${coach?.seasonsInRole || 0} seasons in role</span><span>${coach ? `Career Y${Math.min((coach.careerYear || 0) + 1, coach.careerLength || 1)}/${coach.careerLength || '—'}` : '—'}</span><span>${coach?.trophies || 0} trophies</span></div></section>
-    <div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><h3>Best eight</h3></div></div><div class="squad-list">${lineup.map((player) => `<a class="squad-row squad-row-wide squad-row-visual" href="#/player/${player.id}/overview">${playerPortrait(player, 'sm')}<span class="position-pill pos-${player.position.toLowerCase()}">${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${player.clubId ? esc(clubById(player.clubId)?.name) : 'National pool'} · ${esc(player.roleLabel)}</small></div><b>${player.rating}</b></a>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><h3>${honours.length} trophies</h3></div></div>${honoursList(honours, 'competitionName')}<div class="panel-head recent-head"><div><h3>International matches</h3></div></div><div class="matches-list">${matches.slice(-12).reverse().map((match) => matchRow(match, true)).join('') || '<div class="empty-state compact">No matches yet.</div>'}</div></section></div>`;
+    <section class="staff-card section-gap national-coach-card"><span class="block-label">National coach</span><div class="staff-card-head">${coach ? coachPortrait(coach, 'lg') : '<div class="staff-avatar">⌁</div>'}<div><h3>${coach ? coachLink(coach.id, false) : 'Vacant'}</h3>${coach ? staffRarityBadge(coach.rarity) : ''}</div></div><strong>${esc(coachProfile?.label || 'No tactical identity')}</strong><p>${esc(coachProfile?.description || 'The federation is searching for a coach.')}</p><div class="staff-effects"><span>Quality ${coach?.quality || '—'}</span><span>${coach ? `Focus ${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')}` : '—'}</span><span>Formation ${esc(coachFormationText(coach))}</span><span>${coach?.seasonsInRole || 0} seasons in role</span><span>${coach ? `Career Y${Math.min((coach.careerYear || 0) + 1, coach.careerLength || 1)}/${coach.careerLength || '—'}` : '—'}</span><span>${coach?.trophies || 0} trophies</span></div></section>
+    <div class="section-gap">${startingElevenPanel(nation.id, true, 'Selected XI')}</div>
+    <div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><h3>Selected squad</h3></div></div><div class="squad-list">${lineup.map((player) => `<a class="squad-row squad-row-wide squad-row-visual" href="#/player/${player.id}/overview">${playerPortrait(player, 'sm')}<span class="position-pill pos-${player.position.toLowerCase()}">${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${player.clubId ? esc(clubById(player.clubId)?.name) : 'National pool'} · ${esc(player.roleLabel)}</small></div><b>${player.rating}</b></a>`).join('')}</div></section><section class="panel"><div class="panel-head"><div><h3>${honours.length} trophies</h3></div></div>${honoursList(honours, 'competitionName')}<div class="panel-head recent-head"><div><h3>International matches</h3></div></div><div class="matches-list">${matches.slice(-12).reverse().map((match) => matchRow(match, true)).join('') || '<div class="empty-state compact">No matches yet.</div>'}</div></section></div>`;
 }
 
 function aggregateCoachAlmanac(scope = 'all') {

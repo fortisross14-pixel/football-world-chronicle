@@ -1340,3 +1340,42 @@ input::placeholder { color: var(--text-3); }
 @media (max-width: 759px) {
   .match-row:not(.compact), .stage-results .match-row.compact, .panel .match-row.compact { grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr); }
 }
+
+/* Formation pitch: the matchday XI in the coach's shape (v4 squads) */
+.lineup-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: var(--gap); align-items: start; }
+.lineup-bench-label { margin-top: 14px; }
+.compact-ribbon { margin-bottom: 4px; }
+.formation-pitch { position: relative; width: 100%; max-width: 460px; aspect-ratio: 68 / 88; margin: 0 auto; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: linear-gradient(180deg, var(--bg-2), var(--bg-1)); overflow: hidden; }
+.pitch-lines { position: absolute; inset: 0; pointer-events: none; }
+.pitch-lines i { position: absolute; border: 1px solid var(--line); }
+.pitch-half { left: 0; right: 0; top: 50%; height: 0; border-width: 1px 0 0 0 !important; }
+.pitch-circle { left: 50%; top: 50%; width: 22%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%); }
+.pitch-box { left: 26%; width: 48%; height: 13%; }
+.pitch-box.top { top: -1px; border-top: 0 !important; }
+.pitch-box.bottom { bottom: -1px; border-bottom: 0 !important; }
+.pitch-player { position: absolute; transform: translate(-50%, -50%); display: grid; justify-items: center; gap: 2px; width: 78px; text-align: center; color: var(--text); border-radius: var(--r-md); }
+.pitch-player:hover b { background: var(--bg-3); }
+.pitch-player b { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--bg-0); box-shadow: inset 0 0 0 2px var(--ring, var(--line-3)); font-size: var(--fs-14); font-weight: 900; font-stretch: 74%; font-variant-numeric: tabular-nums; transition: background var(--t-fast) var(--ease); }
+.pitch-player span { max-width: 78px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-11); font-weight: 700; }
+.pitch-player small { font-size: 10px; font-weight: 700; letter-spacing: .08em; color: var(--text-3); }
+.pitch-player.depth { color: var(--text-3); }
+.pitch-player.depth b { box-shadow: inset 0 0 0 1px var(--line-2); border: 1px dashed transparent; }
+.pitch-player.off-position small { color: var(--amber); }
+.pos-ring-gk { --ring: var(--amber); }
+.pos-ring-df { --ring: #7cbcff; }
+.pos-ring-mf { --ring: var(--green); }
+.pos-ring-fw { --ring: #ff8a95; }
+.formation-pitch.compact { max-width: 300px; }
+.formation-pitch.compact .pitch-player { width: 60px; }
+.formation-pitch.compact .pitch-player b { width: 28px; height: 28px; font-size: var(--fs-12); }
+.formation-pitch.compact .pitch-player span { max-width: 60px; font-size: 10px; }
+.showcase-lineups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.showcase-lineup { padding: 12px; border-radius: var(--r-lg); background: rgba(4,9,18,.5); border: 1px solid var(--line); }
+@media (max-width: 900px) {
+  .lineup-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 759px) {
+  .showcase-lineups { grid-template-columns: minmax(0, 1fr); }
+  .pitch-player { width: 64px; }
+  .pitch-player span { max-width: 64px; }
+}

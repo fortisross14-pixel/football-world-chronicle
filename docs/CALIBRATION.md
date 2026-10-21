@@ -77,3 +77,32 @@ market-career-balance, regression-market-geography (`node scripts/run-regression
 Already failing on v3.16.1, left untouched: market-balance-v18 (warnings), regression-v07,
 v09, v15, v19, v22, v24–v30, v290–v299, v300, v310–v314 (most assert old version strings or
 old data revisions).
+
+## Phase 1 — squads of 11 + 4 and formations
+
+Match model unchanged (still the v3.16 score-first model), so match statistics move only
+through the XI-based strength: goals 2.30, home/draw/away 43.9 / 22.1 / 33.9, shots 9.2,
+clean sheets 43.0 %. Favourites by gap: 41 / 53 / 67 / 80 / 91 %. Award spread: 4.7 Ballon
+d'Or winners from 4.7 clubs per seed, World Golden Boot average 41 goals (was 58), elite top
+scorers 31 goals (was 41) because goals are now shared across eleven named starters.
+Ballon d'Or podiums 31 MF, 21 FW, 2 DF.
+
+Starting depth (seed 26001): elite clubs XI 81.0 / bench 72.7, mid-table top flight 69.7 /
+62.3, condensed clubs (4 named + depth) 58.9 / 54.8. Formation fit across top-flight clubs:
+5th–95th percentile 78–94, median 86; 11 % of coaches use their fallback shape.
+
+Population: about 12,400 active players (was 7,800). Rarity caps hold (3 / 15 / ≤50).
+
+| Seed | Season | Offseason | Slowest offseason | Save after 20 seasons |
+|---:|---:|---:|---:|---:|
+| 271828 | 2.14 s (+0 %) | 5.11 s (−41 %) | 9.43 s | 198 MB |
+| 314159 | 2.37 s (+29 %) | 5.55 s (−32 %) | 6.79 s | 198 MB |
+
+The offseason got faster because transfers now patch the runtime cache instead of
+rebuilding it, and several history scans are indexed. The raw save grows about 30 %, mostly
+from more player-season and honour rows; it compresses well for cloud saves.
+
+Why condensed clubs stay at four named players: naming 15 for all 1,431 clubs would mean
+about 21,000 active players (≈ 2.8× v3.16). Condensed and second-division clubs are mostly
+seen through tables and the occasional continental tie, so their matchday 15 is completed
+by unnamed depth ratings computed from club strength (nothing stored).

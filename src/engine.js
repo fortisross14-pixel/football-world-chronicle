@@ -19,6 +19,21 @@ import {
 } from './data.js';
 import { REAL_WORLD_STARS } from './real-stars.js';
 import { simulateMatchChances, matchEventRoll } from './match-model.js';
+import {
+  FORMATIONS,
+  SQUAD_SIZE,
+  SQUAD_BLUEPRINT,
+  SQUAD_POSITION_TARGET,
+  chooseCoachFormations,
+  chooseMatchFormation,
+  selectStartingEleven,
+  formationFitScore,
+  formationNeeds,
+  bestRoleForSlot,
+  slotFit,
+  slotLine,
+  depthPlayers
+} from './squad-model.js';
 import { countryAffinity, domesticMobilityChance, eliteDepartureChance } from './market-policy.js';
 
 const COUNTRY_TO_CODE = Object.fromEntries(
@@ -31,7 +46,27 @@ const CAREER_LENGTH_RANGES = {
   long: [19, 22]
 };
 const RARITY_ORDER = ['generational', 'legend', 'epic', 'rare', 'uncommon', 'common'];
-const CLUB_ROSTER_TARGET = { detailed: 7, summary: 4, reserve: 4 };
+// Named squad size. Top-flight clubs in full leagues carry a full 15 (11 + 4 subs);
+// condensed-league and second-division clubs keep a named core of four, completed on
+// matchday by unnamed depth ratings derived from the club (see clubDepthSquad).
+const CLUB_ROSTER_TARGET = { detailed: SQUAD_SIZE, summary: 4, reserve: 4 };
+const SMALL_CORE_BLUEPRINT = ['GK', 'DF', 'MF', 'FW'];
+// Role families per squad slot so a generated 15 has centre-backs and full-backs,
+// holding and creative midfielders, and both central and wide forwards.
+const SQUAD_ROLE_HINTS = [
+  null,
+  ['ball_playing_centre_back', 'stopper_centre_back'],
+  ['attacking_full_back', 'defensive_full_back'],
+  ['box_to_box', 'deep_playmaker', 'defensive_midfielder'],
+  ['attacking_midfielder', 'wide_midfielder'],
+  ['striker', 'target_forward', 'false_nine'],
+  ['ball_playing_centre_back', 'stopper_centre_back'],
+  ['defensive_midfielder', 'box_to_box', 'deep_playmaker'],
+  ['winger', 'inside_forward'],
+  ['attacking_full_back', 'defensive_full_back'],
+  ['wide_midfielder', 'attacking_midfielder', 'box_to_box'],
+  null, null, null, null
+];
 const INTERNATIONAL_FINAL_SIZES = {
   Europe: 16,
   Africa: 16,
@@ -142,6 +177,28 @@ function invalidateRuntimeCache(state) {
   ELITE_MARKET_CACHE.delete(state);
 }
 
+// Rosters change one transfer at a time during the market. Instead of throwing the
+// whole cache away (every club and national squad would be rebuilt), the affected
+// clubs' player lists are patched and their squads recomputed lazily.
+function noteRosterChange(state, player, fromClubId, toClubId) {
+  ELITE_MARKET_CACHE.delete(state);
+  const cache = RUNTIME_CACHE.get(state);
+  if (!cache) return;
+  if (fromClubId && cache.clubPlayers.has(fromClubId)) {
+    cache.clubPlayers.set(fromClubId, cache.clubPlayers.get(fromClubId).filter((item) => item !== player));
+  }
+  if (toClubId && player.status === 'active') {
+    if (!cache.clubPlayers.has(toClubId)) cache.clubPlayers.set(toClubId, []);
+    const list = cache.clubPlayers.get(toClubId);
+    if (!list.includes(player)) list.push(player);
+  }
+  for (const id of [fromClubId, toClubId]) {
+    if (!id) continue;
+    cache.clubSquads.delete(id);
+    cache.clubTopSixQuality.delete(id);
+  }
+}
+
 function getRuntimeCache(state) {
   let cache = RUNTIME_CACHE.get(state);
   if (cache) return cache;
@@ -165,20 +222,18 @@ function getRuntimeCache(state) {
     if (entry.season < state.season - 3 || !CONTINENTAL_DEFINITIONS.some((definition) => definition.id === entry.competitionId)) continue;
     recentContinentalTitles.set(entry.winnerId, (recentContinentalTitles.get(entry.winnerId) || 0) + 1);
   }
-  const clubTopSixQuality = new Map();
-  for (const [clubId, players] of clubPlayers) {
-    const top = [...players].sort((a,b)=>b.rating-a.rating).slice(0,6);
-    clubTopSixQuality.set(clubId, top.length ? top.reduce((sum,p)=>sum+p.rating,0)/top.length : 60);
-  }
   cache = {
     clubById,
     playerById,
     coachById,
     nationalById,
-    clubLineups: new Map([...clubPlayers].map(([id, players]) => [id, selectLineup(players, 7)])),
-    nationalLineups: new Map([...nationalPlayers].map(([id, players]) => [id, selectLineup(players, 8)])),
+    clubPlayers,
+    nationalPlayers,
+    // Squads (15 + formation + XI) are built lazily on first use.
+    clubSquads: new Map(),
+    nationalSquads: new Map(),
     recentContinentalTitles,
-    clubTopSixQuality
+    clubTopSixQuality: new Map()
   };
   RUNTIME_CACHE.set(state, cache);
   return cache;
@@ -450,11 +505,13 @@ function createPlayer(state, {
   rarity = 'common',
   nationality = null,
   careerYear = null,
-  nationalSpecialist = false
+  nationalSpecialist = false,
+  roleOptions = null
 } = {}) {
   const actualPosition = position || pick(state, POSITION_BLUEPRINT).position;
   const actualNationality = nationality || chooseNationality(state, rarity, club?.country);
-  const role = pickRole(state, actualPosition);
+  const hinted = roleOptions ? ROLE_DEFINITIONS[actualPosition]?.filter((item) => roleOptions.includes(item.id)) : null;
+  const role = hinted?.length ? pick(state, hinted) : pickRole(state, actualPosition);
   const length = careerLength(state);
   const type = pick(state, Object.keys(CAREER_TYPES));
   const curve = careerCurve(type, length.years);
@@ -774,9 +831,10 @@ function chooseStaffRarity(state, nationality = null, type = 'coach') {
 }
 
 function stableStringRoll(value = '') {
+  const text = String(value);
   let hash = 2166136261;
-  for (let index = 0; index < String(value).length; index += 1) {
-    hash ^= String(value).charCodeAt(index);
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
   return (hash >>> 0) / 4294967295;
@@ -1076,9 +1134,18 @@ function recalculateClubPayrollPressure(state, clubIds = null) {
   const selected = clubIds ? new Set(clubIds) : null;
   const payroll = selected ? new Map([...selected].map((id) => [id, { bill: 0, players: [] }])) : buildClubPayrollMap(state);
   if (selected) {
-    for (const player of state.players || []) {
-      if (player.status !== 'active' || !player.clubId || !selected.has(player.clubId)) continue;
-      payroll.get(player.clubId).bill += Number(player.salary || 0);
+    const cache = RUNTIME_CACHE.get(state);
+    if (cache) {
+      for (const id of selected) {
+        for (const player of cache.clubPlayers.get(id) || []) {
+          if (player.status === 'active' && player.clubId === id) payroll.get(id).bill += Number(player.salary || 0);
+        }
+      }
+    } else {
+      for (const player of state.players || []) {
+        if (player.status !== 'active' || !player.clubId || !selected.has(player.clubId)) continue;
+        payroll.get(player.clubId).bill += Number(player.salary || 0);
+      }
     }
   }
   for (const club of state.clubs || []) {
@@ -1308,6 +1375,7 @@ function createStaffMember(state, type, nationality, assignment = {}) {
     staff.careerMultipliers = Array.from({ length: staff.careerLength || 10 }, (_, year) => Number(coachCareerMultiplier(staff, year).toFixed(3)));
     staff.currentMultiplier = staff.careerMultipliers[Math.min(staff.careerMultipliers.length - 1, staff.careerYear || 0)] || 1;
     staff.quality = clamp(Math.round(staff.baseQuality * staff.currentMultiplier), 58, 99);
+    if (!staff.formation) ensureCoachFormation(staff, random(state), random(state));
   }
   return staff;
 }
@@ -1520,19 +1588,24 @@ function createClubsAndPlayers(state) {
       };
       clubs.push(club);
       const count = division === 2 ? CLUB_ROSTER_TARGET.reserve : CLUB_ROSTER_TARGET[league.tier];
+      const blueprint = count >= SQUAD_SIZE ? SQUAD_BLUEPRINT : SMALL_CORE_BLUEPRINT;
       for (let slot = 0; slot < count; slot += 1) {
-        playerSlots.push({ club, position: POSITION_BLUEPRINT[slot % POSITION_BLUEPRINT.length].position });
+        // Within a club the first seven slots are the core, the next four the rest of
+        // the XI and the last four the bench, so squads have a natural quality gradient.
+        const gradient = slot < 7 ? 0 : slot < 11 ? 2.5 : 5;
+        playerSlots.push({ club, position: blueprint[slot % blueprint.length], roleOptions: count >= SQUAD_SIZE ? SQUAD_ROLE_HINTS[slot] : null, priority: strength - gradient + (random(state) - 0.5) * 3 });
       }
     });
   }
   const deck = initialRarityDeck(state, playerSlots.length);
   const rarityRank = (rarity) => STAR_RARITIES[rarity].rank;
-  const orderedSlots = [...playerSlots].sort((a, b) => b.club.strength - a.club.strength || random(state) - 0.5);
+  const orderedSlots = [...playerSlots].sort((a, b) => b.priority - a.priority);
   const orderedRarities = [...deck].sort((a, b) => rarityRank(b) - rarityRank(a));
   const players = orderedSlots.map((slot, index) => createPlayer(state, {
     club: slot.club,
     position: slot.position,
-    rarity: orderedRarities[index]
+    rarity: orderedRarities[index],
+    roleOptions: slot.roleOptions
   }));
   applyInitialRealWorldStars(state, players, clubs);
 
@@ -2090,7 +2163,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 25,
+    dataRevision: 26,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -2181,12 +2254,11 @@ function getOwner(state, clubId) {
 }
 
 function getCoach(state, teamId, isInternational = false) {
-  if (isInternational) {
-    const team = state.nationalTeams.find((item) => item.id === teamId);
-    return getRuntimeCache(state).coachById.get(team?.coachId) || state.coaches?.find((coach) => coach.id === team?.coachId) || null;
-  }
-  const club = getClub(state, teamId);
-  return getRuntimeCache(state).coachById.get(club?.coachId) || state.coaches?.find((coach) => coach.id === club?.coachId) || null;
+  const cache = getRuntimeCache(state);
+  const coachId = isInternational ? cache.nationalById.get(teamId)?.coachId : cache.clubById.get(teamId)?.coachId;
+  if (!coachId) return null;
+  // Coaches created after the cache was built are still found by id.
+  return cache.coachById.get(coachId) || state.coaches?.find((coach) => coach.id === coachId) || null;
 }
 
 function nationalCoachDomesticPreference(team) {
@@ -2266,6 +2338,8 @@ function recordCoachResult(state, coach, competitionId, teamId, isInternational,
 
 function assignCoachToClub(state, coach, club) {
   coach.focus = inferCoachFocus(coach);
+  ensureCoachFormation(coach);
+  RUNTIME_CACHE.get(state)?.clubSquads.delete(club.id);
   coach.clubId = club.id;
   coach.nationalTeamId = null;
   coach.seasonsInRole = 0;
@@ -2277,6 +2351,8 @@ function assignCoachToClub(state, coach, club) {
 
 function assignCoachToNation(state, coach, team) {
   coach.focus = inferCoachFocus(coach);
+  ensureCoachFormation(coach);
+  RUNTIME_CACHE.get(state)?.nationalSquads.delete(team.id);
   coach.nationalTeamId = team.id;
   coach.clubId = null;
   coach.seasonsInRole = 0;
@@ -2368,22 +2444,123 @@ function assistWeight(player) {
   return base * roleData(player).assist * qualityMultiplier;
 }
 
-function selectLineup(players, limit = 7) {
-  const active = players.filter((player) => player.status === 'active').sort((a, b) => b.rating - a.rating);
-  const goalkeeper = active.find((player) => player.position === 'GK');
-  const outfield = active.filter((player) => player.position !== 'GK').slice(0, goalkeeper ? limit - 1 : limit);
-  return goalkeeper ? [goalkeeper, ...outfield] : outfield;
+function topNamedAverage(players, count = 7) {
+  const top = [...players].sort((a, b) => b.rating - a.rating).slice(0, count);
+  return top.length ? top.reduce((sum, player) => sum + player.rating, 0) / top.length : 0;
 }
 
+// Every coach has a preferred shape and a fallback, linked to their tactical style.
+function ensureCoachFormation(coach, roll1 = null, roll2 = null) {
+  if (!coach) return;
+  if (coach.formation && FORMATIONS[coach.formation] && coach.secondaryFormation && FORMATIONS[coach.secondaryFormation]) return;
+  const choice = chooseCoachFormations(coach.profile,
+    roll1 ?? stableStringRoll(`${coach.id}:formation`),
+    roll2 ?? stableStringRoll(`${coach.id}:formation-second`));
+  coach.formation = choice.primary;
+  coach.secondaryFormation = choice.secondary;
+}
+
+function coachFormationPair(coach) {
+  if (!coach) return { primary: '4-4-2', secondary: '4-3-3' };
+  ensureCoachFormation(coach);
+  return { primary: coach.formation, secondary: coach.secondaryFormation };
+}
+
+// Matchday squad of 15 for a club or nation: the coach's formation decides the XI,
+// then the best four remaining players (a reserve goalkeeper first) form the bench.
+// Teams without 15 named players are completed with unnamed depth ratings.
+function buildTeamSquad(players, depthKey, depthStrength, coach) {
+  const byPosition = { GK: [], DF: [], MF: [], FW: [] };
+  for (const player of players) if (player.status === 'active' && byPosition[player.position]) byPosition[player.position].push(player);
+  for (const list of Object.values(byPosition)) list.sort((a, b) => b.rating - a.rating);
+  let candidates = [...byPosition.GK.slice(0, 3), ...byPosition.DF.slice(0, 8), ...byPosition.MF.slice(0, 8), ...byPosition.FW.slice(0, 6)];
+  if (candidates.length < SQUAD_SIZE) {
+    candidates = [...candidates, ...depthPlayers(depthKey, depthStrength, candidates, SQUAD_SIZE, stableStringRoll)];
+  }
+  const { primary, secondary } = coachFormationPair(coach);
+  const choice = chooseMatchFormation(candidates, primary, secondary);
+  const xi = choice.selection.xi;
+  const used = new Set(xi.map((row) => row.player));
+  const remaining = candidates.filter((player) => !used.has(player)).sort((a, b) => b.rating - a.rating);
+  const bench = [];
+  const reserveKeeper = remaining.find((player) => player.position === 'GK');
+  if (reserveKeeper) bench.push(reserveKeeper);
+  for (const player of remaining) {
+    if (bench.length >= SQUAD_SIZE - xi.length) break;
+    if (player !== reserveKeeper) bench.push(player);
+  }
+  const squad = [...xi.map((row) => row.player), ...bench];
+  return {
+    formationId: choice.formationId,
+    preferredFormation: primary,
+    fit: choice.fit,
+    fallback: choice.fallback,
+    xi,
+    bench,
+    squad,
+    named: squad.filter((player) => !player.depth),
+    starters: xi.map((row) => row.player).filter((player) => !player.depth)
+  };
+}
+
+function getClubSquad(state, clubId) {
+  const cache = getRuntimeCache(state);
+  let squad = cache.clubSquads.get(clubId);
+  if (!squad) {
+    const club = cache.clubById.get(clubId);
+    squad = buildTeamSquad(cache.clubPlayers.get(clubId) || [], `${clubId}:${state.season}`, club?.strength || 62, getCoach(state, clubId, false));
+    cache.clubSquads.set(clubId, squad);
+  }
+  return squad;
+}
+
+function getNationalSquad(state, nationalId) {
+  const cache = getRuntimeCache(state);
+  let squad = cache.nationalSquads.get(nationalId);
+  if (!squad) {
+    const team = cache.nationalById.get(nationalId);
+    squad = buildTeamSquad(cache.nationalPlayers.get(nationalId) || [], `${nationalId}:${state.season}:nation`, team?.strength || 60, getCoach(state, nationalId, true));
+    cache.nationalSquads.set(nationalId, squad);
+  }
+  return squad;
+}
+
+function getTeamSquad(state, teamId, isInternational) {
+  return isInternational ? getNationalSquad(state, teamId) : getClubSquad(state, teamId);
+}
+
+// Named starters (no depth entries) for a club or nation.
 function getClubLineup(state, clubId) {
-  return getRuntimeCache(state).clubLineups.get(clubId) || [];
+  return getClubSquad(state, clubId).starters;
 }
 
 function getNationalLineup(state, nationalId) {
-  return getRuntimeCache(state).nationalLineups.get(nationalId) || [];
+  return getNationalSquad(state, nationalId).starters;
+}
+
+// playerStats is a plain object keyed "player::competition" (that is what saves hold);
+// lookups go through a Map index so the hot match loop never builds key strings.
+const PLAYER_STAT_INDEX = new WeakMap();
+function playerStatIndex(state) {
+  const stats = state.current.playerStats;
+  let index = PLAYER_STAT_INDEX.get(stats);
+  if (!index) {
+    index = new Map();
+    for (const row of Object.values(stats)) {
+      if (!index.has(row.competitionId)) index.set(row.competitionId, new Map());
+      index.get(row.competitionId).set(row.playerId, row);
+    }
+    PLAYER_STAT_INDEX.set(stats, index);
+  }
+  return index;
 }
 
 function ensurePlayerStat(state, playerId, competitionId, teamId, isInternational) {
+  const index = playerStatIndex(state);
+  let byPlayer = index.get(competitionId);
+  if (!byPlayer) { byPlayer = new Map(); index.set(competitionId, byPlayer); }
+  const existing = byPlayer.get(playerId);
+  if (existing) return existing;
   const key = `${playerId}::${competitionId}`;
   if (!state.current.playerStats[key]) {
     state.current.playerStats[key] = {
@@ -2401,6 +2578,7 @@ function ensurePlayerStat(state, playerId, competitionId, teamId, isInternationa
       manOfTheMatch: 0
     };
   }
+  byPlayer.set(playerId, state.current.playerStats[key]);
   return state.current.playerStats[key];
 }
 
@@ -2433,18 +2611,31 @@ function addPlayerLog(state, playerId, entry) {
   state.current.playerMatchLogs[playerId].push(entry);
 }
 
+// Formation fit adds or removes up to ~1.5 strength points on top of the effective
+// (position-adjusted) ratings already used for the XI.
+function formationFitBonus(fit) {
+  return clamp(((fit ?? 85) - 84) * 0.06, -1.6, 0.9);
+}
+
 function calculateTeamStrength(state, teamId, isInternational) {
-  const lineup = isInternational ? getNationalLineup(state, teamId) : getClubLineup(state, teamId);
+  const squad = getTeamSquad(state, teamId, isInternational);
+  const lineup = squad.starters;
   const base = isInternational
     ? getRuntimeCache(state).nationalById.get(teamId)?.strength || 62
     : getClub(state, teamId)?.strength || 65;
-  if (!lineup.length) return base - 5;
+  if (!squad.xi.length) return base - 5;
   const tactics = tacticalModifiers(state, teamId, isInternational);
-  const weighted = lineup.reduce((sum, player) => {
-    const defensiveBonus = ['GK', 'DF'].includes(player.position) ? roleData(player).defence * 0.7 : 0;
-    const unitBonus = player.position === 'FW' ? tactics.attack : player.position === 'MF' ? tactics.midfield : tactics.defence;
-    return sum + (player.rating + defensiveBonus) * unitBonus;
-  }, 0) / lineup.length;
+  const values = squad.xi.map((row) => {
+    const line = slotLine(row.slotType);
+    const defensiveBonus = line === 'GK' || line === 'DF' ? (row.player.depth ? 1 : roleData(row.player).defence) * 0.7 : 0;
+    const unitBonus = line === 'FW' ? tactics.attack : line === 'MF' ? tactics.midfield : tactics.defence;
+    return (row.effective + defensiveBonus) * unitBonus;
+  }).sort((a, b) => b - a);
+  // The seven strongest starters set the level; the rest of the XI still counts.
+  const core = values.slice(0, 7);
+  const rest = values.slice(7);
+  const coreAverage = core.reduce((sum, value) => sum + value, 0) / core.length;
+  const weighted = rest.length ? coreAverage * 0.7 + (rest.reduce((sum, value) => sum + value, 0) / rest.length) * 0.3 : coreAverage;
   const namedInfluence = isInternational ? Math.min(0.64, 0.27 + lineup.length * 0.052) : Math.min(0.52, 0.34 + lineup.length * 0.025);
   const form = isInternational
     ? getRuntimeCache(state).nationalById.get(teamId)?.form || 0
@@ -2455,27 +2646,28 @@ function calculateTeamStrength(state, teamId, isInternational) {
   const payrollRatio = club ? Number(club.currentPayroll || 0) / Math.max(1, Number(club.payrollLimit || clubPayrollLimit(club))) : 1;
   const payrollInstability = isInternational ? 0 : Math.min(5.5, Math.max(0, payrollRatio - 1.1) * 2.4);
   const starImpact = starImpactForLineup(lineup, 'overall');
-  return base * (1 - namedInfluence) + weighted * namedInfluence + form + coachBonus + ownerBonus + starImpact - payrollInstability;
+  return base * (1 - namedInfluence) + weighted * namedInfluence + form + coachBonus + ownerBonus + starImpact - payrollInstability + formationFitBonus(squad.fit);
 }
 
-function calculateUnitStrength(state, teamId, isInternational, unit) {
-  const lineup = isInternational ? getNationalLineup(state, teamId) : getClubLineup(state, teamId);
-  const base = calculateTeamStrength(state, teamId, isInternational);
-  if (!lineup.length) return base;
+function calculateUnitStrength(state, teamId, isInternational, unit, baseStrength = null) {
+  const squad = getTeamSquad(state, teamId, isInternational);
+  const lineup = squad.starters;
+  const base = baseStrength ?? calculateTeamStrength(state, teamId, isInternational);
+  if (!squad.xi.length) return base;
   const tactics = tacticalModifiers(state, teamId, isInternational);
   const positionSet = unit === 'attack' ? ['FW', 'MF'] : unit === 'midfield' ? ['MF', 'DF'] : ['GK', 'DF'];
-  const players = lineup.filter((player) => positionSet.includes(player.position));
-  const average = players.length ? players.reduce((sum, player) => sum + player.rating, 0) / players.length : base;
+  const rows = squad.xi.filter((row) => positionSet.includes(slotLine(row.slotType)));
+  const average = rows.length ? rows.reduce((sum, row) => sum + row.effective, 0) / rows.length : base;
   const multiplier = unit === 'attack' ? tactics.attack : unit === 'midfield' ? tactics.midfield : tactics.defence;
   return base * 0.53 + average * 0.47 * multiplier + starImpactForLineup(lineup, unit);
 }
 
 function matchTeamProfile(state, teamId, isInternational, expectedGoals) {
-  const entity = isInternational ? state.nationalTeams.find((team) => team.id === teamId) : getClub(state, teamId);
-  const lineup = isInternational ? getNationalLineup(state, teamId) : getClubLineup(state, teamId);
+  const entity = isInternational ? getRuntimeCache(state).nationalById.get(teamId) : getClub(state, teamId);
+  const squad = getTeamSquad(state, teamId, isInternational);
   const base = entity?.strength || 70;
   const quality = (position) => {
-    const players = lineup.filter((player) => player.position === position).map((player) => player.rating);
+    const players = squad.xi.filter((row) => slotLine(row.slotType) === position).map((row) => row.effective);
     if (!players.length) return base;
     const average = players.reduce((sum, rating) => sum + rating, 0) / players.length;
     return average * 0.65 + Math.max(...players) * 0.35;
@@ -2510,27 +2702,117 @@ function resolveDraw(state, homeId, awayId, homeGoals, awayGoals, isInternationa
   return { homeGoals: hg, awayGoals: ag, extraTime, penalties, winnerId };
 }
 
+const MAJOR_TOURNAMENT_IDS = new Set(['WC', 'EURO', 'COPA', 'AFCON', 'ASIACUP', 'GOLDCUP', 'OFC', 'CWC',
+  ...CONTINENTAL_DEFINITIONS.filter((definition) => definition.level === 1).map((definition) => definition.id)]);
+// Validated favourite ranking per competition object (rank lookups by team id).
+const FAVORITE_RANK_CACHE = new WeakMap();
+
 function tournamentFavoriteBonus(state, competitionId, teamId, isInternational) {
-  const continentalDefinition = CONTINENTAL_DEFINITIONS.find((definition) => definition.id === competitionId);
-  const isMajorContinental = continentalDefinition?.level === 1;
-  const isMajorInternational = ['WC', 'EURO', 'COPA', 'AFCON', 'ASIACUP', 'GOLDCUP', 'OFC'].includes(competitionId);
+  if (!MAJOR_TOURNAMENT_IDS.has(competitionId)) return 0;
   const isMajorGlobal = competitionId === 'CWC';
-  if (!isMajorContinental && !isMajorInternational && !isMajorGlobal) return 0;
   const competition = isMajorGlobal
     ? state.current.globalClubCompetitions?.[competitionId]
     : isInternational
       ? state.current.internationalCompetitions?.[competitionId]
       : state.current.continentalCompetitions?.[competitionId];
-  const ids = [...new Set((competition?.groups || []).flatMap((group) => group.teamIds || []))];
-  if (!ids.length) return 0;
-  if (!Array.isArray(competition.favoriteRanking) || competition.favoriteRanking.length !== ids.length || competition.favoriteRanking.some((id) => !ids.includes(id))) {
-    competition.favoriteRanking = [...ids].sort((a, b) => calculateTeamStrength(state, b, isInternational) - calculateTeamStrength(state, a, isInternational));
+  if (!competition?.groups?.length) return 0;
+  let ranks = FAVORITE_RANK_CACHE.get(competition);
+  if (!ranks || ranks.groups !== competition.groups || ranks.ranking !== competition.favoriteRanking) {
+    const ids = [...new Set(competition.groups.flatMap((group) => group.teamIds || []))];
+    if (!ids.length) return 0;
+    if (!Array.isArray(competition.favoriteRanking) || competition.favoriteRanking.length !== ids.length || competition.favoriteRanking.some((id) => !ids.includes(id))) {
+      competition.favoriteRanking = [...ids].sort((a, b) => calculateTeamStrength(state, b, isInternational) - calculateTeamStrength(state, a, isInternational));
+    }
+    ranks = { groups: competition.groups, ranking: competition.favoriteRanking, byId: new Map(competition.favoriteRanking.map((id, index) => [id, index])) };
+    FAVORITE_RANK_CACHE.set(competition, ranks);
   }
-  const rank = competition.favoriteRanking.indexOf(teamId);
+  const rank = ranks.byId.get(teamId) ?? -1;
   // This represents depth, tournament experience and week-to-week consistency not
   // fully captured by the seven named stars. It is deliberately modest: favorites
   // still lose, but several unrelated long shots should not dominate one season.
   return rank === 0 ? 3.2 : rank === 1 ? 2.8 : rank === 2 ? 2.4 : rank === 3 ? 2.0 : rank === 4 ? 1.6 : rank < 10 && rank >= 0 ? 0.7 : 0;
+}
+
+// Goal and assist weights adjusted for the slot a player fills tonight.
+const SLOT_GOAL_FACTOR = { GK: 1, CB: 0.85, FB: 0.85, WB: 0.92, DM: 0.6, CM: 0.82, WM: 0.88, AM: 1.06, W: 1.0, ST: 1.14 };
+const SLOT_ASSIST_FACTOR = { GK: 1, CB: 0.7, FB: 1.0, WB: 1.12, DM: 0.85, CM: 1.0, WM: 1.12, AM: 1.15, W: 1.08, ST: 0.85 };
+
+function penaltySkill(player) {
+  if (player.depth) return player.rating - 6;
+  const lineBase = { GK: -16, DF: -7, MF: -2, FW: 0 }[player.position] ?? -4;
+  const role = roleData(player);
+  return player.rating + lineBase + (role.goal - 1) * 4;
+}
+
+// Engine inputs for one player in tonight's squad. Ratings and roles do not change
+// during a season, so these are cached with the squad and reused match after match.
+function matchSource(player, slotType, effective) {
+  const line = slotType ? slotLine(slotType) : player.position;
+  return {
+    id: player.depth ? null : player.id,
+    line,
+    slotType: slotType || null,
+    rating: player.rating,
+    effective,
+    goalW: goalWeight(player) * (slotType ? SLOT_GOAL_FACTOR[slotType] ?? 1 : 1),
+    assistW: assistWeight(player) * (slotType ? SLOT_ASSIST_FACTOR[slotType] ?? 1 : 1),
+    defendW: player.depth ? 1 : roleData(player).defence,
+    penalty: penaltySkill(player)
+  };
+}
+
+function squadMatchSources(squad) {
+  if (!squad.sources) {
+    squad.sources = {
+      xi: squad.xi.map((row) => matchSource(row.player, row.slotType, row.effective)),
+      bench: squad.bench.map((player) => matchSource(player, null, player.rating))
+    };
+  }
+  return squad.sources;
+}
+
+function lineupSnapshot(squad) {
+  return {
+    formationId: squad.formationId,
+    preferredFormation: squad.preferredFormation,
+    fit: squad.fit,
+    fallback: squad.fallback,
+    xi: squad.xi.map((row) => ({ playerId: row.player.depth ? null : row.player.id, depth: Boolean(row.player.depth), position: row.player.position, rating: row.player.rating, slotType: row.slotType, x: row.x, y: row.y, slotFit: Number(row.fit.toFixed(2)) })),
+    bench: squad.bench.map((player) => ({ playerId: player.depth ? null : player.id, depth: Boolean(player.depth), position: player.position, rating: player.rating }))
+  };
+}
+
+// Kickoff expectations: squad quality, home edge, coach and competition context set
+// each side's expected goals. Everything after kickoff is played by the match engine.
+function matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational, neutral }) {
+  const homeFavoriteBonus = tournamentFavoriteBonus(state, competitionId, homeId, isInternational);
+  const awayFavoriteBonus = tournamentFavoriteBonus(state, competitionId, awayId, isInternational);
+  const homeCoachContext = coachContextBonus(state, homeId, isInternational, competitionId, stage, knockout);
+  const awayCoachContext = coachContextBonus(state, awayId, isInternational, competitionId, stage, knockout);
+  const homeDynastyPressure = isInternational ? 0 : continentalDynastyPressure(state, homeId, competitionId);
+  const awayDynastyPressure = isInternational ? 0 : continentalDynastyPressure(state, awayId, competitionId);
+  const homeBase = calculateTeamStrength(state, homeId, isInternational);
+  const awayBase = calculateTeamStrength(state, awayId, isInternational);
+  const homeEdge = neutral ? 0 : MATCH_CALIBRATION.homeStrengthEdge;
+  const homeStrength = homeBase + homeFavoriteBonus + homeCoachContext - homeDynastyPressure + homeEdge;
+  const awayStrength = awayBase + awayFavoriteBonus + awayCoachContext - awayDynastyPressure;
+  const unitContext = (favorite, coachContext, dynasty) => favorite * 0.72 + coachContext * 0.56 - dynasty * 0.45;
+  const homeAttack = calculateUnitStrength(state, homeId, isInternational, 'attack', homeBase) + unitContext(homeFavoriteBonus, homeCoachContext, homeDynastyPressure);
+  const awayAttack = calculateUnitStrength(state, awayId, isInternational, 'attack', awayBase) + unitContext(awayFavoriteBonus, awayCoachContext, awayDynastyPressure);
+  const homeDefence = calculateUnitStrength(state, homeId, isInternational, 'defence', homeBase) + unitContext(homeFavoriteBonus, homeCoachContext, homeDynastyPressure);
+  const awayDefence = calculateUnitStrength(state, awayId, isInternational, 'defence', awayBase) + unitContext(awayFavoriteBonus, awayCoachContext, awayDynastyPressure);
+  const difference = homeStrength - awayStrength;
+  const highStakes = knockout || /Leg|Round of 16|Quarter|Semi|Final/i.test(stage || '');
+  const c = MATCH_CALIBRATION;
+  const attackDivisor = highStakes ? (isInternational ? c.attackDivisorKnockoutIntl : c.attackDivisorKnockout) : c.attackDivisor;
+  const defenceDivisor = highStakes ? (isInternational ? c.defenceDivisorKnockoutIntl : c.defenceDivisorKnockout) : c.defenceDivisor;
+  const homeEdgeDivisor = highStakes ? (isInternational ? 33 : 37) : 44;
+  const awayEdgeDivisor = highStakes ? (isInternational ? 37 : 42) : 50;
+  const homeBaseGoals = neutral ? (c.homeGoals + c.awayGoals) / 2 : c.homeGoals;
+  const awayBaseGoals = neutral ? (c.homeGoals + c.awayGoals) / 2 : c.awayGoals;
+  const homeLambda = clamp(homeBaseGoals + (homeAttack - awayDefence) / attackDivisor + difference / homeEdgeDivisor, 0.18, 3.6);
+  const awayLambda = clamp(awayBaseGoals + (awayAttack - homeDefence) / defenceDivisor - difference / awayEdgeDivisor, 0.15, 3.3);
+  return { homeStrength, awayStrength, homeLambda, awayLambda };
 }
 
 function simulateMatch(state, {
@@ -2551,12 +2833,14 @@ function simulateMatch(state, {
   const awayCoachContext = coachContextBonus(state, awayId, isInternational, competitionId, stage, knockout);
   const homeDynastyPressure = isInternational ? 0 : continentalDynastyPressure(state, homeId, competitionId);
   const awayDynastyPressure = isInternational ? 0 : continentalDynastyPressure(state, awayId, competitionId);
-  const homeStrength = calculateTeamStrength(state, homeId, isInternational) + homeFavoriteBonus + homeCoachContext - homeDynastyPressure + (neutral ? 0 : 2.0);
-  const awayStrength = calculateTeamStrength(state, awayId, isInternational) + awayFavoriteBonus + awayCoachContext - awayDynastyPressure;
-  const homeAttack = calculateUnitStrength(state, homeId, isInternational, 'attack') + homeFavoriteBonus * 0.72 + homeCoachContext * 0.56 - homeDynastyPressure * 0.45;
-  const awayAttack = calculateUnitStrength(state, awayId, isInternational, 'attack') + awayFavoriteBonus * 0.72 + awayCoachContext * 0.56 - awayDynastyPressure * 0.45;
-  const homeDefence = calculateUnitStrength(state, homeId, isInternational, 'defence') + homeFavoriteBonus * 0.72 + homeCoachContext * 0.56 - homeDynastyPressure * 0.45;
-  const awayDefence = calculateUnitStrength(state, awayId, isInternational, 'defence') + awayFavoriteBonus * 0.72 + awayCoachContext * 0.56 - awayDynastyPressure * 0.45;
+  const homeBase = calculateTeamStrength(state, homeId, isInternational);
+  const awayBase = calculateTeamStrength(state, awayId, isInternational);
+  const homeStrength = homeBase + homeFavoriteBonus + homeCoachContext - homeDynastyPressure + (neutral ? 0 : 2.0);
+  const awayStrength = awayBase + awayFavoriteBonus + awayCoachContext - awayDynastyPressure;
+  const homeAttack = calculateUnitStrength(state, homeId, isInternational, 'attack', homeBase) + homeFavoriteBonus * 0.72 + homeCoachContext * 0.56 - homeDynastyPressure * 0.45;
+  const awayAttack = calculateUnitStrength(state, awayId, isInternational, 'attack', awayBase) + awayFavoriteBonus * 0.72 + awayCoachContext * 0.56 - awayDynastyPressure * 0.45;
+  const homeDefence = calculateUnitStrength(state, homeId, isInternational, 'defence', homeBase) + homeFavoriteBonus * 0.72 + homeCoachContext * 0.56 - homeDynastyPressure * 0.45;
+  const awayDefence = calculateUnitStrength(state, awayId, isInternational, 'defence', awayBase) + awayFavoriteBonus * 0.72 + awayCoachContext * 0.56 - awayDynastyPressure * 0.45;
   const difference = homeStrength - awayStrength;
   // Quality gaps should matter across a full competition without making upsets impossible.
   // High-stakes knockout matches expose squad and coaching differences a little more;
@@ -3672,6 +3956,25 @@ function calculateAwards(state) {
   positionalBest.slice(0, 11).forEach((candidate) => award(state, 'World Best XI', candidate.playerId, 'GLOBAL', 1, 'world_best_xi', candidate.components));
 }
 
+const CONTRIBUTOR_INDEX = new WeakMap();
+function competitionContributors(state, competitionId, teamId) {
+  const stats = state.current?.playerStats || {};
+  // Built once per season archive (archiveSeason clears it first).
+  let index = CONTRIBUTOR_INDEX.get(stats);
+  if (!index) {
+    const map = new Map();
+    for (const row of Object.values(stats)) {
+      if (!row.apps) continue;
+      const key = `${row.competitionId}::${row.teamId}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(row.playerId);
+    }
+    index = { map };
+    CONTRIBUTOR_INDEX.set(stats, index);
+  }
+  return (index.map.get(`${competitionId}::${teamId}`) || []).map((id) => getPlayer(state, id)).filter(Boolean);
+}
+
 function registerChampion(state, competitionId, competitionName, winnerId, runnerUpId = null, isInternational = false) {
   if (!winnerId) return;
   const coach = getCoach(state, winnerId, isInternational);
@@ -3685,7 +3988,10 @@ function registerChampion(state, competitionId, competitionName, winnerId, runne
     isInternational,
     coachId: coach?.id || null
   });
-  const players = isInternational ? getNationalLineup(state, winnerId) : getClubLineup(state, winnerId);
+  // Medals go to every named squad member who played in the competition for the
+  // winners; the starting XI is the fallback when no appearances were recorded.
+  const contributors = competitionContributors(state, competitionId, winnerId);
+  const players = contributors.length ? contributors : (isInternational ? getNationalLineup(state, winnerId) : getClubLineup(state, winnerId));
   players.forEach((player) => state.history.honours.push({
     season: state.season,
     seasonLabel: formatSeason(state.season),
@@ -4016,6 +4322,7 @@ function archiveCoachSummaries(state) {
 }
 
 function archiveSeason(state) {
+  CONTRIBUTOR_INDEX.delete(state.current.playerStats);
   Object.values(state.current.playerStats).forEach((stat) => {
     if (!stat.apps) return;
     state.history.playerSeasons.push({
@@ -4117,6 +4424,7 @@ function generateReplacementStars(state) {
   const epicRoom = Math.max(0, 50 - (counts.epic || 0));
   eliteIntake.push(...Array(Math.min(epicRoom, randomInt(state, 2, 4))).fill('epic'));
   const totalNew = Math.max(populationNeed, eliteIntake.length);
+  let rosterByClub = null;
 
   for (let i = 0; i < totalNew; i += 1) {
     const rarity = eliteIntake[i] || chooseNewRarity(state, counts, totalNew - i);
@@ -4140,7 +4448,15 @@ function generateReplacementStars(state) {
       player.transferProtectedUntilSeason = state.season + 2;
       player.contractYears = randomInt(state, 2, 5);
       player.salary = Number((player.marketValue * (0.038 + random(state) * 0.022)).toFixed(1));
-      const displaced = state.players
+      if (!rosterByClub) {
+        rosterByClub = new Map();
+        for (const item of state.players) {
+          if (item.status !== 'active' || !item.clubId) continue;
+          if (!rosterByClub.has(item.clubId)) rosterByClub.set(item.clubId, []);
+          rosterByClub.get(item.clubId).push(item);
+        }
+      }
+      const displaced = (rosterByClub.get(target.id) || [])
         .filter((candidate) => candidate.status === 'active'
           && candidate.clubId === target.id
           && candidate.id !== player.id
@@ -4323,15 +4639,27 @@ function processCoachLifecycle(state) {
   }
 }
 
+// Club strength keeps its long-standing meaning: the best goalkeeper plus the six
+// best outfield players, blended with the institution's base strength.
+function clubCoreAverage(players) {
+  const active = players.filter((player) => player.status === 'active');
+  if (!active.length) return 0;
+  const keeper = active.filter((player) => player.position === 'GK').sort((a, b) => b.rating - a.rating)[0];
+  const outfield = active.filter((player) => player.position !== 'GK').sort((a, b) => b.rating - a.rating).slice(0, keeper ? 6 : 7);
+  const core = keeper ? [keeper, ...outfield] : outfield;
+  return core.reduce((sum, player) => sum + player.rating, 0) / core.length;
+}
+
 function refreshClubStrength(state, club) {
-  const lineup = getClubLineup(state, club.id);
-  if (!lineup.length) return;
-  const average = lineup.reduce((sum, player) => sum + player.rating, 0) / lineup.length;
+  const average = clubCoreAverage(getRuntimeCache(state).clubPlayers.get(club.id) || []);
+  if (!average) return;
   club.strength = clamp(Math.round(club.baseStrength * 0.55 + average * 0.45), 58, 96);
 }
 
 function refreshAllClubStrengths(state) {
   state.clubs.forEach((club) => refreshClubStrength(state, club));
+  // Unnamed depth ratings follow club strength, so squads are rebuilt on next use.
+  getRuntimeCache(state).clubSquads.clear();
 }
 
 
@@ -4383,6 +4711,26 @@ function processPromotionRelegation(state) {
   state.pendingSeasonNews = stories.slice(0, 12);
 }
 
+// A squad player generated to complete a club's 15: close to the club's level, in the
+// slot the coach's system needs, with a realistic spread of ages.
+function createSquadFiller(state, club, position, { roleOptions = null, debutSeason = state.season, veteranMix = true } = {}) {
+  const desired = clamp((club.strength || 66) - 6 + randomInt(state, -3, 3), 55, 84);
+  const rarity = desired >= 80 ? 'rare' : desired >= 70 ? 'uncommon' : 'common';
+  const careerYear = veteranMix ? randomInt(state, 0, 9) : 0;
+  const player = createPlayer(state, { club, rarity, position, careerYear, roleOptions });
+  const band = STAR_RARITIES[rarity];
+  const multiplier = player.careerMultipliers[player.careerYear] || 1;
+  player.baseQuality = clamp(Math.round(desired / multiplier), band.min, band.max);
+  player.rating = clamp(Math.round(player.baseQuality * multiplier), 51, 100);
+  player.marketValue = calculateMarketValueRaw(player.baseQuality, rarity, debutSeason - player.birthYear, position);
+  player.salary = Math.max(0.3, Number((player.marketValue * (0.045 + random(state) * 0.025)).toFixed(1)));
+  const shift = debutSeason - state.season;
+  player.birthYear += shift;
+  player.debutSeason += shift;
+  markPlayerArrival(player, debutSeason);
+  return player;
+}
+
 function ensureClubRosters(state) {
   const freeAgents = state.players.filter((player) => player.status === 'active' && !player.clubId);
   const activeByClub = new Map(state.clubs.map((club)=>[club.id, []]));
@@ -4392,19 +4740,37 @@ function ensureClubRosters(state) {
   for (const club of clubs) {
     const target = club.division === 2 ? CLUB_ROSTER_TARGET.reserve : CLUB_ROSTER_TARGET[club.tier];
     const active = activeByClub.get(club.id) || [];
+    // Bloated squads release their weakest ordinary players before the season.
+    if (active.length > target + 3) {
+      const surplus = active.filter((player) => ['common', 'uncommon'].includes(player.rarity)
+        && (!player.transferProtectedUntilSeason || player.transferProtectedUntilSeason <= state.season))
+        .sort((a, b) => a.rating - b.rating)
+        .slice(0, active.length - (target + 3));
+      for (const player of surplus) {
+        player.lastClubId = club.id;
+        player.clubId = null;
+        player.contractYears = 0;
+        player.salary = 0;
+        active.splice(active.indexOf(player), 1);
+      }
+    }
     while (active.length < target) {
       const needPosition = positionNeedFromRoster(state, club, active);
       const desiredRating = club.strength + (club.reputation >= 84 ? 2 : club.division === 2 ? -8 : -3);
-      const eligible = freeAgents.filter((player) => recruitmentDestinationAllowed(state, player, club)
+      const currentBill = rosterPayroll(active);
+      const signable = (player) => recruitmentDestinationAllowed(state, player, club)
         && (!['epic', 'legend', 'generational'].includes(player.rarity) || primeDestinationAllowed(state, player, club))
-        && canClubCarrySalary(club, rosterPayroll(active), salaryOfferFor(state, player, club, 'free'), 0, 1.01));
-      const positional = eligible.filter((player) => player.position === needPosition);
-      const pool = positional.length ? positional : eligible;
+        && canClubCarrySalary(club, currentBill, salaryOfferFor(state, player, club, 'free'), 0, 1.01);
+      const positional = freeAgents.filter((player) => player.position === needPosition && signable(player));
+      const pool = positional.length ? positional : freeAgents.filter((player) => player.position !== needPosition && signable(player));
+      const systemNeed = clubSystemNeed(state, club, active);
+      const systemSlot = systemNeed?.line === needPosition ? systemNeed.slotType : null;
       const nationalityCounts = new Map();
       for (const candidate of pool) nationalityCounts.set(candidate.nationality, (nationalityCounts.get(candidate.nationality) || 0) + 1);
       const domestic = pool.filter((player) => teamById(player.nationality)?.name === club.country);
       const shortlist = domestic.length && random(state) < 0.8 ? domestic : pool;
       const player = weightedPick(state, shortlist, (candidate) => playerGeographyWeight(state, candidate, club)
+        * (systemSlot && slotFit(candidate, systemSlot) >= 0.94 ? 1.6 : 1)
         / ((1 + Math.abs(candidate.rating - desiredRating)) ** 2 * nationalityCounts.get(candidate.nationality)));
       if (player) {
         const formerClubId = player.lastClubId || null;
@@ -4438,14 +4804,21 @@ function ensureClubRosters(state) {
         }
         continue;
       }
-      const rarity = random(state) < 0.18 ? 'uncommon' : 'common';
-      const generated = createPlayer(state, { club, rarity, position: needPosition, careerYear: 0 });
+      const generatedRole = systemSlot ? bestRoleForSlot(systemSlot) : null;
+      const debutSeason = state.season + (state.current.completed ? 1 : 0);
+      let generated;
+      if (target >= SQUAD_SIZE && active.length >= 4) {
+        // Completing a full squad: a filler near the club's level rather than a raw rookie.
+        generated = createSquadFiller(state, club, needPosition, { roleOptions: generatedRole ? [generatedRole] : null, debutSeason });
+      } else {
+        const rarity = random(state) < 0.18 ? 'uncommon' : 'common';
+        generated = createPlayer(state, { club, rarity, position: needPosition, careerYear: 0, roleOptions: generatedRole ? [generatedRole] : null });
+        generated.birthYear += debutSeason - state.season;
+        generated.debutSeason = debutSeason;
+        markPlayerArrival(generated, debutSeason);
+      }
       const remainingRoom = Math.max(0.25, clubPayrollLimit(club) - rosterPayroll(active));
       generated.salary = Number(Math.min(generated.salary, remainingRoom).toFixed(1));
-      const debutSeason = state.season + (state.current.completed ? 1 : 0);
-      generated.birthYear += debutSeason - state.season;
-      generated.debutSeason = debutSeason;
-      markPlayerArrival(generated, debutSeason);
       state.players.push(generated);
       active.push(generated);
     }
@@ -4514,6 +4887,24 @@ function releaseCoachFromCurrentJob(state, coach, season, reason = 'poached') {
     coach.nationalTeamId = null;
   }
   return move;
+}
+
+// Fit (0–100) of a squad in every formation, computed once per vacancy.
+function formationFitTable(players) {
+  const named = players.filter((player) => player.status === 'active');
+  const table = {};
+  if (named.length < 11) {
+    for (const id of Object.keys(FORMATIONS)) table[id] = 85;
+    return table;
+  }
+  for (const id of Object.keys(FORMATIONS)) table[id] = formationFitScore(named, id);
+  return table;
+}
+
+function coachSystemFitBonus(fitByFormation, coach) {
+  const { primary, secondary } = coachFormationPair(coach);
+  const fit = Math.max(fitByFormation[primary] ?? 85, (fitByFormation[secondary] ?? 85) - 4);
+  return clamp((fit - 85) * 0.22, -4, 2.5);
 }
 
 function runCoachMarket(state) {
@@ -4625,10 +5016,11 @@ function runCoachMarket(state) {
     const useDomestic = random(state) < nationalCoachDomesticPreference(team);
     const pool = useDomestic ? domestic : candidates;
     const destinationScore = team.strength + 12;
-    const ranked = [...pool].sort((a, b) => {
-      const score = (coach) => ambition(coach) + nationalCoachRarityFit(team, coach) + (coach.nationality === team.id ? 10 : 0) - (coach.clubId ? Math.max(0, clubJobScore(getClub(state, coach.clubId)) - destinationScore) : 0);
-      return score(b) - score(a);
-    });
+    const fitByFormation = formationFitTable(getNationalSquad(state, team.id).squad);
+    const scores = new Map(pool.map((coach) => [coach, ambition(coach) + nationalCoachRarityFit(team, coach) + (coach.nationality === team.id ? 10 : 0)
+      - (coach.clubId ? Math.max(0, clubJobScore(getClub(state, coach.clubId)) - destinationScore) : 0)
+      + coachSystemFitBonus(fitByFormation, coach)]));
+    const ranked = [...pool].sort((a, b) => scores.get(b) - scores.get(a));
     const coach = ranked.find((candidate) => {
       if (!candidate.clubId) return true;
       const currentClub = getClub(state, candidate.clubId);
@@ -4665,10 +5057,12 @@ function runCoachMarket(state) {
     const domestic = candidates.filter((coach) => coach.nationality === nationality);
     const useDomestic = domestic.length && random(state) < clubCoachDomesticPreference(club);
     const pool = useDomestic ? domestic : candidates;
-    const ranked = [...pool].sort((a, b) => {
-      const score = (coach) => ambition(coach) + (coach.nationality === nationality ? 3 : 0) - (coach.clubId ? Math.max(0, clubJobScore(getClub(state, coach.clubId)) - destinationScore) : 0);
-      return score(b) - score(a);
-    });
+    // Boards also weigh how well the squad suits the candidate's preferred system.
+    const fitByFormation = formationFitTable(getRuntimeCache(state).clubPlayers.get(club.id) || []);
+    const scores = new Map(pool.map((coach) => [coach, ambition(coach) + (coach.nationality === nationality ? 3 : 0)
+      - (coach.clubId ? Math.max(0, clubJobScore(getClub(state, coach.clubId)) - destinationScore) : 0)
+      + coachSystemFitBonus(fitByFormation, coach)]));
+    const ranked = [...pool].sort((a, b) => scores.get(b) - scores.get(a));
     const coach = ranked.find((candidate) => {
       if (!candidate.clubId) return true;
       const currentClub = getClub(state, candidate.clubId);
@@ -4783,7 +5177,12 @@ function playerRecentSuccess(state, player, lookback = 2) {
 
 function clubTeammateQuality(state, player, club) {
   if (!club) return 60;
-  return getRuntimeCache(state).clubTopSixQuality.get(club.id) || club.strength || 60;
+  const cache = getRuntimeCache(state);
+  if (!cache.clubTopSixQuality.has(club.id)) {
+    const top = [...(cache.clubPlayers.get(club.id) || [])].sort((a, b) => b.rating - a.rating).slice(0, 6);
+    cache.clubTopSixQuality.set(club.id, top.length ? top.reduce((sum, item) => sum + item.rating, 0) / top.length : 0);
+  }
+  return cache.clubTopSixQuality.get(club.id) || club.strength || 60;
 }
 
 function ambitionHappinessChange(state, player, club) {
@@ -4954,22 +5353,41 @@ function evolveWorld(state) {
   refreshAllClubStrengths(state);
 }
 
+// Major continental titles and finals per club, indexed once per champions-list size
+// (this is asked thousands of times per transfer window).
+const MAJOR_ACHIEVEMENT_CACHE = new WeakMap();
+const MAJOR_CONTINENTAL_IDS = new Set(['UCL', 'LIB', 'CCC', 'ACL', 'CAFCL', 'OCL']);
+function majorAchievementIndex(state) {
+  const champions = state.history?.champions || [];
+  let cached = MAJOR_ACHIEVEMENT_CACHE.get(state);
+  if (cached && cached.length === champions.length && cached.season === state.season) return cached.byClub;
+  const byClub = new Map();
+  const add = (clubId, row, kind) => {
+    if (!byClub.has(clubId)) byClub.set(clubId, []);
+    byClub.get(clubId).push([row.season, kind]);
+  };
+  for (const row of champions) {
+    if (!MAJOR_CONTINENTAL_IDS.has(row.competitionId)) continue;
+    if (row.winnerId) add(row.winnerId, row, 1);
+    if (row.runnerUpId && row.runnerUpId !== row.winnerId) add(row.runnerUpId, row, 0);
+  }
+  MAJOR_ACHIEVEMENT_CACHE.set(state, { length: champions.length, season: state.season, byClub });
+  return byClub;
+}
+
 function recentMajorClubAchievement(state, clubId, lookback = 2) {
   if (!clubId) return { titles: 0, finals: 0, mostRecentTitleAge: null };
-  const majorIds = new Set(['UCL', 'LIB', 'CCC', 'ACL', 'CAFCL', 'OCL']);
   const cutoff = state.season - lookback;
   let titles = 0;
   let finals = 0;
   let mostRecentTitleAge = null;
-  for (const row of state.history?.champions || []) {
-    if (!majorIds.has(row.competitionId) || row.season < cutoff) continue;
-    if (row.winnerId === clubId) {
+  for (const [season, won] of majorAchievementIndex(state).get(clubId) || []) {
+    if (season < cutoff) continue;
+    if (won) {
       titles += 1;
-      const age = Math.max(0, state.season - row.season);
+      const age = Math.max(0, state.season - season);
       mostRecentTitleAge = mostRecentTitleAge === null ? age : Math.min(mostRecentTitleAge, age);
-    } else if (row.runnerUpId === clubId) {
-      finals += 1;
-    }
+    } else finals += 1;
   }
   return { titles, finals, mostRecentTitleAge };
 }
@@ -5170,14 +5588,41 @@ function positionNeed(state, club) {
   });
 }
 
+function rosterTargetFor(club) {
+  if (!club) return CLUB_ROSTER_TARGET.summary;
+  return club.division === 2 ? CLUB_ROSTER_TARGET.reserve : CLUB_ROSTER_TARGET[club.tier] || CLUB_ROSTER_TARGET.summary;
+}
+
+// The slot in the coach's preferred formation that the squad fills worst. Memoised
+// per roster array and length because the market asks many times per window.
+// One entry per club (bounded), so market churn does not pile up weak references.
+const SYSTEM_NEED_CACHE = new Map();
+function clubSystemNeed(state, club, players = []) {
+  if (rosterTargetFor(club) < SQUAD_SIZE || players.length < 11) return null;
+  const cached = SYSTEM_NEED_CACHE.get(club.id);
+  const coach = getCoach(state, club.id, false);
+  const { primary } = coachFormationPair(coach);
+  if (cached && cached.players === players && cached.length === players.length && cached.formation === primary) return cached.need;
+  const needs = formationNeeds(players, primary);
+  const weakest = needs.weakestSlot;
+  const need = weakest && (weakest.fit < 0.92 || weakest.effective < (club.strength || 70) - 9)
+    ? { line: weakest.line, slotType: weakest.slotType, formation: primary }
+    : null;
+  SYSTEM_NEED_CACHE.set(club.id, { players, length: players.length, formation: primary, need });
+  return need;
+}
+
 function positionNeedFromRoster(state, club, players = []) {
   const positions = ['GK','DF','MF','FW'];
   const counts = { GK:0, DF:0, MF:0, FW:0 };
   const totals = { GK:0, DF:0, MF:0, FW:0 };
   for (const player of players) { counts[player.position] += 1; totals[player.position] += player.rating; }
-  const ideal = club.tier === 'detailed' ? { GK:1, DF:2, MF:2, FW:2 } : { GK:1, DF:1, MF:1, FW:1 };
+  const ideal = rosterTargetFor(club) >= SQUAD_SIZE ? SQUAD_POSITION_TARGET : { GK:1, DF:1, MF:1, FW:1 };
   const missing = positions.filter((position)=>counts[position] < ideal[position]);
   if (missing.length) return missing.sort((a,b)=>(ideal[b]-counts[b])-(ideal[a]-counts[a]) || ({FW:4,MF:3,DF:2,GK:1}[b]-({FW:4,MF:3,DF:2,GK:1}[a])))[0];
+  // Clubs buy for their coach's system: a badly filled slot decides the position.
+  const system = clubSystemNeed(state, club, players);
+  if (system) return system.line;
   const naturalPriority = { GK:0.38, DF:1.08, MF:1.22, FW:1.34 };
   return positions.sort((a,b)=>{
     const avgA=counts[a]?totals[a]/counts[a]:club.strength-12, avgB=counts[b]?totals[b]/counts[b]:club.strength-12;
@@ -5242,11 +5687,11 @@ function transferPlayer(state, player, buyer, seller, fee, freeTransfer = false)
   const recordedFromClubId = oldClubId || player.lastClubId || null;
   const formerClub = seller || (recordedFromClubId ? getClub(state, recordedFromClubId) : null);
   const preTransfer = playerTransferSnapshot(player);
-  invalidateRuntimeCache(state);
   if (seller) seller.finances += fee;
   buyer.finances = Math.max(0, buyer.finances - fee);
   buyer.transferBudget = Math.max(0, buyer.transferBudget - fee);
   player.clubId = buyer.id;
+  noteRosterChange(state, player, oldClubId, buyer.id);
   markPlayerArrival(player, state.season);
   player.contractYears = randomInt(state, ['generational', 'legend'].includes(player.rarity) ? 3 : 2, 5);
   player.salary = salaryOfferFor(state, player, buyer, freeTransfer ? 'free' : 'transfer');
@@ -5408,8 +5853,8 @@ export function editorCancelTransfer(state, transferRef) {
   state.history.transfers = (state.history.transfers || []).filter((item) => !sameTransferRecord(item, record));
   state.current.offseasonFreeAgentSignings = (state.current.offseasonFreeAgentSignings || []).filter((item) => !(item.playerId === record.playerId && item.toClubId === record.toClubId));
   if (record.id) state.current.news = (state.current.news || []).filter((story) => story.transferRecordId !== record.id);
-  recalculateClubPayrollPressure(state, [buyer.id, seller?.id].filter(Boolean));
   invalidateRuntimeCache(state);
+  recalculateClubPayrollPressure(state, [buyer.id, seller?.id].filter(Boolean));
   addEditorAction(state, { type: 'cancel-transfer', transferId: record.id || `legacy-${recordIndex}`, playerId: record.playerId });
   addEditorNews(state, `Editor reversal: ${player.name}'s move is cancelled`, `${player.name} returns to ${seller?.name || 'free agency'} for the remainder of the offseason.`, player.id);
   refreshOffseasonEditorSummary(state);
@@ -5496,7 +5941,10 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
     }
     if (!possibleBuyers.length) continue;
     const buyer = geographicClubPick(state, possibleBuyers, player, (club) => {
-      const positionFit = positionNeedFromRoster(state, club, rosters.get(club.id) || []) === player.position ? 12 : 3;
+      const clubRoster = rosters.get(club.id) || [];
+      const systemNeed = clubSystemNeed(state, club, clubRoster);
+      const positionFit = (positionNeedFromRoster(state, club, clubRoster) === player.position ? 12 : 3)
+        + (systemNeed && systemNeed.line === player.position && slotFit(player, systemNeed.slotType) >= 0.94 ? 5 : 0);
       const eliteAtClub = (rosters.get(club.id) || []).filter((item) => item.rarity === player.rarity).length;
       const hoardingPenalty = player.rarity === 'generational' ? 1 / (1 + eliteAtClub * 3.2) : player.rarity === 'legend' ? 1 / (1 + eliteAtClub * 0.8) : 1;
       const europePull = migrationPressure >= 45 && club.confederation === 'Europe' ? 1.8 : 1;
@@ -5707,7 +6155,11 @@ function runTransferMarket(state, initial = false) {
     if (buyer.division === 2 && random(state) < 0.56) continue;
     const roster = rosters.get(buyer.id) || [];
     const target = buyer.division === 2 ? CLUB_ROSTER_TARGET.reserve : CLUB_ROSTER_TARGET[buyer.tier];
+    // A full squad only buys when it can still name the player in a matchday 15.
+    if (roster.length >= target + 2) continue;
     const needPosition = positionNeedFromRoster(state, buyer, roster);
+    const buyerSystem = clubSystemNeed(state, buyer, roster);
+    const systemSlot = buyerSystem?.line === needPosition ? buyerSystem.slotType : null;
     const weakest = roster.filter((player) => player.position === needPosition).sort((a, b) => a.rating - b.rating)[0];
     const minimumUpgrade = weakest?.rating || buyer.strength - 11;
     const minimumRating = minimumUpgrade + (roster.length >= target ? 2 : -3);
@@ -5742,8 +6194,10 @@ function runTransferMarket(state, initial = false) {
       const ambition = buyer.reputation - (seller?.reputation || 60);
       const unhappiness = 105 - candidate.happiness;
       const rarity = STAR_RARITIES[candidate.rarity].rank;
+      // Players who fit the slot the coach's system is missing are preferred.
+      const systemFit = systemSlot ? (slotFit(candidate, systemSlot) >= 0.94 ? 1.7 : 0.75) : 1;
       return Math.max(0.2, candidate.rating - minimumUpgrade + ambition * 0.18 + unhappiness * 0.06 + rarity * 0.8)
-        * playerGeographyWeight(state, candidate, buyer);
+        * playerGeographyWeight(state, candidate, buyer) * systemFit;
     });
     const seller = getClub(state, player.clubId);
     const fee = seller ? askingPrice(state, player, buyer) : 0;
@@ -6225,6 +6679,10 @@ function captureShowcaseMatch(state, match) {
     penaltySequence,
     liveProgress: { timelineIndex: 0, pauseReason: null, penaltyIndex: 0 },
     manOfMatchId: match.manOfMatchId || null,
+    lineups: match.lineups || {
+      home: getTeamSquadView(state, match.homeId, match.isInternational),
+      away: getTeamSquadView(state, match.awayId, match.isInternational)
+    },
     resolved: false,
     resolutionMode: null
   };
@@ -6293,8 +6751,20 @@ function selectedShowcaseMatches(state) {
   return captured.sort((a, b) => a.week - b.week || a.competitionName.localeCompare(b.competitionName));
 }
 
+const POSTSEASON_STATS_INDEX = new WeakMap();
 function postseasonSeasonStats(state, playerId) {
-  const stats = Object.values(state.current.playerStats || {}).filter((row) => row.playerId === playerId && row.apps > 0);
+  const source = state.current.playerStats || {};
+  let byPlayer = POSTSEASON_STATS_INDEX.get(source);
+  if (!byPlayer) {
+    byPlayer = new Map();
+    for (const row of Object.values(source)) {
+      if (!(row.apps > 0)) continue;
+      if (!byPlayer.has(row.playerId)) byPlayer.set(row.playerId, []);
+      byPlayer.get(row.playerId).push(row);
+    }
+    POSTSEASON_STATS_INDEX.set(source, byPlayer);
+  }
+  const stats = byPlayer.get(playerId) || [];
   const apps = stats.reduce((sum, row) => sum + (row.apps || 0), 0);
   const goals = stats.reduce((sum, row) => sum + (row.goals || 0), 0);
   const assists = stats.reduce((sum, row) => sum + (row.assists || 0), 0);
@@ -6517,6 +6987,39 @@ export function getLeagueTable(state, leagueId) {
 
 export function getTeamPower(state, teamId, isInternational = false) {
   return calculateTeamStrength(state, teamId, isInternational);
+}
+
+// Matchday squad as the UI shows it: formation, fit and the XI on a pitch.
+export function getTeamSquadView(state, teamId, isInternational = false) {
+  const squad = getTeamSquad(state, teamId, isInternational);
+  const row = (player, extra = {}) => ({
+    playerId: player.depth ? null : player.id,
+    depth: Boolean(player.depth),
+    position: player.position,
+    rating: player.rating,
+    ...extra
+  });
+  return {
+    formationId: squad.formationId,
+    preferredFormation: squad.preferredFormation,
+    fit: squad.fit,
+    fallback: squad.fallback,
+    xi: squad.xi.map((item) => row(item.player, {
+      slotType: item.slotType,
+      x: item.x,
+      y: item.y,
+      effective: Math.round(item.effective),
+      slotFit: Number(item.fit.toFixed(2))
+    })),
+    bench: squad.bench.map((player) => row(player))
+  };
+}
+
+export function getCoachFormations(state, coachId) {
+  const coach = getRuntimeCache(state).coachById.get(coachId) || state.coaches?.find((item) => item.id === coachId);
+  if (!coach) return null;
+  const { primary, secondary } = coachFormationPair(coach);
+  return { primary, secondary };
 }
 
 export function getCompetitionLeaderboard(state, competitionId, metric = 'goals') {
@@ -7107,6 +7610,37 @@ export function upgradeWorld(state) {
     state.current.editorActions ||= [];
     state.dataRevision = 25;
     invalidateRuntimeCache(state);
+  }
+  if (state.dataRevision < 26) {
+    // v4 Phase 1: 15-player squads and coach formations.
+    for (const coach of state.coaches || []) ensureCoachFormation(coach);
+    invalidateRuntimeCache(state);
+    const cache = getRuntimeCache(state);
+    let added = 0;
+    for (const club of state.clubs || []) {
+      if (rosterTargetFor(club) < SQUAD_SIZE) continue;
+      const roster = [...(cache.clubPlayers.get(club.id) || [])];
+      let addedSalary = 0;
+      while (roster.length < SQUAD_SIZE) {
+        const position = positionNeedFromRoster(state, club, roster);
+        const need = clubSystemNeed(state, club, roster);
+        const role = need?.line === position ? bestRoleForSlot(need.slotType) : null;
+        const player = createSquadFiller(state, club, position, { roleOptions: role ? [role] : null, debutSeason: state.season });
+        // Fillers join as established squad members, not as this season's signings.
+        player.clubJoinedSeason = state.season - Math.min(player.careerYear, 3);
+        player.transferProtectedUntilSeason = null;
+        state.players.push(player);
+        roster.push(player);
+        addedSalary += player.salary;
+        added += 1;
+      }
+      // Existing wage anchors grow with the squad so no club is pushed into payroll distress.
+      if (addedSalary && Number.isFinite(club.payrollAnchor)) club.payrollAnchor = Number((club.payrollAnchor + addedSalary).toFixed(1));
+    }
+    state.targetActivePlayers = (state.targetActivePlayers || 0) + added;
+    invalidateRuntimeCache(state);
+    recalculateClubPayrollPressure(state);
+    state.dataRevision = 26;
   }
   return state;
 }

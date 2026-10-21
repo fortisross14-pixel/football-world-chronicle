@@ -2,6 +2,13 @@
 
 A browser-first football universe simulator with 137 domestic systems, continental club football, international cycles, long player careers, transfers, club staff, historical records and optional Neon cloud saves.
 
+## v4 match engine and player model (in progress)
+
+- **Squads:** top-flight clubs name 15 players (11 + 4). Coaches have preferred and fallback formations, and formation fit shapes lineups, strength, transfers and coach appointments. Condensed and second-division clubs keep four named players plus unnamed depth ratings.
+- `npm run calibration` reports match realism and award spread; `npm run perf` times 20 seasons. Results are in docs/CALIBRATION.md.
+- `node scripts/run-regressions.mjs` runs the regression suite, including the v4 phase scripts.
+- Existing saves upgrade automatically (data revision 26 and later). No Neon schema changes.
+
 ## v3.16.1 offseason editor
 
 - Menu now has an explicit **Home** destination and reveals **Editor** only during the offseason, before Week 1.
