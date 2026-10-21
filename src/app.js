@@ -51,7 +51,9 @@ import {
   getShootoutLeaders,
   getPlayerAvailability,
   getPlayerInjuryHistory,
-  isFullDetailLeague
+  isFullDetailLeague,
+  getPlayerProfileDetails,
+  getClubLoans
 } from './engine.js';
 import { styleMatchup, styleMatchupSummary } from './match-engine.js';
 import { playerPortrait as visualPlayerPortrait, coachPortrait as visualCoachPortrait, clubLogoUrls, competitionEmblem } from './visuals.js';
@@ -767,7 +769,7 @@ function homeAwardRace() {
   return `<section class="panel"><div class="panel-head"><h3>Ballon d'Or race</h3><a href="#/awards/current">Full race</a></div><ol class="race-list">${rows.map((row, index) => {
     const player = playerById(row.playerId);
     const score = Number(row.components?.teamDiversityScore ?? row.components?.score ?? 0);
-    return `<li class="race-entry ${index === 0 ? 'leader' : ''}"><b class="race-rank">${index + 1}</b>${player ? playerPortrait(player, 'sm') : ''}<div class="race-name">${playerLink(row.playerId, false)}<small>${player?.clubId ? esc(clubById(player.clubId)?.name || '') : ''} · ${row.components?.goals ?? 0} G · ${row.components?.assists ?? 0} A</small></div><div class="race-score"><strong>${score.toFixed(1)}</strong><span class="race-bar" aria-hidden="true"><i style="width:${Math.max(6, Math.round(score / (top || 1) * 100))}%"></i></span></div></li>`;
+    return `<li class="race-entry ${index === 0 ? 'leader' : ''}"><b class="race-rank">${index + 1}</b>${player ? playerPortrait(player, 'sm') : ''}<div class="race-name">${playerLink(row.playerId, false)}${formArrow(player?.form)}<small>${player?.clubId ? esc(clubById(player.clubId)?.name || '') : ''} · ${row.components?.goals ?? 0} G · ${row.components?.assists ?? 0} A</small></div><div class="race-score"><strong>${score.toFixed(1)}</strong><span class="race-bar" aria-hidden="true"><i style="width:${Math.max(6, Math.round(score / (top || 1) * 100))}%"></i></span></div></li>`;
   }).join('')}</ol></section>`;
 }
 
@@ -2170,12 +2172,12 @@ function transferList(transfers, compact = false) {
   return `<div class="transfer-list ${compact ? 'compact' : ''}">${transfers.map((transfer) => {
     const player = playerById(transfer.playerId);
     const portrait = player && ['epic','legend','generational'].includes(player.rarity) ? playerPortrait(player,'sm') : '';
-    return `<div class="transfer-row"><div class="transfer-player transfer-player-visual">${portrait}<div>${player ? `${rarityBadge(player.rarity)}${playerLink(player.id, false)}` : 'Unknown player'}<small>${player ? `${player.position} · ${player.roleLabel}` : ''}</small></div></div><div class="transfer-route"><span>${transfer.fromClubId ? esc(clubById(transfer.fromClubId)?.name) : 'Free agency'}</span><b>→</b><span>${esc(clubById(transfer.toClubId)?.name)}</span></div><strong>${transfer.freeTransfer ? 'Free' : money(transfer.fee)}</strong></div>`;
+    return `<div class="transfer-row"><div class="transfer-player transfer-player-visual">${portrait}<div>${player ? `${rarityBadge(player.rarity)}${playerLink(player.id, false)}` : 'Unknown player'}<small>${player ? `${player.position} · ${player.roleLabel}` : ''}</small></div></div><div class="transfer-route"><span>${transfer.fromClubId ? esc(clubById(transfer.fromClubId)?.name) : 'Free agency'}</span><b>→</b><span>${esc(clubById(transfer.toClubId)?.name)}</span></div><strong>${transfer.loan ? 'Loan' : transfer.freeTransfer ? 'Free' : money(transfer.fee)}</strong></div>`;
   }).join('')}</div>`;
 }
 
 function transferMarketTabs(active) {
-  return `<nav class="tab-bar"><a href="#/transfers/players" class="${active === 'players' ? 'active' : ''}">Players</a><a href="#/transfers/coaches" class="${active === 'coaches' ? 'active' : ''}">Coaches</a></nav>`;
+  return `<nav class="tab-bar"><a href="#/transfers/players" class="${active === 'players' ? 'active' : ''}">Players</a><a href="#/transfers/loans" class="${active === 'loans' ? 'active' : ''}">Loans</a><a href="#/transfers/coaches" class="${active === 'coaches' ? 'active' : ''}">Coaches</a></nav>`;
 }
 
 function coachMoveList(moves) {
@@ -2190,7 +2192,14 @@ function coachMoveList(moves) {
 }
 
 function transfersPage(tabRaw = 'players') {
-  const tab = tabRaw === 'coaches' ? 'coaches' : 'players';
+  const tab = tabRaw === 'coaches' ? 'coaches' : tabRaw === 'loans' ? 'loans' : 'players';
+  if (tab === 'loans') {
+    const loans = state.history.transfers.filter((transfer) => transfer.loan && transfer.season === state.season).reverse();
+    const allLoans = state.history.transfers.filter((transfer) => transfer.loan);
+    return `${pageHead('TRANSFER MARKET', `${state.current.seasonLabel} loans`, 'Big clubs send young prospects who would not start to clubs where they will play. Loan spells count for development and return to the parent club next summer.')}${transferMarketTabs(tab)}
+      <div class="stats-ribbon">${statCard('Loans this season', loans.length)}${statCard('All-time loans', allLoans.length)}${statCard('Lending clubs', new Set(loans.map((row) => row.fromClubId)).size)}</div>
+      <section class="panel section-gap"><div class="panel-head"><div><h3>Loan moves</h3></div></div>${transferList(loans)}</section>`;
+  }
   if (tab === 'coaches') {
     const currentMoves = (state.history.coachMoves || []).filter((move) => move.season === state.season || move.season === state.season + 1).reverse();
     const eliteMoves = currentMoves.filter((move) => ['generational','legend','epic'].includes(coachById(move.coachId)?.rarity));
@@ -2374,7 +2383,7 @@ function playerClubTimeline(player, career) {
     map.set(key, item);
   }
   const timeline = [...map.values()].map((row) => ({ ...row, averageRating: row.apps ? row.ratingWeighted / row.apps : 0 })).sort((a, b) => b.season - a.season || b.apps - a.apps);
-  return `<section class="panel section-gap"><div class="panel-head"><div><h3>Teams by season</h3></div><span class="muted">Quick total across all club competitions</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Season</th><th>Club</th><th>Games</th><th>Goals</th><th>Assists</th><th>Rating</th></tr></thead><tbody>${timeline.map((row) => `<tr><td><strong>${esc(row.seasonLabel)}</strong></td><td>${teamLink(row.teamId)}</td><td>${row.apps}</td><td>${row.goals}</td><td>${row.assists}</td><td>${row.averageRating ? row.averageRating.toFixed(2) : '—'}</td></tr>`).join('') || `<tr><td colspan="6">${esc(player.name)} has not completed a club season yet.</td></tr>`}</tbody></table></div></section>`;
+  return `<section class="panel section-gap"><div class="panel-head"><div><h3>Teams by season</h3></div><span class="muted">Quick total across all club competitions</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Season</th><th>Club</th><th>Games</th><th>Goals</th><th>Assists</th><th>Rating</th></tr></thead><tbody>${timeline.map((row) => `<tr><td><strong>${esc(row.seasonLabel)}</strong></td><td>${teamLink(row.teamId)}${(player.loanHistory || []).some((loan) => loan.season === row.season && loan.clubId === row.teamId) ? ' <span class="avail-chip tired">Loan</span>' : ''}</td><td>${row.apps}</td><td>${row.goals}</td><td>${row.assists}</td><td>${row.averageRating ? row.averageRating.toFixed(2) : '—'}</td></tr>`).join('') || `<tr><td colspan="6">${esc(player.name)} has not completed a club season yet.</td></tr>`}</tbody></table></div></section>`;
 }
 
 function playerCareerChart(player) {
@@ -2459,7 +2468,7 @@ function playerPage(id, tabRaw = 'overview') {
   const recentLogs = [...(career.logs || [])].slice(-6).reverse();
   const topHonours = groupedRecords(career.honours, 'competitionName').slice(0, 6);
   return `${heading}
-    <div class="two-column wide-left section-gap"><div class="stack"><section class="panel"><div class="panel-head"><h3>${esc(careerLabel)}</h3><span class="panel-meta">Career Y${Math.min(player.careerYear + 1, player.careerLength)}/${player.careerLength}</span></div><p class="role-copy">${esc(player.name)} is a ${esc(STAR_RARITIES[player.rarity]?.label || player.rarity)} ${esc(player.roleLabel.toLowerCase())}. ${career.honours.length ? `The career currently includes ${career.honours.length} team trophies.` : 'The first major team trophy is still ahead.'} ${hof ? `Retirement earned induction into the Football Hall of Fame with a legacy score of ${hof.score}.` : player.status === 'retired' ? 'The career ended without Football Hall of Fame induction.' : 'The legacy is still being written.'}</p><div class="staff-effects">${player.status === 'active' ? availabilityChips(player.id) : ''}<span>Base ${player.baseQuality}</span><span>Ages ${player.debutAge || 18}–${(player.debutAge || 18) + player.careerLength}</span><span>${player.realWorldId ? 'Historical icon' : 'Original world star'}</span>${playerLeagueContext(player) ? `<span>${esc(playerLeagueContext(player))}</span>` : ''}</div><div class="spotlight-grid"><article class="spotlight-card"><span>Current team</span><strong>${player.clubId ? esc(clubById(player.clubId)?.name || 'Club') : 'Free agent'}</strong><small>${player.clubId ? esc(competitionLabel(clubById(player.clubId)?.leagueId)) : esc(status)}</small></article><article class="spotlight-card"><span>Contract</span><strong>${player.status === 'active' ? (player.contractYears ? `${player.contractYears} yr` : 'Ending now') : 'Closed'}</strong><small>${player.status === 'active' ? 'Career leverage in the market' : 'Career complete'}</small></article><article class="spotlight-card"><span>International</span><strong>${career.international.caps} caps</strong><small>${career.international.goals} goals for country</small></article></div></section>
+    <div class="two-column wide-left section-gap"><div class="stack">${player.status === 'active' ? playerExtrasPanel(player) : ''}<section class="panel"><div class="panel-head"><h3>${esc(careerLabel)}</h3><span class="panel-meta">Career Y${Math.min(player.careerYear + 1, player.careerLength)}/${player.careerLength}</span></div><p class="role-copy">${esc(player.name)} is a ${esc(STAR_RARITIES[player.rarity]?.label || player.rarity)} ${esc(player.roleLabel.toLowerCase())}. ${career.honours.length ? `The career currently includes ${career.honours.length} team trophies.` : 'The first major team trophy is still ahead.'} ${hof ? `Retirement earned induction into the Football Hall of Fame with a legacy score of ${hof.score}.` : player.status === 'retired' ? 'The career ended without Football Hall of Fame induction.' : 'The legacy is still being written.'}</p><div class="staff-effects">${player.status === 'active' ? availabilityChips(player.id) : ''}<span>Base ${player.baseQuality}</span><span>Ages ${player.debutAge || 18}–${(player.debutAge || 18) + player.careerLength}</span><span>${player.realWorldId ? 'Historical icon' : 'Original world star'}</span>${playerLeagueContext(player) ? `<span>${esc(playerLeagueContext(player))}</span>` : ''}</div><div class="spotlight-grid"><article class="spotlight-card"><span>Current team</span><strong>${player.clubId ? esc(clubById(player.clubId)?.name || 'Club') : 'Free agent'}</strong><small>${player.clubId ? esc(competitionLabel(clubById(player.clubId)?.leagueId)) : esc(status)}</small></article><article class="spotlight-card"><span>Contract</span><strong>${player.status === 'active' ? (player.contractYears ? `${player.contractYears} yr` : 'Ending now') : 'Closed'}</strong><small>${player.status === 'active' ? 'Career leverage in the market' : 'Career complete'}</small></article><article class="spotlight-card"><span>International</span><strong>${career.international.caps} caps</strong><small>${career.international.goals} goals for country</small></article></div></section>
     ${recentLogs.length ? `<section class="panel"><div class="panel-head"><h3>Recent matches</h3><a href="${base}/statistics">Match log</a></div><div class="form-log">${recentLogs.map((log) => `<div class="form-log-row"><span class="form-${String(log.result || '').toLowerCase()}">${esc(log.result || '')}</span><span class="form-log-comp">${competitionEmblem(log.competitionId, 'xs')}${esc(competitionLabel(log.competitionId))}</span><span class="form-log-opp">${teamLink(log.opponentId, log.isInternational)}</span><span class="num">${esc(log.score || '')}</span><span class="num">${log.goals ? `${log.goals} G` : ''}${log.assists ? ` ${log.assists} A` : ''}</span><b class="rating-chip ${log.rating >= 8 ? 'high' : log.rating < 6.3 ? 'low' : ''}">${log.rating.toFixed(1)}</b></div>`).join('')}</div></section>` : ''}</div>
     <div class="stack"><section class="panel"><div class="panel-head"><h3>Legacy</h3></div>${hof ? `<div class="legacy-callout"><strong>${icon('trophy')}Football Hall of Fame</strong><span>Inducted ${esc(hof.inductionSeasonLabel)} · Score ${hof.score}</span></div>` : '<div class="empty-state compact">Hall of Fame induction is decided only when the player retires.</div>'}${legends.length ? `<div class="legend-mini-list">${legends.map((row) => `<a href="#/club/${row.clubId}/legacy">${crest(row.clubId, 'xs')}<span>Club legend · ${esc(clubById(row.clubId)?.name || row.clubId)}</span><b>${row.score}</b></a>`).join('')}</div>` : ''}</section>
     <section class="panel"><div class="panel-head"><h3>Honours</h3><a href="${base}/honours">All honours</a></div>${topHonours.length ? `<div class="trophy-cabinet compact">${topHonours.map((group) => `<div class="trophy-shelf"><span class="trophy-count">${group.years.length}</span><div><strong>${esc(group.name)}</strong><small>${group.years.sort((a, b) => a - b).map((year) => getSeasonLabel(year)).join(' · ')}</small></div></div>`).join('')}</div>` : '<div class="empty-state compact">No team trophies yet.</div>'}${individualAwards.length ? `<div class="award-tags">${groupedRecords(individualAwards, 'name').slice(0, 6).map((group) => `<span class="trophy-tag">${icon('medal')}${esc(group.name)} ×${group.years.length}</span>`).join('')}</div>` : ''}</section></div></div>`;
@@ -2676,6 +2685,25 @@ function coachFormationText(coach) {
   return formations ? `${formations.primary} (alt ${formations.secondary})` : '—';
 }
 
+function formArrow(form) {
+  if (!form || Math.abs(form) < 0.2) return '';
+  return form > 0 ? '<span class="form-arrow up" title="In form">▲</span>' : '<span class="form-arrow down" title="Out of form">▼</span>';
+}
+
+function playerExtrasPanel(player) {
+  const details = getPlayerProfileDetails(state, player.id);
+  if (!details) return '';
+  const traits = details.traits.length
+    ? details.traits.map((trait) => `<span class="trait-chip" title="${esc(trait.description)}">${esc(trait.label)}</span>`).join('')
+    : '<span class="muted">No standout traits</span>';
+  const potential = details.potential
+    ? (details.potential.settled ? 'Fully developed' : `Scouts see ${details.potential.low}–${details.potential.high}`)
+    : '—';
+  const loan = details.loan ? `<div><span>Loan</span><strong>At ${teamLink(details.loan.clubId)} from ${teamLink(details.loan.parentClubId)}</strong></div>` : '';
+  const captain = details.captainOf ? `<div><span>Role</span><strong>Captain of ${teamLink(details.captainOf)}</strong></div>` : '';
+  return `<section class="panel"><div class="panel-head"><h3>Personality and outlook</h3>${details.academy ? '<span class="panel-meta">Academy graduate</span>' : ''}</div><div class="identity-list"><div><span>Traits</span><strong class="trait-row">${traits}</strong></div><div><span>Potential</span><strong>${esc(potential)}</strong></div><div><span>Form</span><strong>${esc(details.formLabel)} ${formArrow(details.form)}</strong></div>${captain}${loan}</div></section>`;
+}
+
 // Injured, suspended and tired markers for squad lists.
 function availabilityChips(playerId) {
   if (!state.current || state.current.completed) return '';
@@ -2689,7 +2717,10 @@ function availabilityChips(playerId) {
 }
 
 function squadRow(player, extra = '') {
-  return `<a class="squad-row squad-row-wide squad-row-visual" href="#/player/${player.id}/overview">${playerPortrait(player, 'sm')}<span class="position-pill pos-${player.position.toLowerCase()}">${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${esc(player.roleLabel)}${extra}${availabilityChips(player.id)}</small></div><b>${player.rating}</b></a>`;
+  const club = player.clubId ? clubById(player.clubId) : null;
+  const captain = club?.captainId === player.id ? '<span class="captain-chip" title="Captain">C</span>' : '';
+  const loan = player.loan ? `<span class="avail-chip tired" title="On loan">Loan · ${esc(clubById(player.loan.parentClubId)?.name || '')}</span>` : '';
+  return `<a class="squad-row squad-row-wide squad-row-visual" href="#/player/${player.id}/overview">${playerPortrait(player, 'sm')}<span class="position-pill pos-${player.position.toLowerCase()}">${player.position}</span><div><strong>${esc(player.name)}${captain}${formArrow(player.form)}</strong><small>${rarityBadge(player.rarity)} ${esc(player.roleLabel)}${extra}${availabilityChips(player.id)}${loan}</small></div><b>${player.rating}</b></a>`;
 }
 
 function formPills(form = []) {
@@ -2767,6 +2798,7 @@ function clubPage(id, tabRaw = 'overview') {
       const rows = history.allCurrentPlayers.filter((player) => player.position === code);
       return rows.length ? `<div class="squad-group"><h4>${label}</h4><div class="squad-list">${rows.map((player) => squadRow(player, ` · ${player.contractYears ? `${player.contractYears} yr` : 'Free'} · ${money(player.marketValue)}`)).join('')}</div></div>` : '';
     }).join('')}</div></section>
+    ${clubLoansPanel(club)}
     <section class="section-gap"><h2 class="section-title">Staff</h2>${clubStaffCards(club, owner, coach)}</section>
     <section class="panel section-gap"><div class="panel-head"><h3>All-time club leaders</h3><span class="panel-meta">By appearances</span></div>${clubPlayerLeadersTable(club.id)}</section>`;
   }
@@ -2792,6 +2824,13 @@ function clubPage(id, tabRaw = 'overview') {
     <div class="stack"><section class="panel"><div class="panel-head"><h3>Season so far</h3><a href="#/club/${club.id}/season">Season</a></div><div class="identity-list"><div><span>League</span><strong>${club.division === 1 ? (position ? `#${position} · ${tableRow?.points ?? 0} pts` : '—') : 'Promotion pool'}</strong></div><div><span>Record</span><strong>${tableRow ? `${tableRow.wins}W ${tableRow.draws}D ${tableRow.losses}L` : '—'}</strong></div><div><span>Form</span>${formPills(tableRow?.form || [])}</div></div>${recent.length ? `<div class="matches-list tight">${recent.map((m) => matchRow(m, true)).join('')}</div>` : ''}</section>
     <section class="panel"><div class="panel-head"><h3>Leadership</h3><a href="#/club/${club.id}/staff">Staff</a></div><div class="identity-list"><div><span>President</span><strong>${owner ? ownerLink(owner.id) : 'Vacant'}</strong></div><div><span>Coach</span><strong>${coach ? coachLink(coach.id) : 'Vacant'}</strong></div><div><span>Coach focus</span><strong>${esc(COACH_FOCUSES[coach?.focus]?.label || '—')}</strong></div><div><span>Formation</span><strong>${esc(formationSummary(getTeamSquadView(state, club.id, false)))}</strong></div></div></section>
     <section class="panel"><div class="panel-head"><h3>Trophy cabinet</h3><a href="#/club/${club.id}/history">History</a></div>${trophyCabinet(honours)}</section></div></div>`;
+}
+
+function clubLoansPanel(club) {
+  const loans = getClubLoans(state, club.id);
+  if (!loans.out.length && !loans.in.length) return '';
+  const row = (playerId, otherClubId, label) => { const player = playerById(playerId); return player ? squadRow(player, ` · ${label} ${esc(clubById(otherClubId)?.name || '')}`) : ''; };
+  return `<section class="panel section-gap"><div class="panel-head"><h3>Loans</h3><span class="panel-meta">${loans.out.length} out · ${loans.in.length} in</span></div><div class="squad-list">${loans.out.map((item) => row(item.playerId, item.clubId, 'on loan at')).join('')}${loans.in.map((item) => row(item.playerId, item.parentClubId, 'loan from')).join('')}</div></section>`;
 }
 
 function clubPlayerLeadersTable(clubId){const rows=clubAllTimePlayerRows(clubId).sort((a,b)=>b.games-a.games).slice(0,15);return `<div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>G</th><th>Goals</th><th>Assists</th><th>CS</th><th>Rating</th><th>Titles</th></tr></thead><tbody>${rows.map((r)=>`<tr><td>${playerLink(r.playerId)}</td><td>${r.games}</td><td>${r.goals}</td><td>${r.assists}</td><td>${r.cleanSheets}</td><td>${r.averageRating?r.averageRating.toFixed(2):'—'}</td><td>${r.titles}</td></tr>`).join('')||'<tr><td colspan="7">No archived player history yet.</td></tr>'}</tbody></table></div>`;}

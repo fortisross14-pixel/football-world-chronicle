@@ -80,4 +80,10 @@ expect('club records shootouts', visit(`#/club/${club.id}/legacy`), ['Penalty sh
 const injured = world.players.find((player) => (player.injuries || []).length);
 if (injured) expect('player injury history', visit(`#/player/${injured.id}/statistics`), ['Injury history', 'avail-chip']);
 
+// Phase 4: personality, potential, form, captain and loans.
+const youngster = world.players.find((player) => player.status === 'active' && player.careerYear <= 2 && player.clubId);
+expect('player personality panel', visit(`#/player/${youngster.id}/overview`), ['Personality and outlook', 'Potential', 'Form']);
+expect('club captain chip', visit(`#/club/${club.id}/squad`), ['captain-chip']);
+expect('loans tab', visit('#/transfers/loans'), ['Loan moves', 'Loans this season']);
+
 console.log(JSON.stringify({ checks, passed: true }, null, 2));

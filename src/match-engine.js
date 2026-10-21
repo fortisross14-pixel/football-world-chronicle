@@ -124,13 +124,13 @@ function poisson(rng, mean) {
   return count;
 }
 
-function newEntry(source, started, minute, fitness = 100) {
+function newEntry(source, started, minute, fitness = 100, form = 0) {
   return {
     source,
     id: source.id || null,
     line: source.line,
     slotType: source.slotType || null,
-    effective: source.effective,
+    effective: source.effective + form,
     rating: source.rating,
     goalW: source.goalW > 0.001 ? source.goalW : 0.001,
     assistW: source.assistW > 0.001 ? source.assistW : 0.001,
@@ -163,9 +163,10 @@ function freshEffective(entry) {
 }
 
 function computeUnits(team) {
-  let attack = 0, attackW = 0, defence = 0, defenceW = 0, control = 0, controlW = 0, energy = 0;
+  let attack = 0, attackW = 0, defence = 0, defenceW = 0, control = 0, controlW = 0, energy = 0, temper = 0;
   for (const entry of team.onPitch) {
     const value = entry.effective;
+    temper += entry.cardProne;
     const a = ATTACK_WEIGHT[entry.line] ?? 0.5, d = DEFENCE_WEIGHT[entry.line] ?? 0.5, c = CONTROL_WEIGHT[entry.line] ?? 0.5;
     attack += value * a; attackW += a;
     defence += value * d; defenceW += d;
@@ -178,6 +179,8 @@ function computeUnits(team) {
   team.energy = team.onPitch.length ? energy / team.onPitch.length : 80;
   team.goalTotal = -1;
   team.assistTotal = -1;
+  // Hot-headed players raise how often the side is booked, not only who is.
+  team.temper = team.onPitch.length ? temper / team.onPitch.length : 1;
   if (team.attack0 !== undefined) {
     team.attackFactor = Math.exp((team.attack - team.attack0) / 13);
     team.defenceFactor = Math.exp(-(team.defence - team.defence0) / 13);
@@ -268,8 +271,8 @@ function buildTeam(input, side) {
     style: STYLE_PROFILES[input.style] || NEUTRAL_STYLE,
     styleId: input.style || null,
     lambda0: input.lambda,
-    onPitch: input.xi.map((source, index) => newEntry(source, true, 0, input.fitness ? input.fitness[index] : 100)),
-    bench: input.bench.map((source, index) => newEntry(source, false, null, input.fitness ? input.fitness[input.xi.length + index] : 100)),
+    onPitch: input.xi.map((source, index) => newEntry(source, true, 0, input.fitness ? input.fitness[index] : 100, input.form ? input.form[index] : 0)),
+    bench: input.bench.map((source, index) => newEntry(source, false, null, input.fitness ? input.fitness[input.xi.length + index] : 100, input.form ? input.form[input.xi.length + index] : 0)),
     maxSubs: input.maxSubs ?? Math.min(4, input.bench.length),
     subsUsed: 0,
     tacticalSubs: 0,
@@ -286,7 +289,8 @@ function buildTeam(input, side) {
     goalTotal: -1, assistTotal: -1,
     baseRate: 0,
     dirty: false,
-    injuredPending: false
+    injuredPending: false,
+    temper: 1
   };
   team.all = [...team.onPitch];
   computeUnits(team);
@@ -466,7 +470,7 @@ function resolveShot(match, team, opponent, slice, rng) {
   const keeper = goalkeeperOf(opponent);
   const quality = freshEffective(shooter);
   const keeperQuality = keeper ? freshEffective(keeper) : opponent.defence - 8;
-  const big = rng() < team.style.bigChance * (1 + shooter.bigGame * match.bigGameStakes);
+  const big = rng() < team.style.bigChance * (1 + shooter.bigGame * match.bigGameStakes * 0.3);
   const penalty = big && rng() < 0.09;
   const time = eventMinute(rng, slice);
   team.shots += 1;
@@ -558,7 +562,7 @@ function resolveDiscipline(match, team, opponent, slice, rng) {
   const own = team.goals + (match.aggregate ? match.aggregate[team.side] : 0);
   const other = opponent.goals + (match.aggregate ? match.aggregate[opponent.side] : 0);
   const frustration = own < other ? 1.15 : 1;
-  const base = team.style.cards * match.strictness * match.intensity * frustration * profile * (info.length / 90);
+  const base = team.style.cards * match.strictness * match.intensity * frustration * profile * team.temper * (info.length / 90);
   const yellowChance = 1.95 * base;
   const redChance = 0.017 * base;
   const roll = rng();

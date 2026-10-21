@@ -1,5 +1,17 @@
 # v4 match engine and player model (in progress)
 
+## Phase 4 — Players who change over time
+
+- Hidden potential: new young players start a few points below their ceiling (elite prospects closer). Yearly growth depends on minutes, average rating, coaching (Youth Developer coaches and coach quality), league level, personality and chance, on top of the existing career-curve archetype. Breakouts lift the ceiling, prospects who never play stall, late bloomers appear and some players decline early. Ability stays within one point of the rarity band, so rarity caps and Hall of Fame standards keep their meaning; the 88+ population stays stable (30–36 over eight seasons in the regression).
+- The UI shows a scouting range that narrows with age ("Scouts see 82–88"; "Fully developed" later).
+- In-season form follows recent match ratings (±2 rating points at the extremes): hot streaks and slumps, shown on profiles, squad lists and the Ballon d'Or race.
+- Eight personality traits, one or two per player and more common types for stars: Loyal, Mercenary, Big-game player, Injury-prone, Leader, Hot-headed, Professional, Clutch penalty taker. They change renewals and departures, big-chance creation in decisive games, injury frequency, booking rates, development and longevity, and shootout conversion.
+- Every club has a captain (leaders first); a leader on the pitch lifts the side slightly.
+- Academy intake: top-flight clubs promote a youth graduate most summers (never above Rare), replacing a weak veteran.
+- Loans: big clubs send young prospects who would not start to clubs where they will play; loans return next summer, count for development and appear in the career timeline, club pages and a new Loans tab in the transfer market.
+- New signings are no longer released or loaned out again in the same window.
+- Data revision 30: existing players receive traits and potential with no change to current ability, and every club gets a captain.
+
 ## Phase 3 — Fitness, rotation, injuries and suspensions
 
 - Players carry match fitness. A full match costs about 16 points and a week restores 22, so two games a week are manageable and congested runs wear players down. Fitness is the player's starting energy in the match engine.

@@ -93,10 +93,13 @@ report.payroll = { maxPressure: Number(Math.max(...world.clubs.map((club) => clu
 // --- Seasons keep running and squads stay sane ------------------------------------
 simulateToSeasonEnd(world);
 startNextSeason(world);
+// v4 Phase 4: loans move players between squads. A big club lending two prospects
+// out has 13 players present, and a borrower's 15 includes its loanee, so the check
+// is on players present at the club (13-18) rather than the original 15-18.
 const sizes = new Map();
 for (const player of world.players) if (player.status === 'active' && player.clubId) sizes.set(player.clubId, (sizes.get(player.clubId) || 0) + 1);
 const topSizes = world.clubs.filter((club) => club.tier === 'detailed' && club.division === 1).map((club) => sizes.get(club.id) || 0);
-assert(Math.min(...topSizes) >= 15 && Math.max(...topSizes) <= 18, `top-flight squads stay between 15 and 18 (${Math.min(...topSizes)}–${Math.max(...topSizes)})`);
+assert(Math.min(...topSizes) >= 13 && Math.max(...topSizes) <= 18, `top-flight squads stay between 13 and 18 (${Math.min(...topSizes)}–${Math.max(...topSizes)})`);
 const after = {};
 for (const player of world.players) if (player.status === 'active') after[player.rarity] = (after[player.rarity] || 0) + 1;
 assert(after.generational <= 3 && after.legend <= 15 && after.epic <= 50, 'rarity caps hold after an offseason');

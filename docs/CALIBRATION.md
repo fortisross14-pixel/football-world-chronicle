@@ -206,3 +206,35 @@ Back within the +30 % budget. Before light matches the season took 4.1–4.2 s; 
 on the way: line-ups repaired in place instead of re-selected, a per-team cache of matchday
 squads, typed-array XI selection (identical choices), cheaper availability checks and
 stable object shapes for the hot path.
+
+## Phase 4 — potential, development, form, traits, captains and loans
+
+Three seeds × six seasons, all overall targets met: 2.72 goals, 45.3 / 25.2 / 29.5,
+12.3 shots, 4.3 on target, 5.1 corners, 2.12 yellows, 0.13 reds, 29.5 % clean sheets,
+2.8 substitutions per team. Condensed leagues: 2.68 goals, 27.6 % draws. Cards rose a little
+(1.97 → 2.12 yellows, 0.11 → 0.13 reds) because hot-headed players book more often and lift
+their side's card rate.
+
+Favourites by power gap: 0–3 40 %, 3–6 47 %, 6–10 55 %, 10–15 64 %, 15+ 76 % (unchanged).
+Spread: 4.7 Ballon d'Or winners and 5.0 UCL winners per seed, 2.9 champions per elite league,
+elite top scorers 37.5 goals. Ballon d'Or podiums 29 FW, 24 MF, 1 DF. League points per game
+by usual starters missing: 1.38 / 1.38 / 1.35 / 1.32.
+
+From `regression-phase4` (seed 40401, eight seasons): each trait sits at 9–13 % of players;
+clutch takers convert 79 % of shootout kicks against 71 %; hot-headed sides take 4.0 cards a
+match against 2.2; regular starters grow 2.8 points a year against 0.6 for prospects who
+never play; mercenaries move 12 % a summer against 7 % for loyal players; about 45 loans a
+summer; the 88+ population stays between 28 and 39.
+
+The Phase 4 numbers were measured just before two small fixes in the same phase (new
+signings could be released or loaned out again in the same window); the fixes touch a
+handful of players per summer.
+
+### Performance
+
+| Seed | Season | Offseason | Slowest offseason | Save after 20 seasons |
+|---:|---:|---:|---:|---:|
+| 271828 | 2.33 s (+9 %) | 4.21 s (−51 %) | 5.53 s | 245 MB |
+| 314159 | 2.28 s (+24 %) | 4.26 s (−47 %) | 5.71 s | 245 MB |
+
+Within budget (percentages against the Phase 0 baseline on this machine).

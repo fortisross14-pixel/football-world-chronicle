@@ -543,7 +543,7 @@ function createPlayer(state, {
   state.nextPlayerId += 1;
   const age = debutAge + initialCareerYear;
   const value = calculateMarketValueRaw(baseQuality, rarity, age, actualPosition);
-  return {
+  return initialisePlayerProfile({
     id,
     name,
     clubId: club?.id || null,
@@ -574,7 +574,7 @@ function createPlayer(state, {
     clubJoinedSeason: club ? state.season - Math.min(initialCareerYear, 5) : null,
     unhappySeasons: 0,
     transferProtectedUntilSeason: initialCareerYear === 0 ? state.season + 1 : null
-  };
+  }, true);
 }
 
 
@@ -640,7 +640,7 @@ function createRealWorldPlayer(state, template, { club = null, careerYear = 0, d
   state.usedNames ||= {};
   state.usedNames[template.nationality] ||= {};
   state.usedNames[template.nationality][template.name] = 1;
-  return {
+  return initialisePlayerProfile({
     id,
     name: template.name,
     clubId: club?.id || null,
@@ -676,7 +676,7 @@ function createRealWorldPlayer(state, template, { club = null, careerYear = 0, d
     // Historical icons always complete their first visible season at their
     // curated starting club before becoming part of the normal transfer market.
     transferProtectedUntilSeason: debutSeason + 1
-  };
+  }, true);
 }
 
 function replaceInitialPlayerWithRealStar(state, players, clubs, placeholder, template) {
@@ -2188,7 +2188,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 29,
+    dataRevision: 30,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -2263,6 +2263,7 @@ export function createWorld(seed = Date.now() % 2147483647) {
   addPreseasonMagazine(state);
   invalidateRuntimeCache(state);
   refreshAllClubStrengths(state);
+  assignAllCaptains(state);
   return state;
 }
 
@@ -2707,7 +2708,9 @@ function staticTeamStrength(state, teamId, isInternational, squad) {
   const payrollRatio = club ? Number(club.currentPayroll || 0) / Math.max(1, Number(club.payrollLimit || clubPayrollLimit(club))) : 1;
   const payrollInstability = isInternational ? 0 : Math.min(5.5, Math.max(0, payrollRatio - 1.1) * 2.4);
   const starImpact = starImpactForLineup(lineup, 'overall');
-  squad.strengthStatic = base * (1 - namedInfluence) + weighted * namedInfluence + coachBonus + ownerBonus + starImpact - payrollInstability + formationFitBonus(squad.fit);
+  const captain = club?.captainId ? lineup.find((player) => player.id === club.captainId) : null;
+  const leadership = captain && hasTrait(captain, 'leader') ? 0.5 : captain ? 0.15 : 0;
+  squad.strengthStatic = leadership + base * (1 - namedInfluence) + weighted * namedInfluence + coachBonus + ownerBonus + starImpact - payrollInstability + formationFitBonus(squad.fit);
   return squad.strengthStatic;
 }
 
@@ -3099,6 +3102,7 @@ function carryInjuriesIntoNewSeason(state) {
   RECOVERY_SETS.delete(state);
   for (const player of state.players) {
     if (player.fitness !== undefined) player.fitness = undefined;
+    if (player.form) player.form = Math.round(player.form * 30) / 100;
     const injury = player.injury;
     if (!injury) continue;
     if (player.status !== 'active' || injury.returnSeason < state.season || (injury.returnSeason === state.season && injury.returnWeek <= 0)) player.injury = undefined;
@@ -3172,7 +3176,11 @@ function matchSource(player, slotType, effective) {
     goalW: matchGoalWeight(player) * (slotType ? SLOT_GOAL_FACTOR[slotType] ?? 1 : 1),
     assistW: assistWeight(player) * (slotType ? SLOT_ASSIST_FACTOR[slotType] ?? 1 : 1),
     defendW: player.depth ? 1 : roleData(player).defence,
-    penalty: penaltySkill(player)
+    penalty: penaltySkill(player) + (hasTrait(player, 'clutch') ? 4 : 0),
+    cardProne: hasTrait(player, 'hot_headed') ? 1.8 : 1,
+    injuryProne: hasTrait(player, 'injury_prone') ? 1.6 : 1,
+    bigGame: hasTrait(player, 'big_game') ? 1 : 0,
+    clutch: hasTrait(player, 'clutch') ? 1 : 0
   };
 }
 
@@ -3405,6 +3413,320 @@ function simulateLightMatch(state, { homeId, awayId, competitionId, competitionN
   return match;
 }
 
+
+// ─── Players who change over time: traits, potential, development, form ──────────
+// player.traits     ['loyal', …] one or two personality traits (some have none)
+// player.potential  hidden ceiling for baseQuality; the UI shows a scouting range
+// player.form       −1…+1 in-season confidence from recent match ratings
+// player.loan       { parentClubId, season } while on loan; player.loanHistory []
+export const PLAYER_TRAITS = {
+  loyal: { label: 'Loyal', description: 'One-club mentality: rarely asks to leave and renews readily.' },
+  mercenary: { label: 'Mercenary', description: 'Follows the best contract; quicker to move.' },
+  big_game: { label: 'Big-game player', description: 'Raises the level in finals and decisive ties.' },
+  injury_prone: { label: 'Injury-prone', description: 'Hurt more often and for longer.' },
+  leader: { label: 'Leader', description: 'Natural captain; lifts the side when on the pitch.' },
+  hot_headed: { label: 'Hot-headed', description: 'Picks up cards and bans.' },
+  professional: { label: 'Professional', description: 'Develops well and ages gracefully.' },
+  clutch: { label: 'Clutch penalty taker', description: 'Ice-cold from the spot and in shootouts.' }
+};
+const TRAIT_IDS = Object.keys(PLAYER_TRAITS);
+const TRAIT_CONFLICTS = { loyal: ['mercenary'], mercenary: ['loyal'], professional: ['hot_headed'], hot_headed: ['professional'] };
+
+function traitWeights(player) {
+  const rank = STAR_RARITIES[player.rarity]?.rank || 1;
+  const elite = rank >= 4;
+  return {
+    loyal: 1.0,
+    mercenary: 0.8 + (rank >= 3 ? 0.3 : 0),
+    big_game: 0.5 + (elite ? 1.1 : rank === 3 ? 0.4 : 0),
+    injury_prone: 0.45,
+    leader: 0.6 + (elite ? 0.5 : 0) + (player.position === 'DF' || player.position === 'GK' ? 0.3 : 0),
+    hot_headed: 0.7 + (player.position === 'DF' || player.position === 'MF' ? 0.3 : 0),
+    professional: 0.9 + (elite ? 0.3 : 0),
+    clutch: 0.5 + (player.position === 'FW' || player.position === 'MF' ? 0.4 : 0) + (elite ? 0.3 : 0)
+  };
+}
+
+// Deterministic from the player id (no RNG draw), so it can run on any save.
+function assignPlayerTraits(player) {
+  if (Array.isArray(player.traits)) return player.traits;
+  const roll = stableStringRoll(`${player.id}:traits`);
+  const count = roll < 0.32 ? 0 : roll < 0.84 ? 1 : 2;
+  const traits = [];
+  const weights = traitWeights(player);
+  for (let index = 0; index < count; index += 1) {
+    const options = TRAIT_IDS.filter((id) => !traits.includes(id) && !traits.some((taken) => TRAIT_CONFLICTS[taken]?.includes(id)));
+    const total = options.reduce((sum, id) => sum + weights[id], 0);
+    let needle = stableStringRoll(`${player.id}:trait:${index}`) * total;
+    let chosen = options[options.length - 1];
+    for (const id of options) { needle -= weights[id]; if (needle <= 0) { chosen = id; break; } }
+    traits.push(chosen);
+  }
+  player.traits = traits;
+  return traits;
+}
+
+function hasTrait(player, trait) {
+  return Boolean(player?.traits && player.traits.includes(trait));
+}
+
+// Potential: the ceiling a young player can grow into. New young players start a
+// few points below it; how far they get depends on minutes, form, coaching and league.
+function assignPotential(player, { fresh = false } = {}) {
+  if (Number.isFinite(player.potential)) return player.potential;
+  const band = STAR_RARITIES[player.rarity] || STAR_RARITIES.common;
+  const young = (player.careerYear || 0) <= 4;
+  if (!young) { player.potential = player.baseQuality; return player.potential; }
+  const lift = Math.round((stableStringRoll(`${player.id}:potential`) - 0.3) * 4);
+  player.potential = clamp(player.baseQuality + Math.max(0, lift), band.min, band.max + 1);
+  if (fresh && !player.realWorldId) {
+    // A fresh prospect is still some way from the ceiling.
+    // Elite prospects arrive closer to their ceiling.
+    const eliteTalent = (STAR_RARITIES[player.rarity]?.rank || 1) >= 4 ? 0.45 : 1;
+    const gap = Math.round(stableStringRoll(`${player.id}:gap`) * Math.max(0, 7 - (player.careerYear || 0) * 1.5) * eliteTalent);
+    player.baseQuality = Math.max(band.min, player.baseQuality - gap);
+    player.rating = clamp(Math.round(player.baseQuality * (player.careerMultipliers?.[player.careerYear] ?? 1)), 51, 100);
+  }
+  return player.potential;
+}
+
+function initialisePlayerProfile(player, fresh = false) {
+  assignPlayerTraits(player);
+  assignPotential(player, { fresh });
+  return player;
+}
+
+// Scouting view of potential: a range that narrows as the player matures.
+function potentialRange(player) {
+  if (!Number.isFinite(player.potential)) return null;
+  const year = player.careerYear || 0;
+  if (year >= 8) return { low: player.baseQuality, high: player.baseQuality, settled: true };
+  const width = Math.max(1, 6 - year);
+  const offset = Math.round((stableStringRoll(`${player.id}:scout`) - 0.5) * width);
+  return { low: Math.max(45, player.potential - width + offset), high: Math.min(100, player.potential + width + offset), settled: false };
+}
+
+const LEAGUE_DEVELOPMENT = (leagueId) => (['ESP1', 'ENG1', 'ITA1', 'GER1', 'FRA1'].includes(leagueId) ? 0.6
+  : FULL_DETAIL_LEAGUES.has(leagueId) ? 0.4 : LEAGUE_DEFINITIONS.find((league) => league.id === leagueId)?.tier === 'detailed' ? 0.2 : 0);
+
+// Club minutes and average rating in the season just finished.
+function buildSeasonPlayingTime(state) {
+  const map = new Map();
+  for (const row of state.current.archivedPlayerStats || []) {
+    if (row.isInternational || !row.apps) continue;
+    const item = map.get(row.playerId) || { minutes: 0, apps: 0, ratingWeighted: 0 };
+    item.minutes += row.minutes ?? row.apps * 80;
+    item.apps += row.apps;
+    item.ratingWeighted += (row.averageRating || 6.5) * row.apps;
+    map.set(row.playerId, item);
+  }
+  return map;
+}
+
+// Yearly growth or decline on top of the career-curve archetype.
+function developPlayer(state, player, playing, club, coach) {
+  const band = STAR_RARITIES[player.rarity] || STAR_RARITIES.common;
+  const year = player.careerYear || 0;
+  const time = playing.get(player.id) || { minutes: 0, apps: 0, ratingWeighted: 0 };
+  const minutesShare = clamp(time.minutes / 3000, 0, 1.2);
+  const averageRating = time.apps ? time.ratingWeighted / time.apps : 6.3;
+  const performance = clamp((averageRating - 6.6) * 2, -1, 1.5);
+  const profile = COACH_PROFILES[coach?.profile];
+  const coaching = coach ? ((profile?.development || 1) - 1) * 8 + ((coach.quality || 70) - 70) / 30 : 0;
+  const league = club ? LEAGUE_DEVELOPMENT(club.leagueId) : 0;
+  const professional = hasTrait(player, 'professional');
+  const story = { type: null };
+  assignPotential(player);
+  if (year <= 7 && player.baseQuality < player.potential) {
+    const growth = 0.4 + minutesShare * 1.8 + performance * 0.8 + coaching * 0.45 + league + (professional ? 0.6 : 0)
+      + ((STAR_RARITIES[player.rarity]?.rank || 1) >= 4 ? 0.5 : 0)
+      - (hasTrait(player, 'hot_headed') ? 0.2 : 0) + (random(state) - 0.5) * 2.4;
+    const step = clamp(Math.round(growth), -1, player.potential - player.baseQuality);
+    player.baseQuality += step;
+    // Breakout: a strong young season lifts the ceiling itself.
+    if (year <= 4 && performance > 0.45 && minutesShare > 0.6 && random(state) < 0.06) {
+      const lift = randomInt(state, 2, 5);
+      player.potential = Math.min(band.max + 1, player.potential + lift);
+      player.baseQuality = Math.min(player.potential, player.baseQuality + 1);
+      story.type = 'breakout';
+    }
+  } else if (year >= 4 && year <= 9 && random(state) < (professional ? 0.025 : 0.015) && performance > 0.2) {
+    // Late bloomer.
+    const lift = randomInt(state, 1, 3);
+    player.potential = Math.min(band.max + 1, Math.max(player.potential, player.baseQuality) + lift);
+    player.baseQuality = Math.min(player.potential, player.baseQuality + lift);
+    story.type = 'late_bloomer';
+  } else if (year >= 8 && random(state) < (professional ? 0.012 : 0.028)) {
+    // Early decline.
+    player.baseQuality = Math.max(band.min - 8, player.baseQuality - randomInt(state, 2, 4));
+    story.type = 'decline';
+  }
+  // Professionals can stretch a career by a season.
+  if (professional && !player.careerExtended && year === player.careerLength - 2 && random(state) < 0.5) {
+    player.careerLength += 1;
+    player.careerMultipliers = careerCurve(player.careerType || 'stable_prime', player.careerLength);
+    player.careerExtended = true;
+  }
+  player.baseQuality = clamp(player.baseQuality, band.min - 8, band.max + 1);
+  if (story.type && (['generational', 'legend', 'epic'].includes(player.rarity) || player.baseQuality >= 84)) {
+    const headline = story.type === 'breakout' ? `${player.name}'s breakout season raises the ceiling`
+      : story.type === 'late_bloomer' ? `${player.name} blossoms late`
+        : `${player.name} shows signs of decline`;
+    state.pendingSeasonNews ||= [];
+    state.pendingSeasonNews.push({
+      id: `news-${state.season + 1}-development-${story.type}-${player.id}`,
+      week: 0,
+      importance: 'digest',
+      category: 'Player Development',
+      headline,
+      body: story.type === 'decline'
+        ? `${player.name} begins ${state.season + 1} short of last season's level.`
+        : `${player.name} heads into ${state.season + 1} with scouts revising their view of the ${player.roleLabel.toLowerCase()}.`,
+      entityType: 'player',
+      entityId: player.id
+    });
+  }
+}
+
+// Form follows recent ratings and nudges performance (about ±2 rating points at the extremes).
+function updatePlayerForm(player, rating) {
+  const expected = 6.71 + ((player.rating || 70) - 70) / 80;
+  const next = clamp((player.form || 0) * 0.78 + (rating - expected) * 0.32, -1, 1);
+  player.form = Math.round(next * 100) / 100;
+}
+
+function squadForm(squad) {
+  let values = null;
+  const players = squad.squad;
+  for (let index = 0; index < players.length; index += 1) {
+    const form = players[index].depth ? 0 : players[index].form || 0;
+    if (form) { values ||= new Array(players.length).fill(0); values[index] = form * 2; }
+  }
+  return values;
+}
+
+// The captain: a leader if there is one, otherwise the senior established player.
+function chooseClubCaptain(state, club, players) {
+  let best = null, bestScore = -Infinity;
+  for (const player of players) {
+    if (player.status !== 'active' || player.loan) continue;
+    const tenure = playerClubTenure(state, player, state.season);
+    const score = (hasTrait(player, 'leader') ? 22 : 0) + (hasTrait(player, 'loyal') ? 5 : 0) - (hasTrait(player, 'hot_headed') ? 4 : 0)
+      + player.rating * 0.35 + Math.min(8, tenure) * 2 + Math.min(10, player.careerYear || 0) * 0.6;
+    if (score > bestScore) { bestScore = score; best = player; }
+  }
+  club.captainId = best?.id || null;
+}
+
+function assignAllCaptains(state) {
+  const cache = getRuntimeCache(state);
+  for (const club of state.clubs) chooseClubCaptain(state, club, cache.clubPlayers.get(club.id) || []);
+}
+
+// ─── Loans ───────────────────────────────────────────────────────────────────────
+// Big clubs send young prospects who would not start to clubs where they will play.
+function returnLoanedPlayers(state) {
+  for (const player of state.players) {
+    if (!player.loan) continue;
+    const parent = getClub(state, player.loan.parentClubId);
+    if (player.status === 'active' && parent) {
+      player.clubId = parent.id;
+      player.clubJoinedSeason = player.loan.parentJoinedSeason ?? player.clubJoinedSeason;
+    }
+    player.loan = undefined;
+  }
+}
+
+// Academy intake: top-flight clubs promote a youth graduate most summers (better
+// academies at bigger clubs; never above Rare, so rarity caps are untouched). The
+// weakest veteran ordinary player makes way, keeping the population stable.
+function runAcademyIntake(state) {
+  const cache = getRuntimeCache(state);
+  let graduates = 0;
+  for (const club of state.clubs) {
+    if (club.division !== 1 || club.tier !== 'detailed') continue;
+    const reputation = club.reputation || 60;
+    if (random(state) > clamp((reputation - 45) / 70, 0.15, 0.7)) continue;
+    const roll = random(state);
+    const rare = reputation >= 88 ? 0.35 : reputation >= 75 ? 0.15 : 0.05;
+    const uncommon = reputation >= 88 ? 0.5 : 0.45;
+    const rarity = roll < rare ? 'rare' : roll < rare + uncommon ? 'uncommon' : 'common';
+    const roster = cache.clubPlayers.get(club.id) || [];
+    const position = positionNeedFromRoster(state, club, roster);
+    const graduate = createPlayer(state, { club, rarity, position, careerYear: 0 });
+    graduate.birthYear += 1;
+    graduate.debutSeason = state.season;
+    graduate.debutAge ||= 17;
+    graduate.academy = true;
+    markPlayerArrival(graduate, state.season);
+    graduate.contractYears = randomInt(state, 3, 5);
+    graduate.salary = Math.max(0.2, Number((graduate.marketValue * 0.03).toFixed(1)));
+    state.players.push(graduate);
+    roster.push(graduate);
+    cache.playerById.set(graduate.id, graduate);
+    const veteran = roster.filter((player) => player !== graduate && ['common', 'uncommon'].includes(player.rarity) && (player.careerYear || 0) >= 7 && !player.loan && player.clubJoinedSeason !== state.season)
+      .sort((a, b) => a.rating - b.rating)[0];
+    if (veteran && roster.length > SQUAD_SIZE) {
+      veteran.lastClubId = club.id;
+      noteRosterChange(state, veteran, club.id, null);
+      veteran.clubId = null;
+      veteran.contractYears = 0;
+      veteran.salary = 0;
+    }
+    cache.clubSquads.delete(club.id);
+    graduates += 1;
+  }
+  return graduates;
+}
+
+function runLoanMarket(state) {
+  const cache = getRuntimeCache(state);
+  const lenders = state.clubs.filter((club) => club.division === 1 && club.tier === 'detailed' && (club.reputation || 0) >= 80);
+  const borrowersByConfederation = new Map();
+  for (const club of state.clubs) {
+    if ((club.reputation || 0) >= 84 || (club.reputation || 0) < 55) continue;
+    if (!borrowersByConfederation.has(club.confederation)) borrowersByConfederation.set(club.confederation, []);
+    borrowersByConfederation.get(club.confederation).push(club);
+  }
+  const received = new Map();
+  let loans = 0;
+  for (const lender of lenders) {
+    if (loans >= 120) break;
+    const squad = getClubSquad(state, lender.id);
+    const starters = new Set(squad.starters);
+    const prospects = (cache.clubPlayers.get(lender.id) || [])
+      .filter((player) => player.status === 'active' && !starters.has(player) && (player.careerYear || 0) <= 3 && !player.loan && player.clubJoinedSeason !== state.season
+        && (player.potential || player.baseQuality) >= Math.max(68, (lender.strength || 70) - 12))
+      .sort((a, b) => (b.potential || 0) - (a.potential || 0))
+      .slice(0, 2);
+    for (const player of prospects) {
+      if (random(state) > 0.7) continue;
+      const options = (borrowersByConfederation.get(lender.confederation) || [])
+        .filter((club) => club.id !== lender.id && (club.reputation || 0) <= (lender.reputation || 80) - 5 && (received.get(club.id) || 0) < 2)
+        .filter((club) => {
+          // The borrower must have a starting place: the prospect beats its weakest starter there.
+          const borrowerSquad = getClubSquad(state, club.id);
+          const weakest = borrowerSquad.xi.filter((row) => slotLine(row.slotType) === player.position).sort((a, b) => a.effective - b.effective)[0];
+          return weakest && player.rating >= weakest.effective - 4;
+        });
+      if (!options.length) continue;
+      const borrower = weightedPick(state, options, (club) => (club.country === lender.country ? 3 : 1) * Math.max(1, (club.reputation || 60) - 55));
+      player.loan = { parentClubId: lender.id, season: state.season, parentJoinedSeason: player.clubJoinedSeason ?? null };
+      player.loanHistory ||= [];
+      player.loanHistory.push({ season: state.season, clubId: borrower.id, parentClubId: lender.id });
+      noteRosterChange(state, player, lender.id, borrower.id);
+      player.clubId = borrower.id;
+      received.set(borrower.id, (received.get(borrower.id) || 0) + 1);
+      const record = { id: `transfer-${state.nextTransferId++}`, season: state.season, seasonLabel: formatSeason(state.season), playerId: player.id,
+        fromClubId: lender.id, toClubId: borrower.id, fee: 0, marketValue: player.marketValue, freeTransfer: false, loan: true };
+      state.current.transfers.push(record);
+      state.history.transfers.push(record);
+      loans += 1;
+    }
+  }
+  return loans;
+}
+
 // Season close: light-match appearances become player statistics (starters play
 // every game, substitutes about a third), with ratings from team results and ability.
 function flushLightAppearances(state) {
@@ -3465,17 +3787,20 @@ function simulateMatch(state, {
   const awaySources = squadMatchSources(awaySquad);
   const homeFitness = record ? squadFitness(homeSquad) : null;
   const awayFitness = record ? squadFitness(awaySquad) : null;
+  const homeForm = record ? squadForm(homeSquad) : null;
+  const awayForm = record ? squadForm(awaySquad) : null;
   const homeCoach = getCoach(state, homeId, isInternational);
   const awayCoach = getCoach(state, awayId, isInternational);
   const detail = record && (knockout || Boolean(aggregate) || /Semi|Final|Quarter/i.test(stage || ''));
   const firstLeg = /Leg 1/i.test(stage || '');
   const result = playMatch({
-    home: { teamId: homeId, lambda: expectations.homeLambda, style: homeCoach?.profile || null, xi: homeSources.xi, bench: homeSources.bench, fitness: homeFitness },
-    away: { teamId: awayId, lambda: expectations.awayLambda, style: awayCoach?.profile || null, xi: awaySources.xi, bench: awaySources.bench, fitness: awayFitness },
+    home: { teamId: homeId, lambda: expectations.homeLambda, style: homeCoach?.profile || null, xi: homeSources.xi, bench: homeSources.bench, fitness: homeFitness, form: homeForm },
+    away: { teamId: awayId, lambda: expectations.awayLambda, style: awayCoach?.profile || null, xi: awaySources.xi, bench: awaySources.bench, fitness: awayFitness, form: awayForm },
     knockout: knockout || Boolean(aggregate),
     aggregate,
     detail,
-    legStakes: firstLeg ? 0.5 : 1
+    legStakes: firstLeg ? 0.5 : 1,
+    bigGameStakes: stakes === 'big' ? 1 : 0
   }, () => random(state));
 
   const homeGoals = result.homeGoals;
@@ -3552,6 +3877,7 @@ function simulateMatch(state, {
       const before = playerFitness(player);
       const fitness = Math.max(35, before - Math.max(0, before - row.energy) * 0.62);
       if (fitness < 100) { player.fitness = Math.round(fitness); recovering.add(player); }
+      if (row.minutes >= 20) updatePlayerForm(player, row.rating);
     }
     for (const injury of result.injuries) {
       const player = injury.playerId ? playerById.get(injury.playerId) : null;
@@ -5371,6 +5697,8 @@ function createSquadFiller(state, club, position, { roleOptions = null, debutSea
   const multiplier = player.careerMultipliers[player.careerYear] || 1;
   player.baseQuality = clamp(Math.round(desired / multiplier), band.min, band.max);
   player.rating = clamp(Math.round(player.baseQuality * multiplier), 51, 100);
+  player.potential = undefined;
+  assignPotential(player);
   player.marketValue = calculateMarketValueRaw(player.baseQuality, rarity, debutSeason - player.birthYear, position);
   player.salary = Math.max(0.3, Number((player.marketValue * (0.045 + random(state) * 0.025)).toFixed(1)));
   const shift = debutSeason - state.season;
@@ -5383,11 +5711,16 @@ function createSquadFiller(state, club, position, { roleOptions = null, debutSea
 function ensureClubRosters(state) {
   const freeAgents = state.players.filter((player) => player.status === 'active' && !player.clubId);
   const activeByClub = new Map(state.clubs.map((club)=>[club.id, []]));
-  for (const player of state.players) if (player.status === 'active' && player.clubId && activeByClub.has(player.clubId)) activeByClub.get(player.clubId).push(player);
+  const loanedOut = new Map();
+  for (const player of state.players) {
+    if (player.status === 'active' && player.clubId && activeByClub.has(player.clubId)) activeByClub.get(player.clubId).push(player);
+    if (player.status === 'active' && player.loan) loanedOut.set(player.loan.parentClubId, (loanedOut.get(player.loan.parentClubId) || 0) + 1);
+  }
   const clubs = [...state.clubs].sort((a, b) => b.reputation - a.reputation);
   state.current.offseasonFreeAgentSignings ||= [];
   for (const club of clubs) {
-    const target = club.division === 2 ? CLUB_ROSTER_TARGET.reserve : CLUB_ROSTER_TARGET[club.tier];
+    // Players out on loan still belong to the squad they will return to.
+    const target = Math.max(rosterTargetFor(club) >= SQUAD_SIZE ? 13 : 4, (club.division === 2 ? CLUB_ROSTER_TARGET.reserve : CLUB_ROSTER_TARGET[club.tier]) - (loanedOut.get(club.id) || 0));
     const active = activeByClub.get(club.id) || [];
     // Bloated squads release their weakest ordinary players before the season.
     if (active.length > target + 3) {
@@ -5896,6 +6229,7 @@ function evolveWorld(state) {
 
   const retirementLegacyContext = buildLegacyContext(state);
   const lifecyclePayroll = buildClubPayrollMap(state);
+  const seasonPlayingTime = buildSeasonPlayingTime(state);
 
   for (const player of state.players) {
     if (player.status !== 'active') continue;
@@ -5935,6 +6269,7 @@ function evolveWorld(state) {
       }
       continue;
     }
+    developPlayer(state, player, seasonPlayingTime, clubBeforeLifecycle, clubBeforeLifecycle ? getCoach(state, clubBeforeLifecycle.id, false) : null);
     const multiplier = player.careerMultipliers[player.careerYear] ?? 0.85;
     player.rating = clamp(Math.round(player.baseQuality * multiplier), 51, 100);
     player.marketValue = calculateMarketValue(state, player);
@@ -5955,9 +6290,10 @@ function evolveWorld(state) {
         ? clamp(
             0.54 + player.happiness / 270 + (club.reputation - 68) / 280
             - prestigeGap / 75 - rarityAmbition * Math.max(0, 82 - club.reputation) / 70
-            - migrationPressure / 135,
+            - migrationPressure / 135
+            + (hasTrait(player, 'loyal') ? 0.18 : 0) - (hasTrait(player, 'mercenary') ? 0.12 : 0),
             0.04,
-            0.9
+            0.94
           )
         : 0;
       const renewalSalary = club ? salaryOfferFor(state, player, club, 'renewal') : 0;
@@ -6316,6 +6652,7 @@ function updatePlayerDiscontent(state, player, club) {
 }
 
 function availableForTransfer(state, player) {
+  if (player.loan) return false;
   if (player.transferProtectedUntilSeason && state.season < player.transferProtectedUntilSeason) return false;
   const seller = getClub(state, player.clubId);
   if (!seller || !['epic', 'legend', 'generational'].includes(player.rarity)) return true;
@@ -6325,7 +6662,7 @@ function availableForTransfer(state, player) {
     happiness: player.happiness, unhappySeasons: player.unhappySeasons || 0,
     migrationPressure: eliteMigrationPressure(state, player, seller), payrollPressure: Number(seller.payrollPressureRatio || 1),
     success: success.majorHonours + success.majorAwards,
-    temperament: stableStringRoll(`temperament:${player.id}`), lateCareer: playerCareerStage(state, player) === 'late'
+    temperament: hasTrait(player, 'loyal') ? 0.05 : hasTrait(player, 'mercenary') ? 0.95 : stableStringRoll(`temperament:${player.id}`), lateCareer: playerCareerStage(state, player) === 'late'
   });
   // One availability decision per player/window across all market routes.
   return stableStringRoll(`${state.season}:${state.seed}:departure:${player.id}`) < chance;
@@ -6822,6 +7159,7 @@ function runTransferMarket(state, initial = false) {
       // position and ambition controls. The ordinary squad market should not create
       // a second uncontrolled wave of high-profile goalkeeper transfers.
       if (['generational', 'legend', 'epic'].includes(player.rarity)) return false;
+      if (player.loan) return false;
       if (player.transferProtectedUntilSeason && state.season < player.transferProtectedUntilSeason) return false;
       if (player.clubId === buyer.id || player.position !== needPosition) return false;
       if (player.rating < minimumRating) return false;
@@ -6851,8 +7189,9 @@ function runTransferMarket(state, initial = false) {
     const seller = getClub(state, player.clubId);
     const fee = seller ? askingPrice(state, player, buyer) : 0;
     const negotiationBonus = (buyer.ownerNegotiationBonus || 0) * 0.42;
+    const personality = hasTrait(player, 'loyal') && seller ? 0.55 : hasTrait(player, 'mercenary') ? 1.3 : 1;
     const acceptance = clamp(
-      0.46 + (buyer.reputation - (seller?.reputation || 60)) / 70 + (60 - player.happiness) / 100 + negotiationBonus,
+      (0.46 + (buyer.reputation - (seller?.reputation || 60)) / 70 + (60 - player.happiness) / 100 + negotiationBonus) * personality,
       0.12,
       0.95
     );
@@ -7792,6 +8131,8 @@ export function startNextSeason(state) {
       ...structuredClone(state.current.postseason)
     });
   }
+  returnLoanedPlayers(state);
+  invalidateRuntimeCache(state);
   evolveWorld(state);
   state.season += 1;
   carryInjuriesIntoNewSeason(state);
@@ -7802,9 +8143,15 @@ export function startNextSeason(state) {
   state.pendingOwnerChanges = [];
   refreshAllMarketValues(state);
   runTransferMarket(state, false);
+  runAcademyIntake(state);
+  runLoanMarket(state);
+  invalidateRuntimeCache(state);
   ensureClubRosters(state);
   compactFreeAgentPool(state);
   refreshAllMarketValues(state);
+  invalidateRuntimeCache(state);
+  refreshAllClubStrengths(state);
+  assignAllCaptains(state);
   state.current.offseason = {
     season: state.season,
     seasonLabel: formatSeason(state.season),
@@ -7912,6 +8259,32 @@ export function getPlayerInjuryHistory(state, playerId) {
   const player = getPlayer(state, playerId);
   const codes = Object.fromEntries(Object.entries(INJURY_TYPES).map(([id, type]) => [type.code, { id, label: type.label }]));
   return [...(player?.injuries || [])].reverse().map(([season, week, code, weeks]) => ({ season, seasonLabel: formatSeason(season), week, type: codes[code]?.id || 'medium', label: codes[code]?.label || 'Injury', weeks }));
+}
+
+// Personality, scouting range, form, captaincy and loan status for the UI.
+export function getPlayerProfileDetails(state, playerId) {
+  const player = getPlayer(state, playerId);
+  if (!player) return null;
+  const club = player.clubId ? getClub(state, player.clubId) : null;
+  const form = player.form || 0;
+  return {
+    traits: (player.traits || []).map((id) => ({ id, ...PLAYER_TRAITS[id] })).filter((row) => row.label),
+    potential: player.status === 'active' ? potentialRange(player) : null,
+    form,
+    formLabel: form >= 0.55 ? 'On fire' : form >= 0.2 ? 'In form' : form <= -0.55 ? 'Slump' : form <= -0.2 ? 'Out of form' : 'Steady',
+    captainOf: club && club.captainId === player.id ? club.id : null,
+    loan: player.loan ? { parentClubId: player.loan.parentClubId, clubId: player.clubId } : null,
+    loanHistory: [...(player.loanHistory || [])],
+    academy: Boolean(player.academy)
+  };
+}
+
+export function getClubLoans(state, clubId) {
+  const players = state.players.filter((player) => player.status === 'active' && player.loan);
+  return {
+    out: players.filter((player) => player.loan.parentClubId === clubId).map((player) => ({ playerId: player.id, clubId: player.clubId })),
+    in: players.filter((player) => player.clubId === clubId).map((player) => ({ playerId: player.id, parentClubId: player.loan.parentClubId }))
+  };
 }
 
 // Leagues whose matches are played in full detail (the rest are played light).
@@ -8566,6 +8939,14 @@ export function upgradeWorld(state) {
     // Light simulation for low-profile matches keeps team-level appearance counters.
     if (state.current) state.current.lightApps ||= {};
     state.dataRevision = 29;
+  }
+  if (state.dataRevision < 30) {
+    // v4 Phase 4: traits and potential for everyone (no change to current ability),
+    // and a captain for every club.
+    for (const player of state.players || []) initialisePlayerProfile(player, false);
+    invalidateRuntimeCache(state);
+    assignAllCaptains(state);
+    state.dataRevision = 30;
   }
   return state;
 }
