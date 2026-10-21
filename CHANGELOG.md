@@ -1,3 +1,15 @@
+# Unreleased — Game UI redesign
+
+- New dark game interface: one token-based stylesheet replaces the layered overrides; Archivo variable font bundled locally (OFL, assets/fonts).
+- Navigation reduced to five destinations (Home, Competitions, Football World, Chronicle, Season) with a section strip for sub-pages and full breadcrumbs (player → club, club → country, competition → country or region). Old routes and deep links still resolve.
+- Simulation controls live in one command bar: Next week (primary), +4 weeks, Season end; Open Postseason and Run offseason replace them when the season ends. The bar locks while a simulation runs.
+- Home is a season command centre: season stage with a 52-week strip and this week's numbers, latest decisive results, title races, major competitions, headlines, Ballon d'Or race and power ranking.
+- Club profiles go from nine tabs to five (Overview, Squad & staff, Season, History, Legacy); player profiles to four; coach profiles to three. Old tab URLs map to their new home.
+- Crest-, portrait- and emblem-led heroes for clubs, players, coaches, presidents, nations and competitions; Generational is red, Legend gold.
+- Editorial Magazine front page, Awards Night podium reveals and Showcase match modal restyled; spoiler embargo unchanged.
+- Fixes: overlays no longer flicker during live Showcase playback; search results now fall back correctly when a crest image fails.
+- No engine, save-format or Neon changes.
+
 # v3.16.0 — Dynasty cycles, league eras and world headlines
 
 - Added a hard total-payroll affordability check to transfers, renewals and free-agent signings.

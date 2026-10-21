@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-21T00:00:00Z",
+  "title": "Design System: Football World Chronicle",
+  "extensions": {
+    "colorMeta": {
+      "midnight-0": { "role": "neutral", "displayName": "Midnight 0", "canonical": "#050a14", "tonalRamp": ["#050a14", "#0a1324", "#0f1b31", "#15243f", "#1c2f50", "#8391ab", "#aebbd2", "#e9eff9"] },
+      "midnight-1": { "role": "neutral", "displayName": "Midnight 1", "canonical": "#0a1324", "tonalRamp": ["#050a14", "#0a1324", "#0f1b31", "#15243f", "#1c2f50", "#8391ab", "#aebbd2", "#e9eff9"] },
+      "midnight-2": { "role": "neutral", "displayName": "Midnight 2", "canonical": "#0f1b31", "tonalRamp": ["#050a14", "#0a1324", "#0f1b31", "#15243f", "#1c2f50", "#8391ab", "#aebbd2", "#e9eff9"] },
+      "midnight-3": { "role": "neutral", "displayName": "Midnight 3", "canonical": "#15243f", "tonalRamp": ["#050a14", "#0a1324", "#0f1b31", "#15243f", "#1c2f50", "#8391ab", "#aebbd2", "#e9eff9"] },
+      "midnight-4": { "role": "neutral", "displayName": "Midnight 4", "canonical": "#1c2f50", "tonalRamp": ["#050a14", "#0a1324", "#0f1b31", "#15243f", "#1c2f50", "#8391ab", "#aebbd2", "#e9eff9"] },
+      "rail-navy": { "role": "neutral", "displayName": "Rail Navy", "canonical": "#070e1c" },
+      "hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "rgba(150, 180, 230, .11)" },
+      "hairline-strong": { "role": "neutral", "displayName": "Hairline Strong", "canonical": "rgba(150, 180, 230, .2)" },
+      "hairline-hover": { "role": "neutral", "displayName": "Hairline Hover", "canonical": "rgba(150, 180, 230, .32)" },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#e9eff9" },
+      "ink-secondary": { "role": "neutral", "displayName": "Ink Secondary", "canonical": "#aebbd2" },
+      "ink-muted": { "role": "neutral", "displayName": "Ink Muted", "canonical": "#8391ab" },
+      "signal-cyan": { "role": "primary", "displayName": "Signal Cyan", "canonical": "oklch(80.2% 0.135 224)", "tonalRamp": ["#000f20", "#002a3c", "#004a74", "#006b96", "#008cb9", "#00afdd", "#47d6ff", "#cef6ff"] },
+      "signal-cyan-deep": { "role": "primary", "displayName": "Signal Cyan Deep", "canonical": "#12b5ec" },
+      "cyan-ink": { "role": "primary", "displayName": "Cyan Ink", "canonical": "#03111c" },
+      "trophy-gold": { "role": "secondary", "displayName": "Trophy Gold", "canonical": "oklch(80.9% 0.138 85)", "tonalRamp": ["#180600", "#332000", "#603500", "#805400", "#a27500", "#c59618", "#edbd4d", "#fdedca"] },
+      "trophy-gold-deep": { "role": "secondary", "displayName": "Trophy Gold Deep", "canonical": "#c9962a" },
+      "alarm-red": { "role": "tertiary", "displayName": "Alarm Red", "canonical": "oklch(67.6% 0.213 19)", "tonalRamp": ["#2a0000", "#4b000c", "#900001", "#b80025", "#e02a45", "#ff5665", "#ff7f8a", "#ffdbda"] },
+      "pitch-green": { "role": "tertiary", "displayName": "Pitch Green", "canonical": "oklch(77.2% 0.158 159)", "tonalRamp": ["#001401", "#002f16", "#00561e", "#00763c", "#00985b", "#04bb7b", "#4fe3a0", "#d0fbe2"] },
+      "embargo-amber": { "role": "tertiary", "displayName": "Embargo Amber", "canonical": "oklch(81.9% 0.150 80)", "tonalRamp": ["#1a0500", "#361e00", "#663000", "#875000", "#aa7000", "#ce9200", "#f5b83e", "#ffecc8"] },
+      "rarity-common": { "role": "rarity", "displayName": "Common Grey", "canonical": "oklch(75.0% 0.028 257)", "tonalRamp": ["#080b11", "#20242b", "#36404f", "#545e6e", "#737e8e", "#949fb0", "#b9c5d7", "#eaeff5"] },
+      "rarity-uncommon": { "role": "rarity", "displayName": "Uncommon Green", "canonical": "oklch(76.3% 0.154 159)", "tonalRamp": ["#001301", "#002e16", "#00551e", "#00763c", "#00985b", "#1dbb7b", "#57e2a0", "#d1fae2"] },
+      "rarity-rare": { "role": "rarity", "displayName": "Rare Blue", "canonical": "oklch(71.7% 0.152 251)", "tonalRamp": ["#000929", "#002547", "#003d8c", "#005eaf", "#2580d4", "#4ca2f9", "#73c9ff", "#d5f2ff"] },
+      "rarity-epic": { "role": "rarity", "displayName": "Epic Purple", "canonical": "oklch(71.5% 0.178 301)", "tonalRamp": ["#130029", "#2c1647", "#53128c", "#713aaf", "#925dd4", "#b37ffa", "#d9a5ff", "#f6e5ff"] },
+      "rarity-legend": { "role": "rarity", "displayName": "Legend Gold", "canonical": "#e9b949" },
+      "rarity-generational": { "role": "rarity", "displayName": "Generational Red", "canonical": "#ff4d5e" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Season label on the Home stage; one per screen at most." },
+      "headline": { "displayName": "Headline", "purpose": "Hero names for clubs, players, coaches, nations, competitions and the magazine cover." },
+      "title": { "displayName": "Title", "purpose": "Page heads." },
+      "section": { "displayName": "Section", "purpose": "Uppercase condensed section titles between panels." },
+      "panel-title": { "displayName": "Panel Title", "purpose": "Sentence-case panel heads." },
+      "number": { "displayName": "Number", "purpose": "Compared figures: stats, points, scores, ratings, fees." },
+      "body": { "displayName": "Body", "purpose": "Running text, capped at 68-72ch." },
+      "data": { "displayName": "Data", "purpose": "Table cells, rows, buttons and controls; tabular figures." },
+      "label": { "displayName": "Label", "purpose": "Uppercase tracked captions that name a value, column or list directly beneath; never above a heading." }
+    },
+    "shadows": [
+      { "name": "panel-lift", "value": "0 1px 0 rgba(255,255,255,.04) inset, 0 10px 24px -14px rgba(0,0,0,.7)", "purpose": "Every panel." },
+      { "name": "stage-lift", "value": "0 1px 0 rgba(255,255,255,.06) inset, 0 22px 44px -22px rgba(0,0,0,.85)", "purpose": "Hero stages, magazine cover, system popover, toasts." },
+      { "name": "overlay", "value": "0 40px 80px -30px rgba(0,0,0,.9)", "purpose": "Search, club and showcase modals." },
+      { "name": "primary-press", "value": "inset 0 1px 0 rgba(255,255,255,.35), 0 6px 14px -8px rgba(0,0,0,.8)", "purpose": "Cyan primary buttons only." },
+      { "name": "focus-glow", "value": "0 0 0 3px rgba(63,208,255,.16)", "purpose": "Input and select focus, with a cyan border." },
+      { "name": "legend-glow", "value": "inset 0 0 0 2px var(--avatar-border), 0 14px 28px -12px rgba(233,185,73,.5)", "purpose": "Legend portraits at lg/xl." },
+      { "name": "generational-glow", "value": "inset 0 0 0 2px var(--avatar-border), 0 14px 28px -12px rgba(255,77,94,.55)", "purpose": "Generational portraits at lg/xl." },
+      { "name": "winner-glow", "value": "0 20px 50px -20px rgba(233,185,73,.7)", "purpose": "Awards Night winner podium entry." }
+    ],
+    "motion": [
+      { "name": "ease", "value": "cubic-bezier(.2, .8, .2, 1)", "purpose": "Default ease-out for all state and entrance motion." },
+      { "name": "t-fast", "value": "140ms", "purpose": "Hover, colour and border transitions." },
+      { "name": "t", "value": "200ms", "purpose": "Tab and section-strip underline slide, overlay fade, popover pop, drawer slide." },
+      { "name": "press", "value": "90ms scale(.97)", "purpose": "Button press feedback." },
+      { "name": "page-enter", "value": "fade-up 220ms (6px rise)", "purpose": "Route change only." },
+      { "name": "overlay-pop", "value": "pop-in 220ms (6px rise, scale .985)", "purpose": "Modal panels, only on the render that opens them." },
+      { "name": "toast-in", "value": "240ms (10px rise)", "purpose": "Toasts." },
+      { "name": "progress-fill", "value": "width 220ms", "purpose": "Season clock and postseason meters." },
+      { "name": "podium-rise", "value": "520ms (18px rise, 4px blur clear), winner glow 2.4s x2", "purpose": "Awards Night podium reveal, once per entry; the contract-named ceremony exception." },
+      { "name": "reduced-motion", "value": "animation and transition durations 1ms, single iteration", "purpose": "prefers-reduced-motion: reduce." }
+    ],
+    "breakpoints": [
+      { "name": "laptop", "value": "1439px" },
+      { "name": "icon-rail", "value": "1279px" },
+      { "name": "tablet-1024", "value": "1100px" },
+      { "name": "portrait-tablet", "value": "900px" },
+      { "name": "phone", "value": "759px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one cyan action on a surface.",
+      "html": "<button class=\"ds-btn-primary\">Sim to week 12</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 16px; border-radius: 7px; border: 1px solid transparent; font-family: Archivo, 'Segoe UI', system-ui, sans-serif; font-size: .8125rem; font-weight: 800; color: #03111c; background: linear-gradient(180deg, #5bd9ff, #12b5ec); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 6px 14px -8px rgba(0,0,0,.8); transition: background 140ms cubic-bezier(.2,.8,.2,1), transform 90ms cubic-bezier(.2,.8,.2,1); cursor: pointer; } .ds-btn-primary:hover { background: linear-gradient(180deg, #7ee3ff, #2cc4f5); } .ds-btn-primary:active { transform: scale(.97); } .ds-btn-primary:focus-visible { outline: 2px solid #3fd0ff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Raised navy control for non-primary actions.",
+      "html": "<button class=\"ds-btn-secondary\">Open full club page</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; border-radius: 7px; border: 1px solid rgba(150,180,230,.2); background: #15243f; color: #e9eff9; font-family: Archivo, 'Segoe UI', system-ui, sans-serif; font-size: .8125rem; font-weight: 700; transition: background 140ms cubic-bezier(.2,.8,.2,1), transform 90ms; cursor: pointer; } .ds-btn-secondary:hover { background: #1c2f50; } .ds-btn-secondary:active { transform: scale(.97); } .ds-btn-secondary:focus-visible { outline: 2px solid #3fd0ff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Outline-only tertiary action.",
+      "html": "<button class=\"ds-btn-ghost\">Reset filters</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 7px; border: 1px solid rgba(150,180,230,.2); background: transparent; color: #aebbd2; font-family: Archivo, 'Segoe UI', system-ui, sans-serif; font-size: .8125rem; font-weight: 700; transition: background 140ms, color 140ms; cursor: pointer; } .ds-btn-ghost:hover { background: #15243f; color: #e9eff9; } .ds-btn-ghost:focus-visible { outline: 2px solid #3fd0ff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Simulation Control Bar",
+      "kind": "custom",
+      "refersTo": "sim-button-primary",
+      "description": "Signature tray holding quiet, standard and exactly one cyan primary sim action.",
+      "html": "<div class=\"ds-sim-bar\"><span class=\"ds-sim-phase\">Regular season</span><button class=\"ds-sim-btn ds-quiet\">+1 week</button><button class=\"ds-sim-btn\">+4 weeks</button><button class=\"ds-sim-btn ds-primary\">Sim to Showcase</button></div>",
+      "css": ".ds-sim-bar { display: inline-flex; align-items: center; gap: 6px; padding: 4px; border-radius: 10px; background: #0a1324; border: 1px solid rgba(150,180,230,.2); font-family: Archivo, 'Segoe UI', system-ui, sans-serif; } .ds-sim-phase { padding: 0 8px 0 10px; font-size: .75rem; font-weight: 600; color: #aebbd2; white-space: nowrap; } .ds-sim-btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border: 0; border-radius: 7px; background: #15243f; color: #e9eff9; font: inherit; font-size: .8125rem; font-weight: 700; white-space: nowrap; transition: background 140ms cubic-bezier(.2,.8,.2,1), transform 90ms; cursor: pointer; } .ds-sim-btn:hover { background: #1c2f50; } .ds-sim-btn:active { transform: scale(.97); } .ds-sim-btn:focus-visible { outline: 2px solid #3fd0ff; outline-offset: 2px; } .ds-sim-btn.ds-quiet { background: transparent; color: #aebbd2; } .ds-sim-btn.ds-quiet:hover { background: #15243f; color: #e9eff9; } .ds-sim-btn.ds-primary { background: linear-gradient(180deg, #5bd9ff 0%, #12b5ec 100%); color: #03111c; font-weight: 800; box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 6px 14px -8px rgba(0,0,0,.8); } .ds-sim-btn.ds-primary:hover { background: linear-gradient(180deg, #7ee3ff 0%, #2cc4f5 100%); }"
+    },
+    {
+      "name": "Input Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Midnight well with hairline border and cyan focus glow.",
+      "html": "<input class=\"ds-input\" type=\"search\" placeholder=\"Type a player, club or country…\">",
+      "css": ".ds-input { min-height: 40px; min-width: 220px; padding: 0 12px; border-radius: 7px; border: 1px solid rgba(150,180,230,.2); background: #050a14; color: #e9eff9; font-family: Archivo, 'Segoe UI', system-ui, sans-serif; font-size: .8125rem; font-weight: 500; transition: border-color 140ms, box-shadow 140ms; } .ds-input::placeholder { color: #8391ab; } .ds-input:hover { border-color: rgba(150,180,230,.32); } .ds-input:focus { outline: none; border-color: #3fd0ff; box-shadow: 0 0 0 3px rgba(63,208,255,.16); }"
+    },
+    {
+      "name": "Tab Bar",
+      "kind": "nav",
+      "refersTo": "rail-link",
+      "description": "Text tabs with a cyan underline that slides in on the active tab.",
+      "html": "<nav class=\"ds-tabs\"><a class=\"ds-active\" href=\"#\">Overview</a><a href=\"#\">Squad</a><a href=\"#\">Honours</a><a href=\"#\">History</a></nav>",
+      "css": ".ds-tabs { display: flex; gap: 2px; border-bottom: 1px solid rgba(150,180,230,.11); font-family: Archivo, 'Segoe UI', system-ui, sans-serif; } .ds-tabs a { position: relative; display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; color: #aebbd2; font-size: .875rem; font-weight: 600; text-decoration: none; transition: color 140ms; } .ds-tabs a::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: #3fd0ff; transform: scaleX(0); transition: transform 200ms cubic-bezier(.2,.8,.2,1); } .ds-tabs a:hover { color: #e9eff9; } .ds-tabs a.ds-active { color: #fff; } .ds-tabs a.ds-active::after { transform: scaleX(1); } .ds-tabs a:focus-visible { outline: 2px solid #3fd0ff; outline-offset: 2px; border-radius: 3px; }"
+    },
+    {
+      "name": "Status and Rarity Chips",
+      "kind": "chip",
+      "refersTo": "status-chip",
+      "description": "Neutral, champion-gold and embargo chips, plus Legend and Generational rarity badges.",
+      "html": "<div class=\"ds-chips\"><span class=\"ds-chip\">Season ready</span><span class=\"ds-chip ds-gold\">Champions</span><span class=\"ds-chip ds-embargo\">Showcase pending</span><span class=\"ds-rarity\" style=\"--rc:#e9b949\">Legend</span><span class=\"ds-rarity\" style=\"--rc:#ff4d5e\">Generational</span></div>",
+      "css": ".ds-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-family: Archivo, 'Segoe UI', system-ui, sans-serif; } .ds-chip { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; background: #15243f; color: #aebbd2; font-size: .6875rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; } .ds-chip.ds-gold { background: rgba(233,185,73,.16); color: #e9b949; box-shadow: inset 0 0 0 1px rgba(233,185,73,.3); } .ds-chip.ds-embargo { background: transparent; color: #f5b83d; box-shadow: inset 0 0 0 1px rgba(245,184,61,.5); outline: 1px dashed rgba(245,184,61,.35); outline-offset: -1px; } .ds-rarity { display: inline-flex; align-items: center; height: 19px; padding: 0 7px; border-radius: 3px; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--rc); background: color-mix(in srgb, var(--rc) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rc) 38%, transparent); }"
+    },
+    {
+      "name": "Panel with Hairline Rows",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Gradient panel; rows inside are hairline-separated, never boxed.",
+      "html": "<section class=\"ds-panel\"><div class=\"ds-panel-head\"><h3>Title races</h3><a href=\"#\">All competitions</a></div><div class=\"ds-row\"><span>Premier Division</span><strong>71 <small>pts</small></strong></div><div class=\"ds-row\"><span>Liga Primera</span><strong>68 <small>pts</small></strong></div><div class=\"ds-row\"><span>Serie Alta</span><strong>66 <small>pts</small></strong></div></section>",
+      "css": ".ds-panel { width: 360px; padding: 16px 18px 18px; border-radius: 10px; background: linear-gradient(180deg, #0f1b31 0%, #0a1324 100%); border: 1px solid rgba(150,180,230,.11); box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 10px 24px -14px rgba(0,0,0,.7); color: #e9eff9; font-family: Archivo, 'Segoe UI', system-ui, sans-serif; font-size: .875rem; } .ds-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; } .ds-panel-head h3 { margin: 0; font-size: 1rem; font-weight: 700; } .ds-panel-head a { color: #aebbd2; font-size: .8125rem; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(150,180,230,.32); text-underline-offset: 4px; transition: color 140ms; } .ds-panel-head a:hover { color: #3fd0ff; } .ds-row { display: flex; align-items: center; justify-content: space-between; min-height: 44px; border-bottom: 1px solid rgba(150,180,230,.11); color: #aebbd2; font-size: .8125rem; } .ds-row:last-child { border-bottom: 0; } .ds-row strong { color: #e9eff9; font-size: 1.1875rem; font-weight: 800; font-stretch: 78%; font-variant-numeric: tabular-nums; } .ds-row small { color: #8391ab; font-size: .6875rem; font-weight: 600; }"
+    },
+    {
+      "name": "Match Row",
+      "kind": "custom",
+      "refersTo": "match-score",
+      "description": "Broadcast scoreboard row: home, score box, away; winner bright.",
+      "html": "<div class=\"ds-match\"><span class=\"ds-team ds-home ds-won\">Atlético Norte</span><span class=\"ds-score\"><strong>3</strong><span>–</span><strong>1</strong></span><span class=\"ds-team\">Real Costa</span></div>",
+      "css": ".ds-match { display: grid; grid-template-columns: minmax(0,1fr) 92px minmax(0,1fr); align-items: center; gap: 10px; width: 420px; min-height: 52px; padding: 6px 2px; border-bottom: 1px solid rgba(150,180,230,.11); font-family: Archivo, 'Segoe UI', system-ui, sans-serif; font-size: .8125rem; color: #aebbd2; transition: background 140ms; } .ds-match:hover { background: rgba(255,255,255,.025); } .ds-team { font-weight: 500; } .ds-home { text-align: right; } .ds-won { color: #fff; font-weight: 700; } .ds-score { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 34px; padding: 0 8px; border-radius: 5px; background: #050a14; box-shadow: inset 0 0 0 1px rgba(150,180,230,.2); font-variant-numeric: tabular-nums; } .ds-score strong { color: #e9eff9; font-size: 1.1875rem; font-weight: 800; font-stretch: 80%; text-align: center; } .ds-score span { color: #8391ab; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Matchday Console",
+    "overview": "The interface is a premium football-game shell played straight: the presentation craft of EA FC Career Mode menus carrying Football Manager information density. Midnight navy structure sits in stepped tonal surfaces with cool hairline borders. A small set of signal colours each carry one meaning, so a glance tells the player what is selected, what is won and what is rare. Archivo's variable width axis does the brand work. Heavy condensed caps set season labels, hero names and every number that matters. Normal-width Archivo sets UI text, and data stays in tabular figures.\n\nDensity is high but ranked. Hero stages (the Home season stage, competition and profile heroes, the magazine cover, the awards stage) lead each screen with one large condensed figure or name. Everything beneath them sits in panels whose rows are separated by hairlines, read like a broadcast graphic or a game ledger. The simulation control bar at the far right of the command bar is the signature surface. It holds the game's single cyan primary action, which changes with the season phase and locks while a simulation runs.\n\nThis world replaces an earlier light dashboard. It rejects the website pattern of a long link sidebar, eyebrow-plus-title cards and equal-weight stat-card grids.",
+    "keyCharacteristics": [
+      "Dark only (`color-scheme: dark`): five navy surface steps plus a rail navy, with depth carried by tone and hairlines.",
+      "Signal colours with one job each: cyan for interaction, gold for honours, red for Generational and loss, green for wins, amber for embargo.",
+      "One variable family, Archivo: condensed 68–85% width for display and numbers, 100% for UI, tabular figures in data.",
+      "Persistent shell: rail with five destinations, sticky command bar (section, season clock, tools, simulation bar), section strip.",
+      "Hairline-separated rows inside panels and segmented stat ribbons instead of card grids.",
+      "Short ease-out motion (140–220ms). Overlays and podium entries animate only when they first appear. Reduced motion is honoured."
+    ],
+    "rules": [
+      { "name": "The One-Job Signal Rule", "body": "Each signal colour has one meaning. Cyan never decorates. If a cyan element is not selected, focused, the primary action or progress, it is the wrong colour. Gold appears only where something was won or where a player is Legend.", "section": "colors" },
+      { "name": "The Position Code Rule", "body": "Positions are colour-coded on chips: GK amber, DF blue (`#7cbcff`), MF green and FW red, each on a 15–16% tint. Use these chips wherever a position is shown.", "section": "colors" },
+      { "name": "The Condensed Number Rule", "body": "Any figure the player is meant to compare (points, scores, ratings, trophy counts, fees) uses heavy weight, a condensed width and `font-variant-numeric: tabular-nums`. Body-width figures are only for secondary metadata.", "section": "typography" },
+      { "name": "The Label-Names-Data Rule", "body": "Small uppercase tracked labels sit above values, table columns and lists. They never sit above a heading as an eyebrow or kicker. A heading stands alone.", "section": "typography" },
+      { "name": "The Ribbon-Not-Cards Rule", "body": "Headline stats render as one bordered ribbon split into segments by hairlines, never as a grid of separate stat cards. Record grids and comparison metrics use the same idea: tiles separated by a 1px gap over a hairline background.", "section": "layout" },
+      { "name": "The Hairline Row Rule", "body": "Inside a panel, rows (matches, honours, trophies, rankings, transfers, title races, selectors) are separated by a 1px hairline bottom border and are never boxed. The last row has no border. Boxed rows (1px border, md radius, midnight-1 fill) are for standalone lists outside panels.", "section": "layout" },
+      { "name": "The Tone-First Rule", "body": "Raise a surface by stepping its navy tone and adding a hairline. Add a shadow only for a hero stage, a floating layer or the primary action.", "section": "elevation" }
+    ],
+    "dos": [
+      "**Do** reserve signal cyan for selection, focus, the primary action and progress, with cyan-ink text on cyan fills.",
+      "**Do** reserve trophy gold for trophies, champions, honours and Legend rarity.",
+      "**Do** keep the rarity convention: Common grey, Uncommon green, Rare blue, Epic purple, Legend gold, Generational red.",
+      "**Do** separate rows inside panels with a 1px hairline (`rgba(150,180,230,.11)`) and leave the last row unbordered.",
+      "**Do** set compared figures in heavy condensed Archivo with tabular figures.",
+      "**Do** use the width axis for hierarchy: about 70% width for display, 72–80% for headlines and numbers, 100% for UI and body text.",
+      "**Do** keep state motion at 140–220ms on `cubic-bezier(.2,.8,.2,1)`, press feedback at 90ms scale(.97), and respect `prefers-reduced-motion`.",
+      "**Do** animate overlays and podium entries only on the render where they first appear.",
+      "**Do** mark unplayed or embargoed content with dashed amber edges, never with real results.",
+      "**Do** keep touch targets at least 40px high."
+    ],
+    "donts": [
+      "**Don't** place an uppercase eyebrow or kicker label above a heading. Labels name values, columns and lists only.",
+      "**Don't** box rows inside a panel with their own border, radius or fill.",
+      "**Don't** build headline stats as a grid of separate equal-weight cards. Use the segmented ribbon.",
+      "**Don't** use cyan or gold as decoration, category colour or a section label tint.",
+      "**Don't** add a second cyan primary action to a surface that already has the simulation bar's primary.",
+      "**Don't** use light surfaces. The system is dark only.",
+      "**Don't** use glyph characters as icons. Use the inline SVG icon set.",
+      "**Don't** replay entrance animations on re-render."
+    ]
+  }
+}
