@@ -124,7 +124,7 @@ function poisson(rng, mean) {
   return count;
 }
 
-function newEntry(source, started, minute) {
+function newEntry(source, started, minute, fitness = 100) {
   return {
     source,
     id: source.id || null,
@@ -141,7 +141,8 @@ function newEntry(source, started, minute) {
     bigGame: source.bigGame || 0,
     clutch: source.clutch || 0,
     form: source.form || 0,
-    energy: source.fitness ?? 100,
+    energy: fitness,
+    startEnergy: fitness,
     started,
     on: minute,
     off: null,
@@ -154,9 +155,11 @@ function newEntry(source, started, minute) {
   };
 }
 
+// Kickoff fitness is already in the selection rating; here only the energy lost
+// during tonight's match counts, and only beyond the first ten points.
 function freshEffective(entry) {
-  const tired = entry.energy >= 92 ? 0 : (92 - entry.energy) * 0.16;
-  return entry.effective - tired;
+  const lost = entry.startEnergy - entry.energy;
+  return lost > 10 ? entry.effective - (lost - 10) * 0.12 : entry.effective;
 }
 
 function computeUnits(team) {
@@ -265,8 +268,8 @@ function buildTeam(input, side) {
     style: STYLE_PROFILES[input.style] || NEUTRAL_STYLE,
     styleId: input.style || null,
     lambda0: input.lambda,
-    onPitch: input.xi.map((source) => newEntry(source, true, 0)),
-    bench: input.bench.map((source) => newEntry(source, false, null)),
+    onPitch: input.xi.map((source, index) => newEntry(source, true, 0, input.fitness ? input.fitness[index] : 100)),
+    bench: input.bench.map((source, index) => newEntry(source, false, null, input.fitness ? input.fitness[input.xi.length + index] : 100)),
     maxSubs: input.maxSubs ?? Math.min(4, input.bench.length),
     subsUsed: 0,
     tacticalSubs: 0,

@@ -1381,3 +1381,8 @@ input::placeholder { color: var(--text-3); }
 }
 .showcase-tactics { display: block; margin-top: 4px; color: var(--text-3); font-size: var(--fs-12); font-weight: 600; }
 
+/* Availability markers (v4 fitness, injuries, suspensions) */
+.avail-chip { display: inline-flex; align-items: center; height: 19px; padding: 0 6px; border-radius: 3px; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.avail-chip.injured { background: rgba(255,77,94,.14); color: #ff8a95; box-shadow: inset 0 0 0 1px rgba(255,77,94,.38); }
+.avail-chip.suspended { background: var(--bg-3); color: #ff8a95; box-shadow: inset 0 0 0 1px var(--line-2); }
+.avail-chip.tired { background: var(--bg-3); color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-2); }

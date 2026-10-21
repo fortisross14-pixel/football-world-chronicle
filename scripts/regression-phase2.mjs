@@ -121,7 +121,13 @@ simulateWeeks(world, 39);
 const matches = world.current.matches;
 const players = new Map(world.players.map((player) => [player.id, player]));
 let substituteGoals = 0;
-for (const match of matches) {
+const lightMatches = matches.filter((match) => match.light);
+for (const match of lightMatches) {
+  assert(/^(CUP-)?[A-Z]{3}1$/.test(match.competitionId), 'only domestic leagues and cups are played light');
+  assert(!['ENG1', 'ESP1', 'ITA1', 'GER1', 'FRA1', 'POR1', 'NED1', 'BRA1', 'ARG1'].includes(match.competitionId), 'main leagues keep the full engine');
+  assert.equal(match.goalEvents.length, match.homeGoals + match.awayGoals);
+}
+for (const match of matches.filter((item) => !item.light)) {
   assert.equal(match.engine, 2);
   assert.equal(match.goalEvents.filter((goal) => goal.side === 'home').length, match.homeGoals);
   assert.equal(match.goalEvents.filter((goal) => goal.side === 'away').length, match.awayGoals);
@@ -142,7 +148,8 @@ for (const match of matches) {
   }
 }
 assert(substituteGoals > 50, 'substitutes score in real matches');
-const shootoutMatches = matches.filter((match) => match.penalties).length;
+// Light cup ties settle a level game without kick detail, so only full-engine shootouts are archived.
+const shootoutMatches = matches.filter((match) => match.penalties && !match.light).length;
 assert.equal(world.history.shootouts.length, shootoutMatches, 'every shootout is archived');
 const leaders = getShootoutLeaders(world, 5);
 assert(leaders.total <= shootoutMatches);
@@ -150,7 +157,7 @@ if (leaders.takers[0]) {
   const record = getShootoutRecord(world, leaders.takers[0].id, 'player');
   assert.equal(record.scored, leaders.takers[0].scored);
 }
-report.season = { matches: matches.length, substituteGoals, shootouts: shootoutMatches };
+report.season = { matches: matches.length, lightMatches: lightMatches.length, substituteGoals, shootouts: shootoutMatches };
 
 // Showcase replays the real timeline.
 simulateToSeasonEnd(world);

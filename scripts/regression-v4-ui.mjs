@@ -76,4 +76,8 @@ const shootoutPlayer = world.players.find((player) => player.id === taker);
 if (shootoutPlayer) expect('player shootout record', visit(`#/player/${shootoutPlayer.id}/statistics`), ['Shootout']);
 expect('club records shootouts', visit(`#/club/${club.id}/legacy`), ['Penalty shootouts']);
 
+// Phase 3: injury history on profiles and injury stories in the season's news.
+const injured = world.players.find((player) => (player.injuries || []).length);
+if (injured) expect('player injury history', visit(`#/player/${injured.id}/statistics`), ['Injury history', 'avail-chip']);
+
 console.log(JSON.stringify({ checks, passed: true }, null, 2));

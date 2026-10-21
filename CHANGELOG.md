@@ -1,5 +1,23 @@
 # v4 match engine and player model (in progress)
 
+## Phase 3 — Fitness, rotation, injuries and suspensions
+
+- Players carry match fitness. A full match costs about 16 points and a week restores 22, so two games a week are manageable and congested runs wear players down. Fitness is the player's starting energy in the match engine.
+- Coaches keep their usual XI and fill only the gaps: injured and suspended players are out, tired players are rested in ordinary games, and up to half the starters are rotated in low-stakes games (early domestic cup rounds, super cups, dead rubbers late in the league). Finals, semi-finals, two-legged knockouts and derbies get the strongest XI available.
+- Injuries come from the match engine (more likely when tired): knocks (1–2 weeks), medium (3–8), long-term (10–28) and rare career-threatening injuries (26–44 weeks) that cut ability and can shorten a career. Injury-prone players (Phase 4 trait) are hurt more often and for longer. Injuries carry across the summer minus six weeks of recovery.
+- Suspensions: a straight red is a one- to three-match ban, a second booking one match; five yellows in a league or three in another competition bring a one-match ban. Bans are served in that competition's next matches.
+- Injured players miss club and national games. Before World Cup and continental finals, notable absentees make the Magazine ("misses the World Cup", "is a doubt for…"); long-term and career-threatening injuries to notable players are reported too.
+- Squad depth matters: unavailable starters are replaced from the bench, the extra squad players and, when a squad runs out, weaker cover.
+- UI: injured, suspended and tired markers in squad lists and on player profiles; injury history on player statistics.
+- Data revision 28 (discipline and ban containers).
+
+### Light simulation for low-profile matches
+
+- League matches outside the nine main leagues (England, Spain, Italy, Germany, France, Portugal, Netherlands, Brazil, Argentina), early domestic-cup rounds in those countries and all condensed leagues are now played light: a scoreline from the same kickoff expectations (with a small late-equaliser chance so draw rates match the full engine), named scorers and assisters, and one injury roll per side. No events, cards, ratings, fitness or match logs are kept.
+- Players in those matches receive their appearances, clean sheets and season ratings once at season close, from team results and ability, so awards, honours and the Hall of Fame keep working.
+- Continental, global and international football, cup quarter-finals onwards, Showcase-selected matches and anything involving a followed club always use the full engine.
+- Data revision 29 (light appearance counters).
+
 ## Phase 2 — Minute-by-minute match engine
 
 - New `src/match-engine.js`: matches are played in ten-minute slices (five-minute slices before half-time and full-time carry stoppage time). Each slice's chances come from the kickoff expectation adjusted by who is on the pitch, fatigue, red cards, substitutions, the score and the clock.

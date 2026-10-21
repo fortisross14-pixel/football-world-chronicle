@@ -139,31 +139,50 @@ export function selectStartingEleven(players, formationId, options = {}) {
   const formation = FORMATIONS[formationId] || FORMATIONS['4-4-2'];
   const fitness = options.fitness;
   const unavailable = options.unavailable;
-  const pool = players.filter((player) => !unavailable || !unavailable.has(player.id));
-  const pairs = [];
-  formation.slots.forEach(([slotType], slotIndex) => {
-    for (const player of pool) {
-      const fit = fitness ? (fitness.get(player.id) ?? 100) : 100;
-      pairs.push({ slotIndex, slotType, player, value: effectiveRating(player, slotType, fit) + (options.bias?.(player) || 0) });
-    }
-  });
-  pairs.sort((a, b) => b.value - a.value);
-  const assigned = new Array(formation.slots.length).fill(null);
-  const used = new Set();
+  const bias = options.bias;
+  const pool = unavailable ? players.filter((player) => !unavailable.has(player.id)) : players;
+  const slots = formation.slots;
+  const n = pool.length;
+  const m = slots.length;
+  // Every (slot, player) pairing in a flat array; the strongest pairings are fixed
+  // first. Ties keep slot-then-squad order, so selection is fully repeatable.
+  const values = new Float64Array(n * m);
+  const extra = new Float64Array(n);
+  const fitnessValues = new Float64Array(n);
+  for (let j = 0; j < n; j += 1) {
+    extra[j] = bias ? bias(pool[j]) || 0 : 0;
+    fitnessValues[j] = fitness ? (fitness.get(pool[j].id) ?? 100) : 100;
+  }
+  for (let i = 0; i < m; i += 1) {
+    const slotType = slots[i][0];
+    for (let j = 0; j < n; j += 1) values[i * n + j] = effectiveRating(pool[j], slotType, fitnessValues[j]) + extra[j];
+  }
+  const order = new Int32Array(n * m);
+  for (let k = 0; k < order.length; k += 1) order[k] = k;
+  order.sort((a, b) => (values[b] - values[a]) || (a - b));
+  const assigned = new Int32Array(m).fill(-1);
+  const usedPlayer = new Uint8Array(n);
   let filled = 0;
-  for (const pair of pairs) {
-    if (filled === assigned.length) break;
-    if (assigned[pair.slotIndex] || used.has(pair.player)) continue;
-    assigned[pair.slotIndex] = pair;
-    used.add(pair.player);
+  for (let k = 0; k < order.length && filled < m; k += 1) {
+    const index = order[k];
+    const slot = (index / n) | 0;
+    const playerIndex = index - slot * n;
+    if (assigned[slot] !== -1 || usedPlayer[playerIndex]) continue;
+    assigned[slot] = playerIndex;
+    usedPlayer[playerIndex] = 1;
     filled += 1;
   }
-  const xi = formation.slots.map(([slotType, x, y], slotIndex) => {
-    const pair = assigned[slotIndex];
-    return pair ? { player: pair.player, slotType, x, y, effective: pair.value, fit: slotFit(pair.player, slotType) } : null;
-  }).filter(Boolean);
-  const bench = pool.filter((player) => !used.has(player))
-    .sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  const xi = [];
+  for (let i = 0; i < m; i += 1) {
+    const playerIndex = assigned[i];
+    if (playerIndex === -1) continue;
+    const [slotType, x, y] = slots[i];
+    const player = pool[playerIndex];
+    xi.push({ player, slotType, x, y, effective: values[i * n + playerIndex], fit: slotFit(player, slotType) });
+  }
+  const bench = [];
+  for (let j = 0; j < n; j += 1) if (!usedPlayer[j]) bench.push(pool[j]);
+  bench.sort((a, b) => (b.rating || 0) - (a.rating || 0));
   return { formationId: formation.label, xi, bench };
 }
 
@@ -183,15 +202,18 @@ export function formationFitScore(players, formationId, selection = null) {
 
 // Picks the formation a coach actually uses: the preferred one unless it fits poorly
 // and the second choice is clearly better.
-export function chooseMatchFormation(players, preferred, secondary) {
+// options (fitness, unavailable, bias) are passed to the XI selection, so injuries,
+// suspensions, tiredness and rotation shape tonight's line-up.
+export function chooseMatchFormation(players, preferred, secondary, options = {}) {
+  const pool = options.unavailable ? players.filter((player) => !options.unavailable.has(player.id)) : players;
   const primaryId = FORMATIONS[preferred] ? preferred : '4-4-2';
-  const primary = selectStartingEleven(players, primaryId);
-  const primaryFit = formationFitScore(players, primaryId, primary);
+  const primary = selectStartingEleven(pool, primaryId, options);
+  const primaryFit = formationFitScore(pool, primaryId, primary);
   if (!secondary || secondary === primaryId || !FORMATIONS[secondary] || primaryFit >= 80) {
     return { formationId: primaryId, fit: primaryFit, selection: primary, fallback: false };
   }
-  const second = selectStartingEleven(players, secondary);
-  const secondFit = formationFitScore(players, secondary, second);
+  const second = selectStartingEleven(pool, secondary, options);
+  const secondFit = formationFitScore(pool, secondary, second);
   if (secondFit >= primaryFit + 5) return { formationId: secondary, fit: secondFit, selection: second, fallback: true };
   return { formationId: primaryId, fit: primaryFit, selection: primary, fallback: false };
 }

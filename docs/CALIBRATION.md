@@ -168,3 +168,41 @@ The season is over the +30 % budget (season plus offseason together is 25 % fast
 v3.16). The engine itself costs about 0.07 ms per match; the rest is per-player
 bookkeeping for 11 starters plus substitutes. The save grows because substitutes create
 real appearance rows; replay detail is dropped when matches are archived.
+
+## Phase 3 — fitness, rotation, injuries, suspensions and light matches
+
+Three seeds × six seasons. All overall targets met: 2.73 goals, 45.4 / 25.2 / 29.5,
+12.3 shots, 4.3 on target, 5.1 corners, 1.97 yellows, 0.11 reds, 29.6 % clean sheets,
+2.8 substitutions per team. Condensed leagues: 2.70 goals, 27.2 % draws.
+
+Availability: about 2,800 injuries per season across the tracked world (light matches roll
+one injury check per side). League points per game by usual starters missing: none 1.38,
+one 1.38, two 1.35, three or more 1.31.
+
+Spread: 4.7 Ballon d'Or winners from 4.3 clubs per seed, 5.3 UCL winners, 3.0 champions per
+elite league, elite top scorers 37 goals. Ballon d'Or podiums 34 FW, 19 MF, 1 DF.
+
+balance-v316 (default two seeds) passes. On four seeds three pass with no club above three
+UCL titles and one (141421) has a seven-title Real Madrid with six in one spell: dynasties
+are now possible but uncommon. Knockout matches were made slightly more open (the old
+model weighed quality gaps more in knockouts than in leagues) and the repeat-champion
+pressure is a little stronger, because deeper squads protect giants from injuries.
+
+### Light matches
+
+League matches outside the nine main leagues, early cup rounds in those countries and the
+condensed leagues are played light (scoreline from the kickoff expectations, scorers, a
+late-equaliser adjustment, one injury roll per side). Their goal and result rates match
+the full engine (other full leagues 2.71 goals, 45.3 / 25.4 / 29.3).
+
+### Performance
+
+| Seed | Season | Offseason | Slowest offseason | Save after 20 seasons |
+|---:|---:|---:|---:|---:|
+| 271828 | 2.35 s (+10 %) | 4.59 s (−47 %) | 5.72 s | 241 MB |
+| 314159 | 2.25 s (+22 %) | 4.56 s (−44 %) | 6.32 s | 241 MB |
+
+Back within the +30 % budget. Before light matches the season took 4.1–4.2 s; other fixes
+on the way: line-ups repaired in place instead of re-selected, a per-team cache of matchday
+squads, typed-array XI selection (identical choices), cheaper availability checks and
+stable object shapes for the hot path.

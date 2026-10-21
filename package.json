@@ -34,7 +34,9 @@
     "regression-phase0": "node scripts/regression-phase0.mjs",
     "regression-phase1": "node scripts/regression-phase1.mjs",
     "regression-v4-ui": "node scripts/regression-v4-ui.mjs",
-    "regression-all": "node scripts/run-regressions.mjs"
+    "regression-all": "node scripts/run-regressions.mjs",
+    "regression-phase2": "node scripts/regression-phase2.mjs",
+    "regression-phase3": "node scripts/regression-phase3.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.0",

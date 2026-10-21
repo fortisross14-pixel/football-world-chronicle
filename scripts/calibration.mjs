@@ -110,7 +110,7 @@ const styleRows = new Map();
 const ratingByPosition = new Map();
 const ballonPositions = new Map();
 const subsPerTeam = { subs: 0, teams: 0 };
-const availability = { changed: [0, 0], full: [0, 0], injuries: 0, teamSeasons: 0 };
+const availability = { byAbsent: [[0, 0], [0, 0], [0, 0], [0, 0]], injuries: 0 };
 const scorerClubSpread = [];
 
 for (const seed of seeds) {
@@ -142,7 +142,7 @@ for (const seed of seeds) {
           const own = side === 'home' ? match.homeGoals : match.awayGoals;
           const other = side === 'home' ? match.awayGoals : match.homeGoals;
           const points = own > other ? 3 : own === other ? 1 : 0;
-          const bucket = match.rotation?.[side] ? availability.changed : availability.full;
+          const bucket = availability.byAbsent[Math.min(3, match.absent?.[side] || 0)];
           bucket[0] += points; bucket[1] += 1;
         }
       }
@@ -281,12 +281,11 @@ const report = {
   }])),
   averageRatingByPosition: Object.fromEntries([...ratingByPosition].map(([position, row]) => [position, Number((row.weighted / Math.max(1, row.apps)).toFixed(2))])),
   ballonDorPodiumPositions: Object.fromEntries(ballonPositions),
-  availability: availability.full[1] ? {
+  // League points per game by how many usual starters were missing (injured, banned or rested).
+  availability: {
     injuriesPerSeason: Math.round(availability.injuries / (seeds.length * seasons)),
-    pointsPerGameFullStrength: Number((availability.full[0] / Math.max(1, availability.full[1])).toFixed(3)),
-    pointsPerGameWithForcedChanges: Number((availability.changed[0] / Math.max(1, availability.changed[1])).toFixed(3)),
-    shareOfLeagueGamesWithForcedChanges: Number((availability.changed[1] / Math.max(1, availability.changed[1] + availability.full[1])).toFixed(3))
-  } : null,
+    pointsPerGameByMissingStarters: Object.fromEntries(availability.byAbsent.map(([points, games], index) => [index === 3 ? '3+' : String(index), { games, pointsPerGame: Number((points / Math.max(1, games)).toFixed(3)) }]))
+  },
   substitutionsPerTeam: subsPerTeam.teams ? Number((subsPerTeam.subs / subsPerTeam.teams).toFixed(2)) : null,
   timing: {
     averageSeasonSeconds: Number(average(timings.seasonSeconds).toFixed(2)),
