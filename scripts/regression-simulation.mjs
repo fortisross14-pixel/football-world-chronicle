@@ -11,7 +11,9 @@ simulateWeeks(restored, 1);
 assert.equal(state.rngSeed, restored.rngSeed, 'Save/load continuation must be deterministic');
 assert.deepEqual(state.current.matches.slice(-100), restored.current.matches.slice(-100));
 assert(state.current.matches.length > 100);
-for (const match of state.current.matches) {
+// v4: low-profile matches are played light (scoreline and scorers only, no match
+// statistics), so the per-match statistics checks apply to full-engine matches.
+for (const match of state.current.matches.filter((item) => !item.light)) {
   assert.equal(match.stats.home.possession + match.stats.away.possession, 100);
   for (const side of ['home', 'away']) {
     const stats = match.stats[side];

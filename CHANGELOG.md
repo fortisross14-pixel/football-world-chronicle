@@ -1,3 +1,99 @@
+# v4 match engine and player model (in progress)
+
+## v4.1 — Lighter leagues and live screens
+
+- Every league game is now a quick result (scoreline and scorers, week by week): tables with points, GF and GA, top scorers, best players and goalkeepers all remain, with league appearances and ratings credited every four weeks. The full minute-by-minute engine plays continental and international football, domestic cups from the quarter-finals, two-legged ties, Showcase games and any club you follow. Detailed match logs (cards, substitutions, chances) are no longer kept for league games.
+- Simulate to season end now plays week by week behind a live screen: progress, honours decided so far (top-5 league champions and cup winners, European trophies), knockout rounds in the Champions League, Europa League and Libertadores, and the top-5 league leaders with their top scorers. Showcase-selected games stay hidden.
+- The offseason (including Continue to Offseason after Awards Night) runs in stages behind its own live screen: top signings, coaching changes and star retirements fill in as they happen. Results are identical to a single run.
+- Seasons run about 30 % faster on the same machine.
+- Fix: pricing a Champions League fixture before its group ranking was set could change later results; odds previews no longer store anything.
+- Fix: the season-goals record is released after every season, not only when Showcase games were held.
+
+## Phase 6 — Following feed, predictions and odds
+
+- Following feed (Chronicle → Following, also linked from the home page): results, stories, transfers, loans and current injuries for the clubs, players, coaches and nations you follow, newest first. Showcase-embargoed results and their stories never appear.
+- Predictions game (Awards → Predictions): before the first week, pick the Premier League, LaLiga, Serie A, Bundesliga and Ligue 1 champions, the Champions League winner, the Ballon d'Or and the World Golden Boot. Picks lock once the season starts. Points: 3 per league (1 for the runner-up), 5 for the Champions League (2 for the losing finalist), 5 for the Ballon d'Or (2 for the podium), 3 for the Golden Boot (1 for the podium); 28 in all. The card is scored at Awards Night once every award is revealed and joins a season-by-season history.
+- Bookmaker odds: decimal prices (model probabilities with a 6 % margin) on Showcase match cards, the Showcase match screen and upcoming continental, international, derby and followed-team fixtures. Prices are well calibrated against results.
+- Upsets: stories now quote the winner's price, long-priced winners (5.00 or more) in notable games make the news, and Magazine → Results lists the season's biggest upsets against the odds.
+- Data revision 32 (predictions container). Picks never affect the simulation.
+
+## Phase 5 — Derbies, home advantage, records, sackings and transfer drama
+
+- Derbies (the historic rivalries) are always played by the full engine. They are more heated (about a third more cards and half as many red cards again), slightly more intense, and carry a much smaller home edge. Every derby gets its own headline, and an all-time head-to-head ledger (wins, draws, losses, goals, last six meetings) appears on the club Rivalries tab.
+- The home edge now varies: big fan bases add a little to it and small ones reduce it, long continental trips add a little (more outside Europe), high-altitude venues (La Paz, Quito, Bogotá, Mexico City and others) add a lot against lowland visitors, derbies shrink it and neutral finals remove it.
+- Live records, updated as matches are played: biggest win, longest unbeaten and winning league runs, most goals in a season, most league goals by a club, record transfer, most career goals and appearances, youngest and oldest scorers, all per competition too, plus invincible seasons and shootout leaders. Breaking a record or reaching a career milestone (100–600 goals, appearance landmarks) makes the news. A new Live records section opens the Almanac's World Records page.
+- Spoiler embargo: matches selected for the Showcase do not touch records, the derby ledger or record stories until the postseason is over; the season-goals record is hidden while the Showcase is unresolved.
+- Mid-season sackings: every three weeks from week 10 to 44, boards review coaches well below expectations and in poor form (coach rarity, recent titles and owner patience protect them). At most two per league and 50 a season (about 30–40 in practice). An interim takes over; the squad gets a fading new-coach bounce over six weeks, and at season end the interim either earns the job or makes way.
+- Transfer drama: bidding wars between big clubs push fees up 8–22 %, stars turn down moves, a few deals collapse at the last moment and unhappy stars stuck in a summer standoff are reported, all under a "Transfer Drama" news category.
+- Title fatigue (a deliberate balancing rule): a side that has won the same competition in consecutive seasons plays it under growing pressure. Two in a row is a small handicap, three a clear one, four or more makes another title very unlikely (leagues at 40 % strength). Three or four titles in the last six seasons count the same way, so alternate-year dynasties feel it too. Across four test universes no club passes four Champions League titles in 20 seasons and 11–14 clubs win it.
+- Star hoarding (also a balancing rule): in the elite market a club's existing stars (a generational player counts 3, a legend 1.6, an epic 0.5) make it much less likely to land another generational, legend or epic player, and stars are less willing to join a squad already full of them. Clubs with three or more generational/legend players fell from about 1.1 to 0.5–0.8 per season, and no club holds two generational players at once.
+- The crowd effect on the home edge is capped at ±12 %, and derbies keep 40 % of the usual home edge.
+- Data revision 31: records start from the history already played; career goal and appearance counters are rebuilt from archived seasons.
+
+## Phase 4 — Players who change over time
+
+- Hidden potential: new young players start a few points below their ceiling (elite prospects closer). Yearly growth depends on minutes, average rating, coaching (Youth Developer coaches and coach quality), league level, personality and chance, on top of the existing career-curve archetype. Breakouts lift the ceiling, prospects who never play stall, late bloomers appear and some players decline early. Ability stays within one point of the rarity band, so rarity caps and Hall of Fame standards keep their meaning; the 88+ population stays stable (30–36 over eight seasons in the regression).
+- The UI shows a scouting range that narrows with age ("Scouts see 82–88"; "Fully developed" later).
+- In-season form follows recent match ratings (±2 rating points at the extremes): hot streaks and slumps, shown on profiles, squad lists and the Ballon d'Or race.
+- Eight personality traits, one or two per player and more common types for stars: Loyal, Mercenary, Big-game player, Injury-prone, Leader, Hot-headed, Professional, Clutch penalty taker. They change renewals and departures, big-chance creation in decisive games, injury frequency, booking rates, development and longevity, and shootout conversion.
+- Every club has a captain (leaders first); a leader on the pitch lifts the side slightly.
+- Academy intake: top-flight clubs promote a youth graduate most summers (never above Rare), replacing a weak veteran.
+- Loans: big clubs send young prospects who would not start to clubs where they will play; loans return next summer, count for development and appear in the career timeline, club pages and a new Loans tab in the transfer market.
+- New signings are no longer released or loaned out again in the same window.
+- Data revision 30: existing players receive traits and potential with no change to current ability, and every club gets a captain.
+
+## Phase 3 — Fitness, rotation, injuries and suspensions
+
+- Players carry match fitness. A full match costs about 16 points and a week restores 22, so two games a week are manageable and congested runs wear players down. Fitness is the player's starting energy in the match engine.
+- Coaches keep their usual XI and fill only the gaps: injured and suspended players are out, tired players are rested in ordinary games, and up to half the starters are rotated in low-stakes games (early domestic cup rounds, super cups, dead rubbers late in the league). Finals, semi-finals, two-legged knockouts and derbies get the strongest XI available.
+- Injuries come from the match engine (more likely when tired): knocks (1–2 weeks), medium (3–8), long-term (10–28) and rare career-threatening injuries (26–44 weeks) that cut ability and can shorten a career. Injury-prone players (Phase 4 trait) are hurt more often and for longer. Injuries carry across the summer minus six weeks of recovery.
+- Suspensions: a straight red is a one- to three-match ban, a second booking one match; five yellows in a league or three in another competition bring a one-match ban. Bans are served in that competition's next matches.
+- Injured players miss club and national games. Before World Cup and continental finals, notable absentees make the Magazine ("misses the World Cup", "is a doubt for…"); long-term and career-threatening injuries to notable players are reported too.
+- Squad depth matters: unavailable starters are replaced from the bench, the extra squad players and, when a squad runs out, weaker cover.
+- UI: injured, suspended and tired markers in squad lists and on player profiles; injury history on player statistics.
+- Data revision 28 (discipline and ban containers).
+
+### Light simulation for low-profile matches
+
+- League matches outside the nine main leagues (England, Spain, Italy, Germany, France, Portugal, Netherlands, Brazil, Argentina), early domestic-cup rounds in those countries and all condensed leagues are now played light: a scoreline from the same kickoff expectations (with a small late-equaliser chance so draw rates match the full engine), named scorers and assisters, and one injury roll per side. No events, cards, ratings, fitness or match logs are kept.
+- Players in those matches receive their appearances, clean sheets and season ratings once at season close, from team results and ability, so awards, honours and the Hall of Fame keep working.
+- Continental, global and international football, cup quarter-finals onwards, Showcase-selected matches and anything involving a followed club always use the full engine.
+- Data revision 29 (light appearance counters).
+
+## Phase 2 — Minute-by-minute match engine
+
+- New `src/match-engine.js`: matches are played in ten-minute slices (five-minute slices before half-time and full-time carry stoppage time). Each slice's chances come from the kickoff expectation adjusted by who is on the pitch, fatigue, red cards, substitutions, the score and the clock.
+- Leading sides protect a lead late on (fewer chances both ways), trailing sides push (more chances both ways), level sides grow cautious after the hour. A red card changes the rest of the match from that minute.
+- Coaches make up to four substitutions for fatigue, injuries, chasing a game or protecting a lead; substitutes score and assist.
+- Every goal (minute, stoppage time, scorer, assister, penalty), card (with player; second bookings recorded as yellow then red), substitution and big chance is stored. Knockout and semi/final matches also keep every shot and corner, per-slice possession, line-ups and styles.
+- Extra time is 30 more minutes with heavier fatigue. Shootouts are kick by kick (taker penalty skill and composure against the goalkeeper, rising pressure, sudden death). Two-legged ties play extra time and penalties in the second leg when level on aggregate.
+- Shootout records for players, goalkeepers, clubs and nations (embargoed with the Showcase).
+- Tactical matchups, rock-paper-scissors style: each core style beats two and loses to two (possession beats direct and counter-attack but loses to a defensive rock and to pressing; see `STYLE_BEATS`). Non-tactical coach profiles lean towards one style at half strength; adaptive coaches gain a small edge against everyone.
+- Match ratings come from events (goals, assists, chances created, shots on target, saves, blocks, tackles, mistakes, cards, clean sheets, result); Man of the Match is the best-rated named player.
+- Expected goals follow a saturating curve so mismatches stay football scores.
+- Condensed leagues are played by the same engine (tables and player statistics only).
+- The Showcase replays the stored timeline exactly; matches saved before this version keep the old reconstruction.
+- Model win/draw/loss probabilities are stored on each match.
+- UI: Showcase shows line-ups, substitutions, named card recipients, big chances, stoppage-time minutes, shootout details and the tactical edge; coach profiles list strong and weak matchups; player profiles show minutes and shootout records; club and nation pages show shootout records.
+- Data revision 27 (shootout archive).
+
+## Phase 1 — Squads of 11 + 4, formations and coach fit
+
+- Top-flight clubs in the 29 full leagues now carry a named 15-player squad (11 starters + 4 substitutes) instead of 7; national teams pick a matchday 15.
+- Condensed-league and second-division clubs keep a named core of four. Their matchday 15 is completed by unnamed depth ratings derived from club strength, so nothing extra is stored (measured: naming 15 players for all 1,431 clubs would have roughly tripled the player population).
+- Every coach has a preferred and a fallback formation (4-4-2, 4-3-3, 4-2-3-1, 3-5-2, 5-3-2, 4-1-4-1, 3-4-3) weighted by tactical style.
+- Formation fit (0–100) compares the best XI for a shape with the squad's raw quality; out-of-position players, missing wingers or wing-backs and thin lines lower it. Coaches fall back to their second shape when the first fits below 80 and the second is clearly better. Fit adjusts team strength by up to about ±1.5.
+- Lineups pick the best XI for the formation and respect availability; benches name a reserve goalkeeper first.
+- Transfers, free-agent signings and generated squad players follow the coach's system; boards weigh squad fit when appointing a coach.
+- Medals go to every named squad member who played in the winning competition.
+- UI: Starting XI pitch, formation and fit on club Squad, club overview, nation pages and Showcase; preferred formation on coach profiles and staff cards.
+- Faster offseasons: roster changes patch the runtime cache instead of rebuilding it, and several full-history scans (major titles, coach lookups, payroll recalculation, rookie placement) are now indexed.
+- Data revision 26: existing coaches receive formations; top-flight clubs in existing saves are completed to 15 with squad players near the club's level, and payroll anchors and the population target grow with them.
+
+## Phase 0 — Calibration harness
+
+- `npm run calibration` and `npm run perf` with the recorded v3.16.1 baseline in docs/CALIBRATION.md.
+
 # Unreleased — Game UI redesign
 
 - New dark game interface: one token-based stylesheet replaces the layered overrides; Archivo variable font bundled locally (OFL, assets/fonts).

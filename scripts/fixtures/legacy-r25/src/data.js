@@ -1,0 +1,3071 @@
+export const START_SEASON = 2001;
+export const SAVE_KEY = 'football-world-chronicle-v4';
+
+export const REGION_ORDER = ['Europe', 'South America', 'North America', 'Asia', 'Africa', 'Oceania'];
+export const PRIORITY_COUNTRIES = ['Spain', 'England', 'Italy', 'Germany', 'France', 'Portugal', 'Netherlands', 'Brazil', 'Argentina', 'United States', 'Mexico', 'Saudi Arabia', 'Japan', 'Morocco', 'Egypt'];
+
+export const RIVALRY_DEFINITIONS = [
+  ['real-madrid','atletico','Madrid derby'], ['real-madrid','athletic','historic Spanish rivalry'],
+  ['sevilla','betis','Seville derby'], ['valencia','villarreal','Valencian rivalry'],
+  ['man-city','man-utd','Manchester derby'], ['liverpool','everton','Merseyside derby'],
+  ['liverpool','man-utd','North-West rivalry'], ['arsenal','tottenham','North London derby'],
+  ['inter','milan','Derby della Madonnina'], ['roma','lazio','Derby della Capitale'],
+  ['juventus','inter','Derby d’Italia'], ['bayern','dortmund','Der Klassiker'],
+  ['psg','marseille','Le Classique'], ['benfica','sporting','Lisbon derby'], ['porto','benfica','O Clássico'],
+  ['river','boca','Superclásico'], ['racing','independiente','Avellaneda derby'],
+  ['flamengo','fluminense','Fla-Flu'], ['gremio','internacional','Grenal'],
+  ['celtic','rangers','Old Firm'], ['galatasaray','fenerbahce','Intercontinental derby'],
+  ['ajax','feyenoord','De Klassieker'], ['america','chivas','Clásico Nacional'],
+  ['al-ahly','zamalek','Cairo derby'], ['wydad','raja','Casablanca derby']
+].map(([clubAId, clubBId, name]) => ({ clubAId, clubBId, name }));
+
+const BASE_LEAGUE_DEFINITIONS = [
+  { id:'ESP1', name:'La Liga', country:'Spain', tier:'detailed', confederation:'Europe', cupName:'Copa del Rey', superCupName:'Spanish Super Cup', clubs:[
+    ['real-madrid','Real Madrid','Madrid',93],['deportivo','Deportivo La Coruña','A Coruña',76],['atletico','Atlético Madrid','Madrid',89],['athletic','Athletic Club','Bilbao',84],['villarreal','Villarreal','Villarreal',82],['real-sociedad','Real Sociedad','San Sebastián',82],['betis','Real Betis','Seville',80],['sevilla','Sevilla','Seville',83],['valencia','Valencia','Valencia',84],['girona','Girona','Girona',76],['celta','Celta Vigo','Vigo',73],['osasuna','Osasuna','Pamplona',73],['mallorca','Mallorca','Palma',72],['getafe','Getafe','Getafe',71],['rayo','Rayo Vallecano','Madrid',70],['alaves','Alavés','Vitoria',69],['espanyol','Espanyol','Barcelona',69],['las-palmas','Las Palmas','Las Palmas',68],['levante','Levante','Valencia',67],['oviedo','Real Oviedo','Oviedo',66]
+  ]},
+  { id:'ENG1', name:'Premier League', country:'England', tier:'detailed', confederation:'Europe', cupName:'FA Cup', clubs:[
+    ['man-city','Manchester City','Manchester',86],['arsenal','Arsenal','London',89],['liverpool','Liverpool','Liverpool',90],['chelsea','Chelsea','London',86],['man-utd','Manchester United','Manchester',88],['tottenham','Tottenham','London',82],['newcastle','Newcastle United','Newcastle',81],['aston-villa','Aston Villa','Birmingham',82],['brighton','Brighton','Brighton',76],['west-ham','West Ham','London',75],['crystal-palace','Crystal Palace','London',75],['fulham','Fulham','London',74],['brentford','Brentford','London',74],['everton','Everton','Liverpool',73],['wolves','Wolverhampton','Wolverhampton',72],['bournemouth','Bournemouth','Bournemouth',72],['nottingham','Nottingham Forest','Nottingham',71],['leeds','Leeds United','Leeds',70],['burnley','Burnley','Burnley',68],['sunderland','Sunderland','Sunderland',67]
+  ]},
+  { id:'ITA1', name:'Serie A', country:'Italy', tier:'detailed', confederation:'Europe', cupName:'Coppa Italia', clubs:[
+    ['inter','Inter','Milan',89],['juventus','Juventus','Turin',89],['milan','AC Milan','Milan',90],['napoli','Napoli','Naples',84],['atalanta','Atalanta','Bergamo',83],['roma','Roma','Rome',81],['lazio','Lazio','Rome',79],['fiorentina','Fiorentina','Florence',78],['bologna','Bologna','Bologna',77],['torino','Torino','Turin',73],['como','Como','Como',73],['udinese','Udinese','Udine',71],['genoa','Genoa','Genoa',71],['parma','Parma','Parma',70],['cagliari','Cagliari','Cagliari',69],['lecce','Lecce','Lecce',68],['verona','Hellas Verona','Verona',68],['sassuolo','Sassuolo','Sassuolo',68],['pisa','Pisa','Pisa',66],['cremonese','Cremonese','Cremona',66]
+  ]},
+  { id:'GER1', name:'Bundesliga', country:'Germany', tier:'detailed', confederation:'Europe', cupName:'DFB-Pokal', clubs:[
+    ['bayern','Bayern Munich','Munich',92],['leverkusen','Bayer Leverkusen','Leverkusen',87],['dortmund','Borussia Dortmund','Dortmund',85],['leipzig','RB Leipzig','Leipzig',83],['frankfurt','Eintracht Frankfurt','Frankfurt',79],['stuttgart','Stuttgart','Stuttgart',79],['wolfsburg','Wolfsburg','Wolfsburg',75],['gladbach','Borussia Mönchengladbach','Mönchengladbach',74],['freiburg','Freiburg','Freiburg',74],['werder','Werder Bremen','Bremen',72],['hoffenheim','Hoffenheim','Sinsheim',72],['mainz','Mainz','Mainz',72],['augsburg','Augsburg','Augsburg',70],['union-berlin','Union Berlin','Berlin',70],['st-pauli','St. Pauli','Hamburg',69],['hamburg','Hamburg','Hamburg',69],['heidenheim','Heidenheim','Heidenheim',67],['koln','Köln','Cologne',68]
+  ]},
+  { id:'FRA1', name:'Ligue 1', country:'France', tier:'detailed', confederation:'Europe', cupName:'Coupe de France', clubs:[
+    ['psg','Paris Saint-Germain','Paris',85],['marseille','Marseille','Marseille',82],['monaco','Monaco','Monaco',82],['lyon','Lyon','Lyon',79],['lille','Lille','Lille',79],['nice','Nice','Nice',78],['lens','Lens','Lens',77],['rennes','Rennes','Rennes',76],['strasbourg','Strasbourg','Strasbourg',74],['nantes','Nantes','Nantes',71],['brest','Brest','Brest',73],['toulouse','Toulouse','Toulouse',72],['auxerre','Auxerre','Auxerre',69],['angers','Angers','Angers',68],['le-havre','Le Havre','Le Havre',67],['lorient','Lorient','Lorient',68],['metz','Metz','Metz',66],['paris-fc','Paris FC','Paris',68]
+  ]},
+  { id:'POR1', name:'Primeira Liga', country:'Portugal', tier:'detailed', confederation:'Europe', cupName:'Taça de Portugal', clubs:[
+    ['benfica','Benfica','Lisbon',86],['porto','Porto','Porto',86],['sporting','Sporting CP','Lisbon',84],['braga','Braga','Braga',78],['vitoria','Vitória SC','Guimarães',73],['famalicao','Famalicão','Famalicão',70],['boavista','Boavista','Porto',69],['estoril','Estoril','Estoril',68],['rio-ave','Rio Ave','Vila do Conde',68],['gil-vicente','Gil Vicente','Barcelos',67],['casa-pia','Casa Pia','Lisbon',67],['moreirense','Moreirense','Moreira de Cónegos',68],['nacional','Nacional','Funchal',66],['arouca','Arouca','Arouca',68],['santa-clara','Santa Clara','Ponta Delgada',67],['estrela','Estrela Amadora','Amadora',65],['farense','Farense','Faro',65],['avs','AVS','Vila das Aves',64]
+  ]},
+  { id:'NED1', name:'Eredivisie', country:'Netherlands', tier:'condensed', confederation:'Europe', cupName:'KNVB Cup', clubs:[['ajax','Ajax','Amsterdam',85],['psv','PSV','Eindhoven',83],['feyenoord','Feyenoord','Rotterdam',82],['az','AZ Alkmaar','Alkmaar',77],['twente','Twente','Enschede',76],['utrecht','Utrecht','Utrecht',74],['heerenveen','Heerenveen','Heerenveen',70],['groningen','Groningen','Groningen',69],['nec','NEC','Nijmegen',69],['sparta','Sparta Rotterdam','Rotterdam',68]] },
+  { id:'BEL1', name:'Belgian Pro League', country:'Belgium', tier:'condensed', confederation:'Europe', cupName:'Belgian Cup', clubs:[['club-brugge','Club Brugge','Bruges',80],['anderlecht','Anderlecht','Brussels',77],['genk','Genk','Genk',77],['gent','Gent','Ghent',75],['union-sg','Union Saint-Gilloise','Brussels',79],['antwerp','Royal Antwerp','Antwerp',75],['standard','Standard Liège','Liège',71],['mechelen','Mechelen','Mechelen',69],['charleroi','Charleroi','Charleroi',68],['cercle-brugge','Cercle Brugge','Bruges',68]] },
+  { id:'SCO1', name:'Scottish Premiership', country:'Scotland', tier:'condensed', confederation:'Europe', cupName:'Scottish Cup', clubs:[['celtic','Celtic','Glasgow',79],['rangers','Rangers','Glasgow',78],['aberdeen','Aberdeen','Aberdeen',71],['hearts','Hearts','Edinburgh',71],['hibernian','Hibernian','Edinburgh',69],['dundee-utd','Dundee United','Dundee',67],['motherwell','Motherwell','Motherwell',67],['st-mirren','St Mirren','Paisley',66],['kilmarnock','Kilmarnock','Kilmarnock',66],['dundee','Dundee','Dundee',65]] },
+  { id:'TUR1', name:'Süper Lig', country:'Türkiye', tier:'condensed', confederation:'Europe', cupName:'Turkish Cup', clubs:[['galatasaray','Galatasaray','Istanbul',82],['fenerbahce','Fenerbahçe','Istanbul',81],['besiktas','Beşiktaş','Istanbul',77],['trabzonspor','Trabzonspor','Trabzon',75],['basaksehir','Başakşehir','Istanbul',72],['samsunspor','Samsunspor','Samsun',70],['goztepe','Göztepe','Izmir',69],['konyaspor','Konyaspor','Konya',68],['rizespor','Rizespor','Rize',67],['kasimpasa','Kasımpaşa','Istanbul',67]] },
+  { id:'BRA1', name:'Brasileirão', country:'Brazil', tier:'condensed', confederation:'South America', cupName:'Copa do Brasil', clubs:[['flamengo','Flamengo','Rio de Janeiro',84],['palmeiras','Palmeiras','São Paulo',84],['botafogo','Botafogo','Rio de Janeiro',81],['fluminense','Fluminense','Rio de Janeiro',79],['sao-paulo','São Paulo','São Paulo',79],['corinthians','Corinthians','São Paulo',78],['gremio','Grêmio','Porto Alegre',77],['internacional','Internacional','Porto Alegre',77],['atletico-mg','Atlético Mineiro','Belo Horizonte',80],['cruzeiro','Cruzeiro','Belo Horizonte',76],['santos','Santos','Santos',75],['bahia','Bahia','Salvador',73]] },
+  { id:'ARG1', name:'Liga Profesional', country:'Argentina', tier:'condensed', confederation:'South America', cupName:'Copa Argentina', clubs:[['river','River Plate','Buenos Aires',83],['boca','Boca Juniors','Buenos Aires',82],['racing','Racing Club','Avellaneda',78],['independiente','Independiente','Avellaneda',76],['san-lorenzo','San Lorenzo','Buenos Aires',75],['velez','Vélez Sarsfield','Buenos Aires',76],['estudiantes','Estudiantes','La Plata',76],['talleres','Talleres','Córdoba',75],['rosario-central','Rosario Central','Rosario',73],['newells',"Newell's Old Boys",'Rosario',72],['lanus','Lanús','Lanús',72],['argentinos','Argentinos Juniors','Buenos Aires',72]] },
+  { id:'MEX1', name:'Liga MX', country:'Mexico', tier:'condensed', confederation:'North America', cupName:'Copa México', clubs:[['america','Club América','Mexico City',79],['tigres','Tigres UANL','Monterrey',78],['monterrey','Monterrey','Monterrey',78],['cruz-azul','Cruz Azul','Mexico City',77],['chivas','Guadalajara','Guadalajara',75],['pumas','Pumas UNAM','Mexico City',73],['toluca','Toluca','Toluca',75],['pachuca','Pachuca','Pachuca',74],['leon','León','León',72],['santos-laguna','Santos Laguna','Torreón',71]] },
+  { id:'USA1', name:'Major League Soccer', country:'United States', tier:'condensed', confederation:'North America', cupName:'U.S. Open Cup', clubs:[['inter-miami','Inter Miami','Miami',78],['lafc','Los Angeles FC','Los Angeles',76],['la-galaxy','LA Galaxy','Los Angeles',75],['seattle','Seattle Sounders','Seattle',74],['atlanta','Atlanta United','Atlanta',72],['nycfc','New York City FC','New York',72],['ny-red-bulls','New York Red Bulls','Harrison',71],['columbus','Columbus Crew','Columbus',74],['portland','Portland Timbers','Portland',70],['austin','Austin FC','Austin',69],['cincinnati','FC Cincinnati','Cincinnati',73],['orlando','Orlando City','Orlando',71]] },
+  { id:'KSA1', name:'Saudi Pro League', country:'Saudi Arabia', tier:'condensed', confederation:'Asia', cupName:"King's Cup", clubs:[['al-hilal','Al Hilal','Riyadh',82],['al-nassr','Al Nassr','Riyadh',80],['al-ittihad','Al Ittihad','Jeddah',79],['al-ahli','Al Ahli','Jeddah',78],['al-qadsiah','Al Qadsiah','Khobar',75],['al-shabab','Al Shabab','Riyadh',72],['al-ettifaq','Al Ettifaq','Dammam',71],['al-taawoun','Al Taawoun','Buraidah',70],['al-fateh','Al Fateh','Al-Hasa',68],['al-fayha','Al Fayha','Al Majmaah',67]] },
+  { id:'JPN1', name:'J1 League', country:'Japan', tier:'condensed', confederation:'Asia', cupName:"Emperor's Cup", clubs:[['kawasaki','Kawasaki Frontale','Kawasaki',74],['yokohama','Yokohama F. Marinos','Yokohama',74],['kobe','Vissel Kobe','Kobe',75],['urawa','Urawa Red Diamonds','Saitama',73],['kashima','Kashima Antlers','Kashima',73],['hiroshima','Sanfrecce Hiroshima','Hiroshima',74],['gamba','Gamba Osaka','Suita',70],['cerezo','Cerezo Osaka','Osaka',70],['tokyo','FC Tokyo','Tokyo',69],['nagoya','Nagoya Grampus','Nagoya',70]] },
+  { id:'MAR1', name:'Botola Pro', country:'Morocco', tier:'condensed', confederation:'Africa', cupName:'Moroccan Throne Cup', clubs:[['wydad','Wydad Casablanca','Casablanca',75],['raja','Raja Casablanca','Casablanca',75],['far-rabat','FAR Rabat','Rabat',74],['rs-berkane','RS Berkane','Berkane',74],['fus-rabat','FUS Rabat','Rabat',69],['mas-fez','MAS Fès','Fès',68],['hassania','Hassania Agadir','Agadir',67],['moghreb-tetouan','Moghreb Tétouan','Tétouan',66]] },
+  { id:'EGY1', name:'Egyptian Premier League', country:'Egypt', tier:'condensed', confederation:'Africa', cupName:'Egypt Cup', clubs:[['al-ahly','Al Ahly','Cairo',79],['zamalek','Zamalek','Giza',75],['pyramids','Pyramids FC','Cairo',76],['ismaily','Ismaily','Ismailia',69],['al-masry','Al Masry','Port Said',69],['ceramica','Ceramica Cleopatra','Giza',68],['smouha','Smouha','Alexandria',67],['enppi','ENPPI','Cairo',66]] }
+];
+
+export const NATIONAL_TEAMS = [
+  {
+    "id": "esp",
+    "name": "Spain",
+    "iso2": "es",
+    "strength": 90,
+    "tier": 1,
+    "region": "Europe"
+  },
+  {
+    "id": "eng",
+    "name": "England",
+    "iso2": "gb-eng",
+    "strength": 89,
+    "tier": 1,
+    "region": "Europe"
+  },
+  {
+    "id": "fra",
+    "name": "France",
+    "iso2": "fr",
+    "strength": 90,
+    "tier": 1,
+    "region": "Europe"
+  },
+  {
+    "id": "ger",
+    "name": "Germany",
+    "iso2": "de",
+    "strength": 88,
+    "tier": 1,
+    "region": "Europe"
+  },
+  {
+    "id": "ita",
+    "name": "Italy",
+    "iso2": "it",
+    "strength": 87,
+    "tier": 1,
+    "region": "Europe"
+  },
+  {
+    "id": "por",
+    "name": "Portugal",
+    "iso2": "pt",
+    "strength": 86,
+    "tier": 2,
+    "region": "Europe"
+  },
+  {
+    "id": "ned",
+    "name": "Netherlands",
+    "iso2": "nl",
+    "strength": 86,
+    "tier": 1,
+    "region": "Europe"
+  },
+  {
+    "id": "bel",
+    "name": "Belgium",
+    "iso2": "be",
+    "strength": 83,
+    "tier": 2,
+    "region": "Europe"
+  },
+  {
+    "id": "cro",
+    "name": "Croatia",
+    "iso2": "hr",
+    "strength": 82,
+    "tier": 2,
+    "region": "Europe"
+  },
+  {
+    "id": "srb",
+    "name": "Serbia",
+    "iso2": "rs",
+    "strength": 79,
+    "tier": 2,
+    "region": "Europe"
+  },
+  {
+    "id": "den",
+    "name": "Denmark",
+    "iso2": "dk",
+    "strength": 80,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "swe",
+    "name": "Sweden",
+    "iso2": "se",
+    "strength": 80,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "nor",
+    "name": "Norway",
+    "iso2": "no",
+    "strength": 79,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "fin",
+    "name": "Finland",
+    "iso2": "fi",
+    "strength": 72,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "isl",
+    "name": "Iceland",
+    "iso2": "is",
+    "strength": 73,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "sco",
+    "name": "Scotland",
+    "iso2": "gb-sct",
+    "strength": 77,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "wal",
+    "name": "Wales",
+    "iso2": "gb-wls",
+    "strength": 76,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "irl",
+    "name": "Ireland",
+    "iso2": "ie",
+    "strength": 75,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "nir",
+    "name": "Northern Ireland",
+    "iso2": "gb-nir",
+    "strength": 71,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "sui",
+    "name": "Switzerland",
+    "iso2": "ch",
+    "strength": 81,
+    "tier": 2,
+    "region": "Europe"
+  },
+  {
+    "id": "aut",
+    "name": "Austria",
+    "iso2": "at",
+    "strength": 80,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "pol",
+    "name": "Poland",
+    "iso2": "pl",
+    "strength": 79,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "cze",
+    "name": "Czechia",
+    "iso2": "cz",
+    "strength": 78,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "svk",
+    "name": "Slovakia",
+    "iso2": "sk",
+    "strength": 75,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "hun",
+    "name": "Hungary",
+    "iso2": "hu",
+    "strength": 76,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "rou",
+    "name": "Romania",
+    "iso2": "ro",
+    "strength": 75,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "bul",
+    "name": "Bulgaria",
+    "iso2": "bg",
+    "strength": 72,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "gre",
+    "name": "Greece",
+    "iso2": "gr",
+    "strength": 76,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "tur",
+    "name": "Türkiye",
+    "iso2": "tr",
+    "strength": 80,
+    "tier": 2,
+    "region": "Europe"
+  },
+  {
+    "id": "rus",
+    "name": "Russia",
+    "iso2": "ru",
+    "strength": 78,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "ukr",
+    "name": "Ukraine",
+    "iso2": "ua",
+    "strength": 79,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "svn",
+    "name": "Slovenia",
+    "iso2": "si",
+    "strength": 75,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "bih",
+    "name": "Bosnia and Herzegovina",
+    "iso2": "ba",
+    "strength": 75,
+    "tier": 3,
+    "region": "Europe"
+  },
+  {
+    "id": "alb",
+    "name": "Albania",
+    "iso2": "al",
+    "strength": 72,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "mkd",
+    "name": "North Macedonia",
+    "iso2": "mk",
+    "strength": 71,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "geo",
+    "name": "Georgia",
+    "iso2": "ge",
+    "strength": 73,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "arm",
+    "name": "Armenia",
+    "iso2": "am",
+    "strength": 68,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "isr",
+    "name": "Israel",
+    "iso2": "il",
+    "strength": 72,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "cyp",
+    "name": "Cyprus",
+    "iso2": "cy",
+    "strength": 66,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "blr",
+    "name": "Belarus",
+    "iso2": "by",
+    "strength": 68,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "mda",
+    "name": "Moldova",
+    "iso2": "md",
+    "strength": 64,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "kos",
+    "name": "Kosovo",
+    "iso2": "xk",
+    "strength": 68,
+    "tier": 4,
+    "region": "Europe"
+  },
+  {
+    "id": "bra",
+    "name": "Brazil",
+    "iso2": "br",
+    "strength": 92,
+    "tier": 1,
+    "region": "South America"
+  },
+  {
+    "id": "arg",
+    "name": "Argentina",
+    "iso2": "ar",
+    "strength": 91,
+    "tier": 1,
+    "region": "South America"
+  },
+  {
+    "id": "uru",
+    "name": "Uruguay",
+    "iso2": "uy",
+    "strength": 84,
+    "tier": 2,
+    "region": "South America"
+  },
+  {
+    "id": "col",
+    "name": "Colombia",
+    "iso2": "co",
+    "strength": 83,
+    "tier": 2,
+    "region": "South America"
+  },
+  {
+    "id": "chi",
+    "name": "Chile",
+    "iso2": "cl",
+    "strength": 78,
+    "tier": 3,
+    "region": "South America"
+  },
+  {
+    "id": "ecu",
+    "name": "Ecuador",
+    "iso2": "ec",
+    "strength": 80,
+    "tier": 3,
+    "region": "South America"
+  },
+  {
+    "id": "par",
+    "name": "Paraguay",
+    "iso2": "py",
+    "strength": 76,
+    "tier": 3,
+    "region": "South America"
+  },
+  {
+    "id": "per",
+    "name": "Peru",
+    "iso2": "pe",
+    "strength": 75,
+    "tier": 3,
+    "region": "South America"
+  },
+  {
+    "id": "ven",
+    "name": "Venezuela",
+    "iso2": "ve",
+    "strength": 72,
+    "tier": 4,
+    "region": "South America"
+  },
+  {
+    "id": "bol",
+    "name": "Bolivia",
+    "iso2": "bo",
+    "strength": 68,
+    "tier": 4,
+    "region": "South America"
+  },
+  {
+    "id": "mex",
+    "name": "Mexico",
+    "iso2": "mx",
+    "strength": 82,
+    "tier": 2,
+    "region": "North America"
+  },
+  {
+    "id": "usa",
+    "name": "United States",
+    "iso2": "us",
+    "strength": 81,
+    "tier": 2,
+    "region": "North America"
+  },
+  {
+    "id": "can",
+    "name": "Canada",
+    "iso2": "ca",
+    "strength": 78,
+    "tier": 3,
+    "region": "North America"
+  },
+  {
+    "id": "crc",
+    "name": "Costa Rica",
+    "iso2": "cr",
+    "strength": 76,
+    "tier": 3,
+    "region": "North America"
+  },
+  {
+    "id": "pan",
+    "name": "Panama",
+    "iso2": "pa",
+    "strength": 75,
+    "tier": 3,
+    "region": "North America"
+  },
+  {
+    "id": "jam",
+    "name": "Jamaica",
+    "iso2": "jm",
+    "strength": 73,
+    "tier": 3,
+    "region": "North America"
+  },
+  {
+    "id": "hon",
+    "name": "Honduras",
+    "iso2": "hn",
+    "strength": 72,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "gua",
+    "name": "Guatemala",
+    "iso2": "gt",
+    "strength": 70,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "slv",
+    "name": "El Salvador",
+    "iso2": "sv",
+    "strength": 68,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "tri",
+    "name": "Trinidad and Tobago",
+    "iso2": "tt",
+    "strength": 70,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "hai",
+    "name": "Haiti",
+    "iso2": "ht",
+    "strength": 68,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "cuw",
+    "name": "Curaçao",
+    "iso2": "cw",
+    "strength": 69,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "dom",
+    "name": "Dominican Republic",
+    "iso2": "do",
+    "strength": 65,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "cub",
+    "name": "Cuba",
+    "iso2": "cu",
+    "strength": 65,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "nca",
+    "name": "Nicaragua",
+    "iso2": "ni",
+    "strength": 64,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "sur",
+    "name": "Suriname",
+    "iso2": "sr",
+    "strength": 68,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "guy",
+    "name": "Guyana",
+    "iso2": "gy",
+    "strength": 62,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "mtq",
+    "name": "Martinique",
+    "iso2": "mq",
+    "strength": 66,
+    "tier": 4,
+    "region": "North America"
+  },
+  {
+    "id": "jpn",
+    "name": "Japan",
+    "iso2": "jp",
+    "strength": 82,
+    "tier": 3,
+    "region": "Asia"
+  },
+  {
+    "id": "kor",
+    "name": "South Korea",
+    "iso2": "kr",
+    "strength": 81,
+    "tier": 3,
+    "region": "Asia"
+  },
+  {
+    "id": "ksa",
+    "name": "Saudi Arabia",
+    "iso2": "sa",
+    "strength": 77,
+    "tier": 2,
+    "region": "Asia"
+  },
+  {
+    "id": "irn",
+    "name": "Iran",
+    "iso2": "ir",
+    "strength": 80,
+    "tier": 3,
+    "region": "Asia"
+  },
+  {
+    "id": "aus",
+    "name": "Australia",
+    "iso2": "au",
+    "strength": 79,
+    "tier": 3,
+    "region": "Asia"
+  },
+  {
+    "id": "qat",
+    "name": "Qatar",
+    "iso2": "qa",
+    "strength": 74,
+    "tier": 3,
+    "region": "Asia"
+  },
+  {
+    "id": "chn",
+    "name": "China",
+    "iso2": "cn",
+    "strength": 70,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "uzb",
+    "name": "Uzbekistan",
+    "iso2": "uz",
+    "strength": 74,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "irq",
+    "name": "Iraq",
+    "iso2": "iq",
+    "strength": 74,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "uae",
+    "name": "United Arab Emirates",
+    "iso2": "ae",
+    "strength": 72,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "oma",
+    "name": "Oman",
+    "iso2": "om",
+    "strength": 71,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "bhr",
+    "name": "Bahrain",
+    "iso2": "bh",
+    "strength": 70,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "jor",
+    "name": "Jordan",
+    "iso2": "jo",
+    "strength": 71,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "syr",
+    "name": "Syria",
+    "iso2": "sy",
+    "strength": 68,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "lib",
+    "name": "Lebanon",
+    "iso2": "lb",
+    "strength": 66,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "kuw",
+    "name": "Kuwait",
+    "iso2": "kw",
+    "strength": 68,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "tha",
+    "name": "Thailand",
+    "iso2": "th",
+    "strength": 67,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "vie",
+    "name": "Vietnam",
+    "iso2": "vn",
+    "strength": 66,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "idn",
+    "name": "Indonesia",
+    "iso2": "id",
+    "strength": 65,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "mas",
+    "name": "Malaysia",
+    "iso2": "my",
+    "strength": 64,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "sgp",
+    "name": "Singapore",
+    "iso2": "sg",
+    "strength": 61,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "phi",
+    "name": "Philippines",
+    "iso2": "ph",
+    "strength": 62,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "ind",
+    "name": "India",
+    "iso2": "in",
+    "strength": 63,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "pak",
+    "name": "Pakistan",
+    "iso2": "pk",
+    "strength": 58,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "ban",
+    "name": "Bangladesh",
+    "iso2": "bd",
+    "strength": 57,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "prk",
+    "name": "North Korea",
+    "iso2": "kp",
+    "strength": 69,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "tjk",
+    "name": "Tajikistan",
+    "iso2": "tj",
+    "strength": 66,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "kgz",
+    "name": "Kyrgyzstan",
+    "iso2": "kg",
+    "strength": 65,
+    "tier": 4,
+    "region": "Asia"
+  },
+  {
+    "id": "mar",
+    "name": "Morocco",
+    "iso2": "ma",
+    "strength": 84,
+    "tier": 2,
+    "region": "Africa"
+  },
+  {
+    "id": "egy",
+    "name": "Egypt",
+    "iso2": "eg",
+    "strength": 79,
+    "tier": 3,
+    "region": "Africa"
+  },
+  {
+    "id": "sen",
+    "name": "Senegal",
+    "iso2": "sn",
+    "strength": 83,
+    "tier": 2,
+    "region": "Africa"
+  },
+  {
+    "id": "nga",
+    "name": "Nigeria",
+    "iso2": "ng",
+    "strength": 82,
+    "tier": 2,
+    "region": "Africa"
+  },
+  {
+    "id": "civ",
+    "name": "Ivory Coast",
+    "iso2": "ci",
+    "strength": 81,
+    "tier": 2,
+    "region": "Africa"
+  },
+  {
+    "id": "alg",
+    "name": "Algeria",
+    "iso2": "dz",
+    "strength": 80,
+    "tier": 2,
+    "region": "Africa"
+  },
+  {
+    "id": "gha",
+    "name": "Ghana",
+    "iso2": "gh",
+    "strength": 79,
+    "tier": 2,
+    "region": "Africa"
+  },
+  {
+    "id": "rsa",
+    "name": "South Africa",
+    "iso2": "za",
+    "strength": 73,
+    "tier": 3,
+    "region": "Africa"
+  },
+  {
+    "id": "cmr",
+    "name": "Cameroon",
+    "iso2": "cm",
+    "strength": 81,
+    "tier": 2,
+    "region": "Africa"
+  },
+  {
+    "id": "tun",
+    "name": "Tunisia",
+    "iso2": "tn",
+    "strength": 78,
+    "tier": 3,
+    "region": "Africa"
+  },
+  {
+    "id": "mli",
+    "name": "Mali",
+    "iso2": "ml",
+    "strength": 78,
+    "tier": 3,
+    "region": "Africa"
+  },
+  {
+    "id": "bfa",
+    "name": "Burkina Faso",
+    "iso2": "bf",
+    "strength": 76,
+    "tier": 3,
+    "region": "Africa"
+  },
+  {
+    "id": "cod",
+    "name": "DR Congo",
+    "iso2": "cd",
+    "strength": 77,
+    "tier": 3,
+    "region": "Africa"
+  },
+  {
+    "id": "gui",
+    "name": "Guinea",
+    "iso2": "gn",
+    "strength": 75,
+    "tier": 3,
+    "region": "Africa"
+  },
+  {
+    "id": "cpv",
+    "name": "Cape Verde",
+    "iso2": "cv",
+    "strength": 74,
+    "tier": 3,
+    "region": "Africa"
+  },
+  {
+    "id": "gab",
+    "name": "Gabon",
+    "iso2": "ga",
+    "strength": 74,
+    "tier": 3,
+    "region": "Africa"
+  },
+  {
+    "id": "zam",
+    "name": "Zambia",
+    "iso2": "zm",
+    "strength": 73,
+    "tier": 3,
+    "region": "Africa"
+  },
+  {
+    "id": "ang",
+    "name": "Angola",
+    "iso2": "ao",
+    "strength": 72,
+    "tier": 3,
+    "region": "Africa"
+  },
+  {
+    "id": "uga",
+    "name": "Uganda",
+    "iso2": "ug",
+    "strength": 69,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "ken",
+    "name": "Kenya",
+    "iso2": "ke",
+    "strength": 69,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "tan",
+    "name": "Tanzania",
+    "iso2": "tz",
+    "strength": 68,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "moz",
+    "name": "Mozambique",
+    "iso2": "mz",
+    "strength": 68,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "zim",
+    "name": "Zimbabwe",
+    "iso2": "zw",
+    "strength": 68,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "ben",
+    "name": "Benin",
+    "iso2": "bj",
+    "strength": 69,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "tog",
+    "name": "Togo",
+    "iso2": "tg",
+    "strength": 68,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "eqg",
+    "name": "Equatorial Guinea",
+    "iso2": "gq",
+    "strength": 71,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "sud",
+    "name": "Sudan",
+    "iso2": "sd",
+    "strength": 66,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "lby",
+    "name": "Libya",
+    "iso2": "ly",
+    "strength": 68,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "con",
+    "name": "Congo",
+    "iso2": "cg",
+    "strength": 68,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "nam",
+    "name": "Namibia",
+    "iso2": "na",
+    "strength": 65,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "mwi",
+    "name": "Malawi",
+    "iso2": "mw",
+    "strength": 65,
+    "tier": 4,
+    "region": "Africa"
+  },
+  {
+    "id": "nzl",
+    "name": "New Zealand",
+    "iso2": "nz",
+    "strength": 74,
+    "tier": 3,
+    "region": "Oceania"
+  },
+  {
+    "id": "sol",
+    "name": "Solomon Islands",
+    "iso2": "sb",
+    "strength": 61,
+    "tier": 4,
+    "region": "Oceania"
+  },
+  {
+    "id": "fij",
+    "name": "Fiji",
+    "iso2": "fj",
+    "strength": 60,
+    "tier": 4,
+    "region": "Oceania"
+  },
+  {
+    "id": "png",
+    "name": "Papua New Guinea",
+    "iso2": "pg",
+    "strength": 59,
+    "tier": 4,
+    "region": "Oceania"
+  },
+  {
+    "id": "tah",
+    "name": "Tahiti",
+    "iso2": "pf",
+    "strength": 60,
+    "tier": 4,
+    "region": "Oceania"
+  },
+  {
+    "id": "ncl",
+    "name": "New Caledonia",
+    "iso2": "nc",
+    "strength": 60,
+    "tier": 4,
+    "region": "Oceania"
+  },
+  {
+    "id": "van",
+    "name": "Vanuatu",
+    "iso2": "vu",
+    "strength": 58,
+    "tier": 4,
+    "region": "Oceania"
+  },
+  {
+    "id": "sam",
+    "name": "Samoa",
+    "iso2": "ws",
+    "strength": 55,
+    "tier": 4,
+    "region": "Oceania"
+  }
+];
+
+
+const DETAILED_COUNTRIES = new Set([
+  'Spain', 'England', 'Italy', 'Germany', 'France', 'Portugal', 'Netherlands', 'Belgium', 'Scotland', 'Türkiye',
+  'Austria', 'Switzerland', 'Greece', 'Denmark', 'Norway',
+  'Brazil', 'Argentina', 'Colombia', 'Uruguay',
+  'Mexico', 'United States', 'Saudi Arabia', 'Japan', 'China', 'Australia',
+  'Morocco', 'Egypt', 'Nigeria', 'South Africa'
+]);
+
+const LEAGUE_NAMES = {
+  Spain: 'La Liga', England: 'Premier League', Italy: 'Serie A', Germany: 'Bundesliga', France: 'Ligue 1',
+  Portugal: 'Primeira Liga', Netherlands: 'Eredivisie', Belgium: 'Belgian Pro League', Scotland: 'Scottish Premiership',
+  Türkiye: 'Süper Lig', Austria: 'Austrian Bundesliga', Switzerland: 'Swiss Super League', Greece: 'Super League Greece',
+  Denmark: 'Danish Superliga', Norway: 'Eliteserien', Brazil: 'Brasileirão', Argentina: 'Liga Profesional',
+  Colombia: 'Categoría Primera A', Uruguay: 'Primera División', Mexico: 'Liga MX', 'United States': 'Major League Soccer',
+  'Saudi Arabia': 'Saudi Pro League', Japan: 'J1 League', China: 'Chinese Super League', Australia: 'A-League',
+  Morocco: 'Botola Pro', Egypt: 'Egyptian Premier League', Nigeria: 'Nigeria Premier League', 'South Africa': 'South African Premiership'
+};
+
+const CUP_NAMES = {
+  Spain: 'Copa del Rey', England: 'FA Cup', Italy: 'Coppa Italia', Germany: 'DFB-Pokal', France: 'Coupe de France',
+  Portugal: 'Taça de Portugal', Netherlands: 'KNVB Cup', Belgium: 'Belgian Cup', Scotland: 'Scottish Cup', Türkiye: 'Turkish Cup',
+  Austria: 'Austrian Cup', Switzerland: 'Swiss Cup', Greece: 'Greek Cup', Denmark: 'Danish Cup', Norway: 'Norwegian Cup',
+  Brazil: 'Copa do Brasil', Argentina: 'Copa Argentina', Colombia: 'Copa Colombia', Uruguay: 'Copa AUF Uruguay',
+  Mexico: 'Copa México', 'United States': 'U.S. Open Cup', 'Saudi Arabia': "King's Cup", Japan: "Emperor's Cup",
+  China: 'Chinese FA Cup', Australia: 'Australia Cup', Morocco: 'Moroccan Throne Cup', Egypt: 'Egypt Cup',
+  Nigeria: 'Nigeria Federation Cup', 'South Africa': 'Nedbank Cup'
+};
+
+const CLUB_SUPPLEMENTS = {
+  Spain: ['Valladolid','Real Zaragoza','Sporting Gijón','Málaga','Granada','Almería','Cádiz','Eibar','Tenerife'],
+  England: ['Leicester City','Southampton','Sheffield United','Middlesbrough','Blackburn Rovers','Norwich City','Watford','Derby County','West Bromwich Albion'],
+  Italy: ['Sampdoria','Palermo','Bari','Monza','Empoli','Venezia','Spezia','Salernitana','Frosinone'],
+  Germany: ['Schalke 04','Hertha Berlin','Hannover 96','Nürnberg','Fortuna Düsseldorf','Bochum','Karlsruhe','Kaiserslautern','Darmstadt'],
+  France: ['Saint-Étienne','Montpellier','Reims','Caen','Sochaux','Guingamp','Dijon','Amiens','Nancy'],
+  Portugal: ['Marítimo','Académica','Belenenses','Paços de Ferreira','Portimonense','Tondela','Penafiel','Leixões','Chaves'],
+  Netherlands: ['Ajax','PSV','Feyenoord','AZ Alkmaar','Twente','Utrecht','Heerenveen','Groningen','NEC','Sparta Rotterdam','Vitesse','Willem II','NAC Breda','Roda JC','Fortuna Sittard','Heracles','Go Ahead Eagles','PEC Zwolle','Excelsior','Volendam','Cambuur','Den Bosch','De Graafschap','Emmen','Telstar','Dordrecht','Almere City'],
+  Belgium: ['Club Brugge','Anderlecht','Genk','Gent','Union Saint-Gilloise','Royal Antwerp','Standard Liège','Mechelen','Charleroi','Cercle Brugge','Westerlo','OH Leuven','Sint-Truiden','Kortrijk','Eupen','Waregem','Lierse','Beerschot','Lokeren','Mouscron','Oostende','RWDM','Beveren','Lommel','Patro Eisden','Seraing','Deinze'],
+  Scotland: ['Celtic','Rangers','Aberdeen','Hearts','Hibernian','Dundee United','Motherwell','St Mirren','Kilmarnock','Dundee','Ross County','Livingston','Falkirk','Partick Thistle','Inverness','St Johnstone','Hamilton','Dunfermline','Raith Rovers','Queen’s Park','Ayr United','Greenock Morton','Arbroath','Airdrieonians','Cove Rangers','Alloa Athletic','Queen of the South'],
+  Türkiye: ['Galatasaray','Fenerbahçe','Beşiktaş','Trabzonspor','Başakşehir','Samsunspor','Göztepe','Konyaspor','Rizespor','Kasımpaşa','Bursaspor','Antalyaspor','Sivasspor','Kayserispor','Gaziantep','Alanyaspor','Adana Demirspor','Ankaragücü','Gençlerbirliği','Eskişehirspor','Sakaryaspor','Altay','Boluspor','Manisa FK','Bandırmaspor','Kocaelispor','Erzurumspor'],
+  Austria: ['Red Bull Salzburg','Rapid Vienna','Austria Vienna','Sturm Graz','LASK','Wolfsberger AC','Hartberg','Austria Klagenfurt','WSG Tirol','Altach','Ried','Admira Wacker','Grazer AK','First Vienna','St. Pölten','Blau-Weiß Linz','Kapfenberger SV','Austria Lustenau','Floridsdorfer AC','Horn','Amstetten','Lafnitz','Dornbirn','Leoben','Steyr','Bregenz','Vienna Viktoria'],
+  Switzerland: ['Young Boys','Basel','Zürich','Servette','Lugano','St. Gallen','Grasshoppers','Luzern','Sion','Lausanne-Sport','Winterthur','Thun','Aarau','Neuchâtel Xamax','Schaffhausen','Wil','Vaduz','Bellinzona','Yverdon','Stade Lausanne Ouchy','Kriens','Chiasso','Baden','Nyon','Biel-Bienne','Delémont','Rapperswil-Jona'],
+  Greece: ['Olympiacos','Panathinaikos','AEK Athens','PAOK','Aris','Asteras Tripolis','OFI Crete','Atromitos','Panetolikos','Volos','Lamia','Levadiakos','Panionios','Iraklis','Larissa','Xanthi','PAS Giannina','Ionikos','Kallithea','Apollon Smyrnis','Ergotelis','Panachaiki','Niki Volos','Kissamikos','Kavala','Veria','Diagoras'],
+  Denmark: ['FC Copenhagen','Midtjylland','Brøndby','Nordsjælland','Aarhus','Aalborg','Randers','Silkeborg','Viborg','Odense','Lyngby','SønderjyskE','Esbjerg','Horsens','Vejle','Fredericia','Hvidovre','Køge','Helsingør','Roskilde','Hobro','Kolding','Næstved','Fremad Amager','B 93','Skive','Thisted'],
+  Norway: ['Rosenborg','Molde','Bodø/Glimt','Vålerenga','Brann','Viking','Lillestrøm','Tromsø','Strømsgodset','Sarpsborg 08','Odd','Haugesund','Stabæk','Aalesund','Start','Sandefjord','Kristiansund','Fredrikstad','HamKam','Sogndal','Mjøndalen','Kongsvinger','Ranheim','Bryne','Moss','Raufoss','Jerv'],
+  Brazil: ['Flamengo','Palmeiras','Botafogo','Fluminense','São Paulo','Corinthians','Grêmio','Internacional','Atlético Mineiro','Cruzeiro','Santos','Bahia','Vasco da Gama','Athletico Paranaense','Fortaleza','Ceará','Sport Recife','Coritiba','Vitória','Red Bull Bragantino','Goiás','América Mineiro','Juventude','Ponte Preta','Guarani','Chapecoense','Avaí'],
+  Argentina: ['River Plate','Boca Juniors','Racing Club','Independiente','San Lorenzo','Vélez Sarsfield','Estudiantes','Talleres','Rosario Central',"Newell's Old Boys",'Lanús','Argentinos Juniors','Huracán','Defensa y Justicia','Banfield','Belgrano','Colón','Unión','Gimnasia La Plata','Godoy Cruz','Tigre','Platense','Instituto','Quilmes','Chacarita Juniors','Ferro Carril Oeste','Nueva Chicago'],
+  Colombia: ['Atlético Nacional','Millonarios','América de Cali','Deportivo Cali','Junior','Independiente Santa Fe','Once Caldas','Deportes Tolima','Independiente Medellín','Atlético Bucaramanga','Deportivo Pasto','La Equidad','Águilas Doradas','Alianza Petrolera','Envigado','Boyacá Chicó','Jaguares','Patriotas','Cúcuta Deportivo','Real Cartagena','Deportes Quindío','Atlético Huila','Cortuluá','Unión Magdalena','Llaneros','Bogotá FC','Leones'],
+  Uruguay: ['Peñarol','Nacional','Defensor Sporting','Danubio','Liverpool Montevideo','Montevideo Wanderers','River Plate Montevideo','Cerro Largo','Boston River','Plaza Colonia','Fénix','Racing Montevideo','Cerro','Progreso','Rentistas','Montevideo City Torque','Maldonado','Rampla Juniors','Miramar Misiones','Sud América','Central Español','Albion','Atenas','Juventud','Tacuarembó','Oriental','Villa Española'],
+  Mexico: ['Club América','Tigres UANL','Monterrey','Cruz Azul','Guadalajara','Pumas UNAM','Toluca','Pachuca','León','Santos Laguna','Atlas','Necaxa','Puebla','Querétaro','Tijuana','Mazatlán','Atlético San Luis','Juárez','Morelia','Atlante','Celaya','Leones Negros','Tampico Madero','Cancún FC','Mineros Zacatecas','Venados','Dorados'],
+  'United States': ['Inter Miami','Los Angeles FC','LA Galaxy','Seattle Sounders','Atlanta United','New York City FC','New York Red Bulls','Columbus Crew','Portland Timbers','Austin FC','FC Cincinnati','Orlando City','Philadelphia Union','New England Revolution','D.C. United','Chicago Fire','Dallas','Houston Dynamo','Sporting Kansas City','Real Salt Lake','Minnesota United','Nashville SC','Colorado Rapids','San Jose Earthquakes','Charlotte FC','Sacramento Republic','Louisville City'],
+  'Saudi Arabia': ['Al Hilal','Al Nassr','Al Ittihad','Al Ahli','Al Qadsiah','Al Shabab','Al Ettifaq','Al Taawoun','Al Fateh','Al Fayha','Damac','Al Raed','Al Khaleej','Al Riyadh','Al Wehda','Abha','Al Hazem','Al Okhdood','Al Tai','Al Batin','Al Faisaly','Al Arabi','Al Jabalain','Ohod','Al Najma','Al Bukayriyah','Al Qaisumah'],
+  Japan: ['Kawasaki Frontale','Yokohama F. Marinos','Vissel Kobe','Urawa Red Diamonds','Kashima Antlers','Sanfrecce Hiroshima','Gamba Osaka','Cerezo Osaka','FC Tokyo','Nagoya Grampus','Kashiwa Reysol','Shimizu S-Pulse','Júbilo Iwata','Albirex Niigata','Avispa Fukuoka','Sagan Tosu','Shonan Bellmare','Kyoto Sanga','Tokyo Verdy','Machida Zelvia','Ventforet Kofu','Omiya Ardija','JEF United Chiba','Montedio Yamagata','Vegalta Sendai','V-Varen Nagasaki','Mito HollyHock'],
+  China: ['Shanghai Port','Shandong Taishan','Beijing Guoan','Shanghai Shenhua','Guangzhou FC','Wuhan Three Towns','Chengdu Rongcheng','Zhejiang FC','Henan FC','Tianjin Jinmen Tiger','Changchun Yatai','Qingdao Hainiu','Meizhou Hakka','Shenzhen FC','Dalian Pro','Cangzhou Mighty Lions','Nantong Zhiyun','Qingdao West Coast','Guangxi Pingguo Haliao','Sichuan Jiuniu','Nanjing City','Liaoning Shenyang','Suzhou Dongwu','Heilongjiang Ice City','Jiangxi Lushan','Yanbian Longding','Dongguan United'],
+  Australia: ['Sydney FC','Melbourne Victory','Melbourne City','Western Sydney Wanderers','Brisbane Roar','Adelaide United','Perth Glory','Central Coast Mariners','Newcastle Jets','Wellington Phoenix','Macarthur FC','Western United','Auckland FC','Canberra United','South Melbourne','Marconi Stallions','Sydney Olympic','Wollongong Wolves','Heidelberg United','Oakleigh Cannons','Green Gully','Bentleigh Greens','Blacktown City','APIA Leichhardt','Hume City','Gold Coast Knights','Avondale FC'],
+  Morocco: ['Wydad Casablanca','Raja Casablanca','FAR Rabat','RS Berkane','FUS Rabat','MAS Fès','Hassania Agadir','Moghreb Tétouan','Olympic Safi','Difaa El Jadida','Ittihad Tanger','Chabab Mohammedia','Youssoufia Berrechid','Renaissance Zemamra','KAC Kénitra','Olympique Khouribga','Kawkab Marrakech','Wydad Fès','Chabab Atlas Khénifra','Raja Beni Mellal','USM Oujda','Stade Marocain','JSM Laâyoune','Racing Casablanca','Chabab Benguerir','Olympique Dcheira','Ittifaq Marrakech'],
+  Egypt: ['Al Ahly','Zamalek','Pyramids FC','Ismaily','Al Masry','Ceramica Cleopatra','Smouha','ENPPI','Future FC','Al Ittihad Alexandria','El Gouna','National Bank','Ghazl El Mahalla','El Mokawloon','Tala’ea El Gaish','Pharco','Haras El Hodoud','Aswan','Wadi Degla','Petrojet','El Dakhleya','Baladiyat El Mahalla','Tanta','Suez SC','Olympic Club','El Minya','Telecom Egypt'],
+  Nigeria: ['Enyimba','Kano Pillars','Rangers International','Shooting Stars','Heartland','Lobi Stars','Plateau United','Rivers United','Akwa United','Sunshine Stars','Remo Stars','Bendel Insurance','Abia Warriors','Kwara United','Niger Tornadoes','Bayelsa United','Gombe United','Doma United','Wikki Tourists','MFM FC','Warri Wolves','Gateway United','Crown FC','ABS FC','Katsina United','Adamawa United','Yobe Desert Stars'],
+  'South Africa': ['Mamelodi Sundowns','Orlando Pirates','Kaizer Chiefs','SuperSport United','Cape Town City','Stellenbosch','Sekhukhune United','AmaZulu','Golden Arrows','Swallows','Maritzburg United','Bloemfontein Celtic','Bidvest Wits','Polokwane City','Chippa United','Baroka','Royal AM','TS Galaxy','Highlands Park','Black Leopards','Jomo Cosmos','Ajax Cape Town','University of Pretoria','Free State Stars','Platinum Stars','Richards Bay','Cape Town Spurs']
+};
+
+// Recognizable leading clubs for condensed domestic systems. These names replace
+// procedural "Country Athletic/City" placeholders while preserving the light
+// six-club simulation used outside the detailed leagues.
+Object.assign(CLUB_SUPPLEMENTS, {
+  Croatia: ['Dinamo Zagreb','Hajduk Split','Rijeka','Osijek','Lokomotiva Zagreb','Slaven Belupo'],
+  Serbia: ['Red Star Belgrade','Partizan','Vojvodina','Čukarički','TSC Bačka Topola','Radnički Niš'],
+  Sweden: ['Malmö FF','AIK','Djurgården','IFK Göteborg','Hammarby','Elfsborg'],
+  Finland: ['HJK Helsinki','KuPS','Inter Turku','SJK','Ilves','VPS'],
+  Iceland: ['KR Reykjavík','Valur','FH','Breiðablik','Víkingur Reykjavík','Stjarnan'],
+  Wales: ['The New Saints','Bala Town',"Connah\'s Quay Nomads",'Newtown','Barry Town United','Caernarfon Town'],
+  Ireland: ['Shamrock Rovers','Bohemians','Shelbourne','Derry City',"St Patrick\'s Athletic",'Dundalk'],
+  'Northern Ireland': ['Linfield','Glentoran','Cliftonville','Crusaders','Larne','Coleraine'],
+  Poland: ['Legia Warsaw','Lech Poznań','Wisła Kraków','Górnik Zabrze','Raków Częstochowa','Jagiellonia'],
+  Czechia: ['Sparta Prague','Slavia Prague','Viktoria Plzeň','Baník Ostrava','Sigma Olomouc','Slovan Liberec'],
+  Slovakia: ['Slovan Bratislava','Spartak Trnava','Žilina','DAC Dunajská Streda','Ružomberok','Trenčín'],
+  Hungary: ['Ferencváros','Újpest','Fehérvár','Debrecen','Puskás Akadémia','MTK Budapest'],
+  Romania: ['FCSB','Dinamo București','Rapid București','CFR Cluj','Universitatea Craiova','Farul Constanța'],
+  Bulgaria: ['Ludogorets','CSKA Sofia','Levski Sofia','Botev Plovdiv','Lokomotiv Plovdiv','Cherno More'],
+  Russia: ['Zenit','Spartak Moscow','CSKA Moscow','Lokomotiv Moscow','Dynamo Moscow','Rubin Kazan'],
+  Ukraine: ['Dynamo Kyiv','Shakhtar Donetsk','Dnipro','Zorya Luhansk','Vorskla Poltava','Chornomorets Odesa'],
+  Slovenia: ['Maribor','Olimpija Ljubljana','Celje','Koper','Mura','Domžale'],
+  'Bosnia and Herzegovina': ['Željezničar','Sarajevo','Zrinjski Mostar','Borac Banja Luka','Velež Mostar','Široki Brijeg'],
+  Albania: ['Tirana','Partizani','Vllaznia','Teuta','Skënderbeu','Kukësi'],
+  'North Macedonia': ['Vardar','Shkëndija','Rabotnički','Pelister','Shkupi','Sileks'],
+  Georgia: ['Dinamo Tbilisi','Torpedo Kutaisi','Dinamo Batumi','Dila Gori','Saburtalo','Samgurali'],
+  Armenia: ['Pyunik','Ararat-Armenia','Ararat Yerevan','Shirak','Urartu','Alashkert'],
+  Israel: ['Maccabi Tel Aviv','Maccabi Haifa',"Hapoel Be\'er Sheva",'Beitar Jerusalem','Hapoel Tel Aviv','Maccabi Netanya'],
+  Cyprus: ['APOEL','Omonia','Anorthosis','Apollon Limassol','AEL Limassol','AEK Larnaca'],
+  Belarus: ['BATE Borisov','Dinamo Minsk','Shakhtyor Soligorsk','Neman Grodno','Torpedo-BelAZ','Dinamo Brest'],
+  Moldova: ['Sheriff Tiraspol','Zimbru Chișinău','Petrocub Hîncești','Milsami Orhei','Dacia Buiucani','Sfîntul Gheorghe'],
+  Kosovo: ['Prishtina','Drita','Ballkani','Gjilani','Feronikeli','Llapi'],
+  Chile: ['Colo-Colo','Universidad de Chile','Universidad Católica','Unión Española','Palestino','Huachipato'],
+  Ecuador: ['Independiente del Valle','LDU Quito','Emelec','El Nacional','Aucas','Deportivo Cuenca'],
+  Paraguay: ['Olimpia','Cerro Porteño','Libertad','Guaraní','Nacional Asunción','Sportivo Luqueño'],
+  Peru: ['Alianza Lima','Universitario','Sporting Cristal','Melgar','Cienciano','Sport Boys'],
+  Venezuela: ['Caracas FC','Deportivo Táchira','Zamora','Monagas','Carabobo','Portuguesa'],
+  Bolivia: ['Bolívar','The Strongest','Oriente Petrolero','Blooming','Jorge Wilstermann','Always Ready'],
+  Canada: ['Toronto FC','CF Montréal','Vancouver Whitecaps','Forge FC','Cavalry FC','Pacific FC'],
+  'Costa Rica': ['Saprissa','Alajuelense','Herediano','Cartaginés','Puntarenas','San Carlos'],
+  Panama: ['Tauro','Árabe Unido','Plaza Amador','San Francisco','Independiente','Sporting San Miguelito'],
+  Jamaica: ['Portmore United','Harbour View','Tivoli Gardens','Arnett Gardens','Waterhouse','Cavalier'],
+  Honduras: ['Olimpia','Motagua','Real España','Marathón','Vida','Platense'],
+  Guatemala: ['Comunicaciones','Municipal','Antigua GFC','Xelajú','Cobán Imperial','Guastatoya'],
+  'El Salvador': ['Alianza','FAS','Águila','Isidro Metapán','Luis Ángel Firpo','Santa Tecla'],
+  'Trinidad and Tobago': ['W Connection','Defence Force','Central FC','San Juan Jabloteh','North East Stars','Police FC'],
+  Haiti: ['Violette','Racing Club Haïtien','Don Bosco','Tempête','Baltimore','Cavaly'],
+  Curaçao: ['Jong Colombia','Centro Dominguito','Scherpenheuvel','Victory Boys','SUBT','Centro Barber'],
+  'Dominican Republic': ['Cibao','Moca','Atlético Pantoja','Universidad O&M','Vega Real','Atlántico'],
+  Cuba: ['Pinar del Río','Villa Clara','Santiago de Cuba','La Habana','Ciego de Ávila','Camagüey'],
+  Nicaragua: ['Real Estelí','Diriangén','Managua FC','Walter Ferretti','Juventus Managua','UNAN Managua'],
+  Suriname: ['Robinhood','Transvaal','Inter Moengotapoe','Leo Victor','Notch','Voorwaarts'],
+  Guyana: ['Alpha United','Fruta Conquerors','Guyana Defence Force','Slingerz','Western Tigers','Den Amstel'],
+  Martinique: ['Club Franciscain','Golden Star','Club Colonial','Aiglon','Samaritaine','RC Rivière-Pilote'],
+  'South Korea': ['Jeonbuk Hyundai Motors','Ulsan Hyundai','Pohang Steelers','FC Seoul','Suwon Samsung Bluewings','Seongnam FC'],
+  Iran: ['Persepolis','Esteghlal','Sepahan','Tractor','Foolad','Zob Ahan'],
+  Qatar: ['Al Sadd','Al Duhail','Al Rayyan','Al Gharafa','Qatar SC','Al Arabi'],
+  Uzbekistan: ['Pakhtakor','Bunyodkor','Nasaf','Lokomotiv Tashkent','Neftchi Fergana','Navbahor'],
+  Iraq: ['Al-Shorta','Al-Quwa Al-Jawiya','Al-Zawraa','Al-Talaba','Erbil','Al-Najaf'],
+  'United Arab Emirates': ['Al Ain','Shabab Al Ahli','Al Wasl','Al Jazira','Sharjah','Al Wahda'],
+  Oman: ['Dhofar','Al-Seeb','Al-Nahda','Fanja','Al-Suwaiq','Saham'],
+  Bahrain: ['Al-Muharraq','Riffa','Al-Ahli Manama','Manama Club','East Riffa','Al-Hidd'],
+  Jordan: ['Al-Faisaly','Al-Wehdat','Al-Ramtha','Shabab Al-Ordon','Al-Jazeera','Al-Hussein Irbid'],
+  Syria: ['Al-Jaish','Al-Karamah','Al-Ittihad Aleppo','Tishreen','Al-Wahda','Hutteen'],
+  Lebanon: ['Al Ansar','Nejmeh','Ahed','Safa','Racing Beirut','Shabab Sahel'],
+  Kuwait: ['Kuwait SC','Al-Qadsia','Al-Arabi','Kazma','Al-Salmiya','Al-Nasr'],
+  Thailand: ['Buriram United','Muangthong United','Bangkok United','BG Pathum United','Chonburi','Port FC'],
+  Vietnam: ['Hanoi FC','Viettel','Hoang Anh Gia Lai','Becamex Binh Duong','Song Lam Nghe An','Nam Dinh'],
+  Indonesia: ['Persija Jakarta','Persib Bandung','Persebaya Surabaya','Arema','PSM Makassar','Bali United'],
+  Malaysia: ['Johor Darul Ta’zim','Selangor','Kedah Darul Aman','Perak','Sabah','Terengganu'],
+  Singapore: ['Lion City Sailors','Tampines Rovers','Geylang International','Balestier Khalsa','Hougang United','Tanjong Pagar'],
+  Philippines: ['United City','Kaya–Iloilo','Stallion Laguna','Dynamic Herb Cebu','Mendiola','Philippine Air Force'],
+  India: ['Mohun Bagan','East Bengal','Mumbai City','Bengaluru','Goa','Kerala Blasters'],
+  Pakistan: ['K-Electric','WAPDA','Khan Research Laboratories','Pakistan Army','Karachi United','Sui Southern Gas'],
+  Bangladesh: ['Bashundhara Kings','Abahani Dhaka','Mohammedan Dhaka','Sheikh Jamal','Sheikh Russel','Chittagong Abahani'],
+  'North Korea': ['April 25','Amnokgang','Pyongyang City','Rimyongsu','Kigwancha','Hwaebul'],
+  Tajikistan: ['Istiklol','Khujand','Ravshan Kulob','Regar-TadAZ','CSKA Pamir','Khatlon'],
+  Kyrgyzstan: ['Dordoi Bishkek','Alay Osh','Abdysh-Ata Kant','Neftchi Kochkor-Ata','Ilbirs','Alga Bishkek'],
+  Senegal: ['ASC Jaraaf','Génération Foot','Casa Sports','Teungueth','Diambars','US Gorée'],
+  'Ivory Coast': ['ASEC Mimosas','Africa Sports','Stella Club','SO Armée','San Pedro','Racing Club Abidjan'],
+  Algeria: ['JS Kabylie','MC Alger','CR Belouizdad','USM Alger','ES Sétif','MC Oran'],
+  Ghana: ['Asante Kotoko','Hearts of Oak','Ashanti Gold','Medeama','Aduana Stars','Berekum Chelsea'],
+  Cameroon: ['Canon Yaoundé','Coton Sport','Union Douala','Tonnerre Yaoundé','Bamboutos','PWD Bamenda'],
+  Tunisia: ['Espérance','Club Africain','Étoile du Sahel','CS Sfaxien','Stade Tunisien','US Monastir'],
+  Mali: ['Stade Malien','Djoliba','Real Bamako','Onze Créateurs','AS Bakaridjan','Yeelen Olympique'],
+  'Burkina Faso': ['ASFA Yennenga','Étoile Filante','Rail Club Kadiogo','Salitas','USFA','Rahimo'],
+  'DR Congo': ['TP Mazembe','AS Vita Club','DC Motema Pembe','Saint-Éloi Lupopo','Maniema Union','Sanga Balende'],
+  Guinea: ['Horoya','Hafia','AS Kaloum','CI Kamsar','Wakriya','Milo FC'],
+  'Cape Verde': ['Mindelense','Académica do Mindelo','Sporting Praia','Boavista Praia','Batuque','Travadores'],
+  Gabon: ['FC 105 Libreville','Mangasport','AS Stade Mandji','Missile FC','US Bitam','Bouenguidi Sports'],
+  Zambia: ['Nkana','ZESCO United','Power Dynamos','Green Buffaloes','Zanaco','Red Arrows'],
+  Angola: ['Petro de Luanda','Primeiro de Agosto','Sagrada Esperança','Interclube','Kabuscorp','Recreativo do Libolo'],
+  Uganda: ['SC Villa','KCCA','Express','Vipers','URA','Police FC'],
+  Kenya: ['Gor Mahia','AFC Leopards','Tusker','Ulinzi Stars','Bandari','Sofapaka'],
+  Tanzania: ['Simba','Young Africans','Azam','Coastal Union','Mtibwa Sugar','Kagera Sugar'],
+  Mozambique: ['Costa do Sol','Ferroviário Maputo','Black Bulls','Liga Desportiva','Ferroviário Beira','UD Songo'],
+  Zimbabwe: ['Dynamos','Highlanders','CAPS United','FC Platinum','Chicken Inn','Ngezi Platinum'],
+  Benin: ['Buffles du Borgou','Coton FC','Dragons de l’Ouémé','AS Cotonou','ESAE','Requins de l’Atlantique'],
+  Togo: ['ASKO Kara','Dynamic Togolais','Semassi','Gomido','AS Togo-Port','Gbohloesu'],
+  'Equatorial Guinea': ['Sony Elá Nguema','Leones Vegetarianos','Deportivo Mongomo','Akonangui','Cano Sport','15 de Agosto'],
+  Sudan: ['Al-Hilal Omdurman','Al-Merrikh','Al-Ahly Shendi','Hilal El Fasher','Hay Al-Arab','Al-Khartoum'],
+  Libya: ['Al-Ittihad Tripoli','Al-Ahly Tripoli','Al-Ahly Benghazi','Al-Nasr Benghazi','Al-Madina','Al-Olympique'],
+  Congo: ['AC Léopards','Étoile du Congo','CARA Brazzaville','Diables Noirs','Inter Club','V.Club Mokanda'],
+  Namibia: ['African Stars','Black Africa','Blue Waters','Tigers','Orlando Pirates Windhoek','Civics'],
+  Malawi: ['Big Bullets','Mighty Wanderers','Silver Strikers','Civo United','Blue Eagles','Kamuzu Barracks'],
+  'New Zealand': ['Auckland City','Team Wellington','Waitakere United','Eastern Suburbs','Wellington Olympic','Christchurch United'],
+  'Solomon Islands': ['Solomon Warriors','Marist','Kossa','Henderson Eels','Western United','Real Kakamora'],
+  Fiji: ['Ba','Lautoka','Suva','Nadi','Rewa','Labasa'],
+  'Papua New Guinea': ['Hekari United','Lae City','PRK Gulf Komara','Port Moresby Strikers','Madang','Morobe Wawens'],
+  Tahiti: ['AS Pirae','AS Tefana','AS Dragon','AS Vénus','Central Sport','AS Manu-Ura'],
+  'New Caledonia': ['Hienghène Sport','AS Magenta','Tiga Sport','AS Lössi','Horizon Patho','SC Ne Drehu'],
+  Vanuatu: ['Amicale','Tafea','Erakor Golden Star','Ifira Black Bird','Galaxy FC','Malampa Revivors'],
+  Samoa: ['Kiwi','Lupe o le Soaga','Vaivase-Tai','Vaitele Uta','Moaula United','Togafuafua']
+});
+
+
+function dataSlug(value) {
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function genericClubNames(country, count) {
+  const stem = country.replace(/^(The )/, '');
+  const prefixes = ['United','City','Athletic','Sporting','Olympic','Rangers','Dynamo','Stars','Wanderers','Academy','Railway','Real'];
+  return Array.from({ length: count }, (_, index) => index === 0 ? `${stem} Champions` : `${stem} ${prefixes[(index - 1) % prefixes.length]}${index > prefixes.length ? ` ${Math.floor(index / prefixes.length) + 1}` : ''}`);
+}
+
+function buildLeagueDefinitions() {
+  const baseByCountry = Object.fromEntries(BASE_LEAGUE_DEFINITIONS.map((league) => [league.country, league]));
+  return NATIONAL_TEAMS.map((team) => {
+    const existing = baseByCountry[team.name];
+    const detailed = DETAILED_COUNTRIES.has(team.name);
+    const activeCount = detailed ? 20 : 6;
+    const totalCount = detailed ? 27 : 6;
+    const pool = [...(existing?.clubs || [])];
+    const known = CLUB_SUPPLEMENTS[team.name] || [];
+    const usedNames = new Set(pool.map((club) => club[1].toLowerCase()));
+    const candidates = [...known, ...genericClubNames(team.name, totalCount * 2)];
+    for (const name of candidates) {
+      if (pool.length >= totalCount) break;
+      if (team.name === 'Spain' && /^fc barcelona$/i.test(name)) continue;
+      if (usedNames.has(name.toLowerCase())) continue;
+      const rank = pool.length;
+      const ceiling = detailed ? Math.min(88, team.strength + 1) : Math.min(77, team.strength - 4);
+      const strength = Math.max(detailed ? 58 : 53, Math.round(ceiling - rank * (detailed ? 0.95 : 2.6)));
+      const id = `${team.id}-${dataSlug(name)}`;
+      pool.push([id, name, name.replace(/\b(FC|CF|United|City|Athletic|Sporting|Olympic|Rangers|Dynamo|Stars|Wanderers|Champions)\b/gi, '').trim() || team.name, strength]);
+      usedNames.add(name.toLowerCase());
+    }
+    return {
+      id: existing?.id || `${team.id.toUpperCase()}1`,
+      name: LEAGUE_NAMES[team.name] || `${team.name} Premier League`,
+      country: team.name,
+      tier: detailed ? 'detailed' : 'summary',
+      confederation: team.region,
+      cupName: CUP_NAMES[team.name] || `${team.name} Cup`,
+      superCupName: existing?.superCupName,
+      activeCount,
+      reserveCount: detailed ? 7 : 0,
+      clubs: pool.slice(0, totalCount)
+    };
+  });
+}
+
+export const LEAGUE_DEFINITIONS = buildLeagueDefinitions();
+
+export const STAFF_RARITIES = {
+  generational: { label: 'Generational', impact: 1.8, rank: 6, weight: 0.002 },
+  legend: { label: 'Legend', impact: 1.35, rank: 5, weight: 0.012 },
+  epic: { label: 'Epic', impact: 1.0, rank: 4, weight: 0.045 },
+  rare: { label: 'Rare', impact: 0.7, rank: 3, weight: 0.14 },
+  uncommon: { label: 'Uncommon', impact: 0.4, rank: 2, weight: 0.28 },
+  common: { label: 'Common', impact: 0.18, rank: 1, weight: 0.521 }
+};
+
+export const OWNER_PROFILES = {
+  lifelong_fan: { label: 'Lifelong Football Fan', money: 0.96, sporting: 1.16, negotiation: 1.0, patience: 1.18, description: 'Protects identity and invests in sporting continuity.' },
+  billionaire: { label: 'Billionaire Backer', money: 1.45, sporting: 1.02, negotiation: 1.04, patience: 0.86, description: 'Injects cash and expects rapid success.' },
+  businessman: { label: 'Business Executive', money: 1.2, sporting: 0.97, negotiation: 1.08, patience: 0.92, description: 'Prioritizes sustainable growth and commercial revenue.' },
+  negotiator: { label: 'Master Negotiator', money: 1.02, sporting: 1.0, negotiation: 1.28, patience: 1.0, description: 'Closes difficult deals for lower fees and wages.' },
+  academy_patron: { label: 'Academy Patron', money: 0.94, sporting: 1.1, negotiation: 0.96, patience: 1.25, description: 'Values prospects, patience and long-term development.' },
+  celebrity: { label: 'Celebrity Owner', money: 1.16, sporting: 0.94, negotiation: 1.12, patience: 0.76, description: 'Boosts attention and star appeal but changes direction quickly.' },
+  consortium: { label: 'Investment Consortium', money: 1.3, sporting: 0.95, negotiation: 1.14, patience: 0.82, description: 'Strong financing with performance-driven decisions.' },
+  traditional_board: { label: 'Traditional Board', money: 0.92, sporting: 1.04, negotiation: 0.94, patience: 1.12, description: 'Conservative, stable and rooted in club tradition.' }
+};
+
+export const COACH_PROFILES = {
+  adaptive: { label: 'Adaptive Strategist', attack: 1.04, defence: 1.04, midfield: 1.08, development: 1.03, description: 'Changes shape to exploit opponents.' },
+  defensive_rock: { label: 'Defensive Rock', attack: 0.96, defence: 1.18, midfield: 1.02, development: 0.98, description: 'Maximizes goalkeeping and defensive quality.' },
+  counter_attack: { label: 'Counter-Attack Specialist', attack: 1.12, defence: 1.06, midfield: 0.98, development: 1.0, description: 'Turns defensive recoveries into fast chances.' },
+  pressing: { label: 'High-Pressing Coach', attack: 1.08, defence: 1.05, midfield: 1.12, development: 1.02, description: 'Raises intensity, possession recovery and chance volume.' },
+  possession: { label: 'Possession Architect', attack: 1.04, defence: 1.0, midfield: 1.18, development: 1.04, description: 'Builds control through technical midfielders.' },
+  direct: { label: 'Direct Football Coach', attack: 1.14, defence: 0.98, midfield: 0.98, development: 0.96, description: 'Creates chances quickly and accepts volatility.' },
+  youth_developer: { label: 'Youth Developer', attack: 1.01, defence: 1.01, midfield: 1.04, development: 1.18, description: 'Improves young stars and extends squad depth.' },
+  motivator: { label: 'Elite Motivator', attack: 1.06, defence: 1.06, midfield: 1.06, development: 1.06, description: 'Raises form and happiness across the squad.' },
+  tournament_expert: { label: 'Tournament Expert', attack: 1.05, defence: 1.08, midfield: 1.04, development: 0.98, description: 'Adds composure in knockout matches and finals.' },
+  pragmatist: { label: 'Pragmatist', attack: 1.01, defence: 1.09, midfield: 1.03, development: 1.0, description: 'Prioritizes results and minimizes tactical weaknesses.' }
+};
+
+export const COACH_FOCUSES = {
+  tournament: {
+    label: 'Tournament',
+    description: 'Peaks in knockout rounds, finals and short international tournaments.'
+  },
+  regularity: {
+    label: 'Regularity',
+    description: 'Builds repeatable weekly performance and converts squad quality into league points.'
+  },
+  balanced: {
+    label: 'Balanced',
+    description: 'Performs reliably in leagues while retaining strong knockout adaptability.'
+  }
+};
+
+export const CONTINENTAL_DEFINITIONS = [
+  { id: 'UCL', name: 'European Champions League', confederation: 'Europe', level: 1, teams: 32 },
+  { id: 'UEL', name: 'Europa League', confederation: 'Europe', level: 2, teams: 32 },
+  { id: 'UECL', name: 'Conference League', confederation: 'Europe', level: 3, teams: 32 },
+  { id: 'LIB', name: 'Copa Libertadores', confederation: 'South America', level: 1, teams: 24 },
+  { id: 'SUD', name: 'Copa Sudamericana', confederation: 'South America', level: 2, teams: 24 },
+  { id: 'CCC', name: 'CONCACAF Champions Cup', confederation: 'North America', level: 1, teams: 24 },
+  { id: 'ACL', name: 'AFC Champions League', confederation: 'Asia', level: 1, teams: 24 },
+  { id: 'AFC2', name: 'AFC Cup', confederation: 'Asia', level: 2, teams: 24 },
+  { id: 'CAFCL', name: 'CAF Champions League', confederation: 'Africa', level: 1, teams: 24 },
+  { id: 'CAFCC', name: 'CAF Confederation Cup', confederation: 'Africa', level: 2, teams: 24 },
+  { id: 'OCL', name: 'OFC Champions League', confederation: 'Oceania', level: 1, teams: 16 }
+];
+
+export const NATIONAL_TEAM_BY_ID = Object.fromEntries(NATIONAL_TEAMS.map((team) => [team.id, team]));
+export const COUNTRY_META = Object.fromEntries(NATIONAL_TEAMS.map((team) => [team.name, { code: team.id, iso2: team.iso2, region: team.region, tier: team.tier }]));
+export const STAR_RARITIES = {
+  "generational": {
+    "label": "Generational",
+    "min": 95,
+    "max": 100,
+    "rank": 6
+  },
+  "legend": {
+    "label": "Legend",
+    "min": 90,
+    "max": 95,
+    "rank": 5
+  },
+  "epic": {
+    "label": "Epic",
+    "min": 85,
+    "max": 90,
+    "rank": 4
+  },
+  "rare": {
+    "label": "Rare",
+    "min": 80,
+    "max": 85,
+    "rank": 3
+  },
+  "uncommon": {
+    "label": "Uncommon",
+    "min": 70,
+    "max": 80,
+    "rank": 2
+  },
+  "common": {
+    "label": "Common",
+    "min": 60,
+    "max": 70,
+    "rank": 1
+  }
+};
+export const ROLE_DEFINITIONS = {
+  "GK": [
+    {
+      "id": "sweeper_keeper",
+      "label": "Sweeper Keeper",
+      "goal": 0.03,
+      "assist": 0.12,
+      "defence": 1.02
+    },
+    {
+      "id": "shot_stopper",
+      "label": "Shot Stopper",
+      "goal": 0.01,
+      "assist": 0.04,
+      "defence": 1.12
+    },
+    {
+      "id": "complete_goalkeeper",
+      "label": "Complete Goalkeeper",
+      "goal": 0.02,
+      "assist": 0.08,
+      "defence": 1.07
+    }
+  ],
+  "DF": [
+    {
+      "id": "attacking_full_back",
+      "label": "Attacking Full Back",
+      "goal": 0.65,
+      "assist": 1.55,
+      "defence": 0.9
+    },
+    {
+      "id": "defensive_full_back",
+      "label": "Defensive Full Back",
+      "goal": 0.35,
+      "assist": 0.75,
+      "defence": 1.12
+    },
+    {
+      "id": "ball_playing_centre_back",
+      "label": "Ball-Playing Centre Back",
+      "goal": 0.45,
+      "assist": 0.65,
+      "defence": 1.03
+    },
+    {
+      "id": "stopper_centre_back",
+      "label": "Defensive Centre Back",
+      "goal": 0.3,
+      "assist": 0.25,
+      "defence": 1.18
+    }
+  ],
+  "MF": [
+    {
+      "id": "attacking_midfielder",
+      "label": "Attacking Midfielder",
+      "goal": 1.3,
+      "assist": 1.55,
+      "defence": 0.78
+    },
+    {
+      "id": "deep_playmaker",
+      "label": "Deep-Lying Playmaker",
+      "goal": 0.72,
+      "assist": 1.45,
+      "defence": 0.95
+    },
+    {
+      "id": "defensive_midfielder",
+      "label": "Defensive Midfielder",
+      "goal": 0.42,
+      "assist": 0.75,
+      "defence": 1.18
+    },
+    {
+      "id": "box_to_box",
+      "label": "Box-to-Box Midfielder",
+      "goal": 1.0,
+      "assist": 1.05,
+      "defence": 1.03
+    },
+    {
+      "id": "wide_midfielder",
+      "label": "Wide Midfielder",
+      "goal": 0.95,
+      "assist": 1.35,
+      "defence": 0.92
+    }
+  ],
+  "FW": [
+    {
+      "id": "striker",
+      "label": "Striker",
+      "goal": 1.55,
+      "assist": 0.65,
+      "defence": 0.6
+    },
+    {
+      "id": "winger",
+      "label": "Winger",
+      "goal": 1.05,
+      "assist": 1.55,
+      "defence": 0.66
+    },
+    {
+      "id": "false_nine",
+      "label": "False Nine",
+      "goal": 1.22,
+      "assist": 1.35,
+      "defence": 0.65
+    },
+    {
+      "id": "inside_forward",
+      "label": "Inside Forward",
+      "goal": 1.38,
+      "assist": 0.95,
+      "defence": 0.62
+    },
+    {
+      "id": "target_forward",
+      "label": "Target Forward",
+      "goal": 1.42,
+      "assist": 0.82,
+      "defence": 0.72
+    }
+  ]
+};
+export const CAREER_TYPES = {
+  "early_peak": {
+    "label": "Early Peak",
+    "curve": [
+      0.93,
+      1.0,
+      0.99,
+      0.96,
+      0.94,
+      0.92,
+      0.9,
+      0.88,
+      0.86,
+      0.85,
+      0.85,
+      0.85,
+      0.85
+    ]
+  },
+  "late_bloomer": {
+    "label": "Late Bloomer",
+    "curve": [
+      0.89,
+      0.91,
+      0.94,
+      0.97,
+      0.99,
+      1.01,
+      1.02,
+      1.01,
+      0.99,
+      0.96,
+      0.93,
+      0.9,
+      0.87
+    ]
+  },
+  "stable_prime": {
+    "label": "Stable Prime",
+    "curve": [
+      0.94,
+      0.97,
+      0.99,
+      1.0,
+      1.01,
+      1.01,
+      1.0,
+      0.99,
+      0.97,
+      0.95,
+      0.92,
+      0.89,
+      0.86
+    ]
+  },
+  "prodigy": {
+    "label": "Prodigy",
+    "curve": [
+      0.99,
+      1.01,
+      1.02,
+      1.02,
+      1.01,
+      0.99,
+      0.97,
+      0.95,
+      0.92,
+      0.89,
+      0.87,
+      0.85,
+      0.85
+    ]
+  },
+  "slow_builder": {
+    "label": "Slow Builder",
+    "curve": [
+      0.89,
+      0.91,
+      0.93,
+      0.95,
+      0.97,
+      0.99,
+      1.0,
+      1.01,
+      1.0,
+      0.98,
+      0.95,
+      0.92,
+      0.89
+    ]
+  },
+  "ups_and_downs": {
+    "label": "Ups and Downs",
+    "curve": [
+      0.94,
+      0.99,
+      0.95,
+      1.01,
+      0.96,
+      1.02,
+      0.97,
+      1.0,
+      0.94,
+      0.96,
+      0.9,
+      0.88,
+      0.85
+    ]
+  },
+  "second_wind": {
+    "label": "Second Wind",
+    "curve": [
+      0.95,
+      0.99,
+      1.01,
+      0.98,
+      0.94,
+      0.92,
+      0.96,
+      1.0,
+      0.98,
+      0.94,
+      0.91,
+      0.88,
+      0.85
+    ]
+  },
+  "brief_superstar": {
+    "label": "Brief Superstar",
+    "curve": [
+      0.91,
+      0.96,
+      1.02,
+      1.02,
+      0.98,
+      0.93,
+      0.9,
+      0.87,
+      0.85,
+      0.85,
+      0.85,
+      0.85,
+      0.85
+    ]
+  },
+  "late_decline": {
+    "label": "Late Decline",
+    "curve": [
+      0.93,
+      0.96,
+      0.98,
+      1.0,
+      1.01,
+      1.01,
+      1.01,
+      1.0,
+      0.99,
+      0.98,
+      0.95,
+      0.91,
+      0.87
+    ]
+  },
+  "rollercoaster": {
+    "label": "Rollercoaster",
+    "curve": [
+      0.92,
+      0.98,
+      0.94,
+      1.0,
+      0.95,
+      1.01,
+      0.93,
+      0.99,
+      0.91,
+      0.96,
+      0.89,
+      0.87,
+      0.85
+    ]
+  }
+};
+const NAME_POOL_GROUPS = {
+  "iberian": {
+    "first": [
+      "Alejandro",
+      "Mateo",
+      "Hugo",
+      "Daniel",
+      "Álvaro",
+      "Martín",
+      "Pablo",
+      "Sergio",
+      "Adrián",
+      "Nicolás",
+      "Iker",
+      "David",
+      "Marco",
+      "Raúl",
+      "Javier",
+      "Mario",
+      "Diego",
+      "Rubén",
+      "Iván",
+      "Gonzalo",
+      "Álex",
+      "Óscar",
+      "Miguel",
+      "Carlos",
+      "Jorge",
+      "Fernando",
+      "Manuel",
+      "Víctor",
+      "Rodrigo",
+      "Marcos",
+      "Antonio",
+      "Francisco",
+      "José",
+      "Luis",
+      "Enrique",
+      "Alberto",
+      "Andrés",
+      "Borja",
+      "César",
+      "Dani",
+      "Eduardo",
+      "Fabián",
+      "Guillermo",
+      "Héctor",
+      "Jaime",
+      "Jesús",
+      "Joaquín",
+      "Juan",
+      "Kike",
+      "Lorenzo",
+      "Mikel",
+      "Nacho",
+      "Pedro",
+      "Roberto",
+      "Samuel",
+      "Saúl",
+      "Tomás",
+      "Unai"
+    ],
+    "last": [
+      "García",
+      "Fernández",
+      "Navarro",
+      "Romero",
+      "Serrano",
+      "Molina",
+      "Ortega",
+      "Vega",
+      "Paredes",
+      "Cabrera",
+      "Santos",
+      "Méndez",
+      "Lorenzo",
+      "Prieto",
+      "Castillo",
+      "Ramos",
+      "Suárez",
+      "Iglesias",
+      "Campos",
+      "Rey",
+      "Moreno",
+      "Muñoz",
+      "Álvarez",
+      "Herrera",
+      "Vázquez",
+      "Domínguez",
+      "Blanco",
+      "Nieto",
+      "Gallego",
+      "Cortés",
+      "Alonso",
+      "Arias",
+      "Benítez",
+      "Calvo",
+      "Cano",
+      "Carrasco",
+      "Casas",
+      "Delgado",
+      "Díaz",
+      "Durán",
+      "Esteban",
+      "Ferrer",
+      "Giménez",
+      "Guerrero",
+      "Hidalgo",
+      "León",
+      "Lozano",
+      "Márquez",
+      "Martínez",
+      "Montero",
+      "Mora",
+      "Núñez",
+      "Pascual",
+      "Peña",
+      "Roca",
+      "Sáez",
+      "Soler",
+      "Valero",
+      "Zamora"
+    ]
+  },
+  "greek": {
+    "first": [
+      "Alexandros", "Andreas", "Angelos", "Apostolos", "Christos", "Dimitris", "Dionysis", "Efthymis", "Giorgos", "Giannis", "Kostas", "Kyriakos", "Lazaros", "Manolis", "Michalis", "Nikos", "Panagiotis", "Petros", "Sotiris", "Spyros", "Stavros", "Tasos", "Theodoros", "Thanasis", "Vangelis", "Vasilis"
+    ],
+    "last": [
+      "Alexandropoulos", "Anagnostou", "Bakakis", "Chatzigiovanis", "Christodoulopoulos", "Dellas", "Diakos", "Dimitriadis", "Donis", "Fortounis", "Giakoumakis", "Ioannidis", "Karelis", "Katsouranis", "Konstantinidis", "Kourbelis", "Kyriakopoulos", "Lambropoulos", "Mantalos", "Manolas", "Masouras", "Nikolaou", "Papadopoulos", "Papanikolaou", "Pelkas", "Retsos", "Samaris", "Siovas", "Tsimikas", "Vlachodimos"
+    ]
+  },
+  "lusophone": {
+    "first": [
+      "João",
+      "Gabriel",
+      "Lucas",
+      "Pedro",
+      "Rafael",
+      "Matheus",
+      "Vinícius",
+      "Bruno",
+      "Caio",
+      "Guilherme",
+      "André",
+      "Thiago",
+      "Gonçalo",
+      "Miguel",
+      "Nuno",
+      "Duarte",
+      "Afonso",
+      "Vasco",
+      "Renato",
+      "Leandro",
+      "Rui",
+      "Tomás",
+      "Diogo",
+      "Paulo",
+      "Henrique",
+      "Fábio",
+      "Ricardo",
+      "Marcelo",
+      "Bernardo",
+      "Rodrigo"
+    ],
+    "last": [
+      "Silva",
+      "Santos",
+      "Oliveira",
+      "Souza",
+      "Costa",
+      "Pereira",
+      "Almeida",
+      "Ferreira",
+      "Rodrigues",
+      "Gomes",
+      "Barbosa",
+      "Moura",
+      "Martins",
+      "Sousa",
+      "Fernandes",
+      "Lopes",
+      "Marques",
+      "Alves",
+      "Ribeiro",
+      "Carvalho",
+      "Teixeira",
+      "Correia",
+      "Monteiro",
+      "Cardoso",
+      "Rocha",
+      "Nunes",
+      "Vieira",
+      "Mendes",
+      "Freitas",
+      "Pinto"
+    ]
+  },
+  "english": {
+    "first": [
+      "Jack",
+      "Harry",
+      "Lewis",
+      "Oliver",
+      "Charlie",
+      "George",
+      "James",
+      "Callum",
+      "Ben",
+      "Ethan",
+      "Noah",
+      "Mason",
+      "Ryan",
+      "Luke",
+      "Adam",
+      "Sam",
+      "Theo",
+      "Jacob",
+      "Liam",
+      "Connor",
+      "Daniel",
+      "Alex",
+      "Marcus",
+      "Jordan",
+      "Nathan",
+      "Aaron",
+      "Jamie",
+      "Cameron",
+      "Declan",
+      "Tyler"
+    ],
+    "last": [
+      "Walker",
+      "Bennett",
+      "Hughes",
+      "Cooper",
+      "Foster",
+      "Reed",
+      "Morgan",
+      "Palmer",
+      "Clarke",
+      "Ward",
+      "Brooks",
+      "Turner",
+      "Harrison",
+      "Cole",
+      "Grant",
+      "Murray",
+      "Pearce",
+      "Stone",
+      "Taylor",
+      "Smith",
+      "Jones",
+      "Brown",
+      "Wilson",
+      "Davies",
+      "Roberts",
+      "Evans",
+      "Campbell",
+      "Young",
+      "Bell",
+      "Wood"
+    ]
+  },
+  "french": {
+    "first": [
+      "Lucas",
+      "Hugo",
+      "Théo",
+      "Nathan",
+      "Mathis",
+      "Enzo",
+      "Raphaël",
+      "Antoine",
+      "Maxime",
+      "Alexandre",
+      "Jules",
+      "Noé",
+      "Yanis",
+      "Rayan",
+      "Malo",
+      "Baptiste",
+      "Clément",
+      "Nolan",
+      "Kylian",
+      "Ilyes",
+      "Amine",
+      "Louis",
+      "Victor",
+      "Arthur",
+      "Quentin",
+      "Florian",
+      "Loïc",
+      "Adrien",
+      "Benjamin",
+      "Rémi"
+    ],
+    "last": [
+      "Martin",
+      "Bernard",
+      "Dubois",
+      "Thomas",
+      "Robert",
+      "Richard",
+      "Petit",
+      "Durand",
+      "Leroy",
+      "Moreau",
+      "Simon",
+      "Laurent",
+      "Michel",
+      "Garcia",
+      "Roux",
+      "Fournier",
+      "Girard",
+      "Bonnet",
+      "Dupont",
+      "Lambert",
+      "Fontaine",
+      "Rousseau",
+      "Vincent",
+      "Muller",
+      "Faure",
+      "Andre",
+      "Mercier",
+      "Blanc",
+      "Guerin",
+      "Boyer"
+    ]
+  },
+  "germanic": {
+    "first": [
+      "Lukas",
+      "Jonas",
+      "Leon",
+      "Felix",
+      "Florian",
+      "Maximilian",
+      "Julian",
+      "Niklas",
+      "David",
+      "Tobias",
+      "Moritz",
+      "Kai",
+      "Nico",
+      "Tim",
+      "Sebastian",
+      "Jan",
+      "Fabian",
+      "Simon",
+      "Philipp",
+      "Kevin",
+      "Marco",
+      "Dennis",
+      "Johannes",
+      "Robin",
+      "Marcel",
+      "Matthias",
+      "Dominik",
+      "Christian",
+      "Benedikt",
+      "Anton"
+    ],
+    "last": [
+      "Schneider",
+      "Weber",
+      "Wagner",
+      "Becker",
+      "Hoffmann",
+      "Schäfer",
+      "Koch",
+      "Bauer",
+      "Richter",
+      "Klein",
+      "Wolf",
+      "Neumann",
+      "Schwarz",
+      "Krüger",
+      "Hartmann",
+      "Zimmermann",
+      "Braun",
+      "Schmitt",
+      "Krause",
+      "Meier",
+      "Lehmann",
+      "Schulz",
+      "Maier",
+      "Köhler",
+      "Herrmann",
+      "König",
+      "Walter",
+      "Mayer",
+      "Huber",
+      "Kaiser"
+    ]
+  },
+  "italian": {
+    "first": [
+      "Luca",
+      "Matteo",
+      "Marco",
+      "Andrea",
+      "Davide",
+      "Simone",
+      "Federico",
+      "Niccolò",
+      "Alessio",
+      "Tommaso",
+      "Riccardo",
+      "Gabriele",
+      "Lorenzo",
+      "Pietro",
+      "Edoardo",
+      "Francesco",
+      "Giovanni",
+      "Stefano",
+      "Daniele",
+      "Antonio",
+      "Michele",
+      "Alberto",
+      "Cristian",
+      "Salvatore",
+      "Fabio",
+      "Filippo",
+      "Vincenzo",
+      "Roberto",
+      "Giacomo",
+      "Leonardo"
+    ],
+    "last": [
+      "Bianchi",
+      "Romano",
+      "Conti",
+      "Ferrari",
+      "Esposito",
+      "Moretti",
+      "Rinaldi",
+      "Gallo",
+      "Greco",
+      "Marino",
+      "Lombardi",
+      "De Luca",
+      "Vitale",
+      "Serra",
+      "Caruso",
+      "Rizzo",
+      "Fontana",
+      "Santoro",
+      "Marchetti",
+      "Fabbri",
+      "Bianco",
+      "Martini",
+      "Barbieri",
+      "Messina",
+      "Sala",
+      "De Angelis",
+      "Grassi",
+      "Palumbo",
+      "Giordano",
+      "Leone"
+    ]
+  },
+  "slavic": {
+    "first": [
+      "Luka",
+      "Nikola",
+      "Marko",
+      "Ivan",
+      "Milan",
+      "Stefan",
+      "Matej",
+      "Filip",
+      "Aleksandar",
+      "Milos",
+      "Andrej",
+      "Jakub",
+      "Tomas",
+      "Jan",
+      "Petr",
+      "Michal",
+      "Dmytro",
+      "Oleksandr",
+      "Viktor",
+      "Serhiy",
+      "Pavel",
+      "Roman",
+      "Martin",
+      "Patrik",
+      "Bojan",
+      "Damir",
+      "Denis",
+      "Josip",
+      "Marek",
+      "Kamil"
+    ],
+    "last": [
+      "Petrovic",
+      "Jovanovic",
+      "Nikolic",
+      "Markovic",
+      "Kovacevic",
+      "Horvat",
+      "Novak",
+      "Kolar",
+      "Kowalski",
+      "Nowak",
+      "Wisniewski",
+      "Zielinski",
+      "Dvorak",
+      "Svoboda",
+      "Kral",
+      "Popescu",
+      "Ionescu",
+      "Stoica",
+      "Shevchenko",
+      "Bondarenko",
+      "Koval",
+      "Ivanov",
+      "Smirnov",
+      "Volkov",
+      "Sokolov",
+      "Mihajlovic",
+      "Pavlovic",
+      "Stojanovic",
+      "Bartos",
+      "Kozak"
+    ]
+  },
+  "nordic": {
+    "first": [
+      "Erik",
+      "Lars",
+      "Johan",
+      "Emil",
+      "Oscar",
+      "Viktor",
+      "Anders",
+      "Magnus",
+      "Sven",
+      "Mikkel",
+      "Nils",
+      "Henrik",
+      "Kristian",
+      "Elias",
+      "Anton",
+      "Oskar",
+      "Mats",
+      "Jonas",
+      "Rasmus",
+      "Kaspar",
+      "Bjørn",
+      "Sindre",
+      "Teemu",
+      "Jari",
+      "Mikael",
+      "Aron",
+      "Gunnar",
+      "Leif",
+      "Ari",
+      "Ville"
+    ],
+    "last": [
+      "Andersen",
+      "Johansen",
+      "Hansen",
+      "Nielsen",
+      "Larsen",
+      "Pedersen",
+      "Eriksen",
+      "Berg",
+      "Lund",
+      "Dahl",
+      "Holm",
+      "Kristensen",
+      "Jensen",
+      "Olsen",
+      "Svensson",
+      "Larsson",
+      "Karlsson",
+      "Nilsson",
+      "Lindberg",
+      "Sørensen",
+      "Madsen",
+      "Haugen",
+      "Solberg",
+      "Korhonen",
+      "Virtanen",
+      "Laine",
+      "Lehtinen",
+      "Gunnarsson",
+      "Sigurdsson",
+      "Einarsson"
+    ]
+  },
+  "arabic": {
+    "first": [
+      "Omar",
+      "Ahmed",
+      "Mohamed",
+      "Mostafa",
+      "Mahmoud",
+      "Karim",
+      "Youssef",
+      "Tarek",
+      "Hassan",
+      "Amr",
+      "Fahad",
+      "Salem",
+      "Saud",
+      "Abdullah",
+      "Nasser",
+      "Khalid",
+      "Yasir",
+      "Ali",
+      "Ibrahim",
+      "Hamza",
+      "Bilal",
+      "Anas",
+      "Mehdi",
+      "Sofiane",
+      "Hakim",
+      "Amine",
+      "Rami",
+      "Sami",
+      "Walid",
+      "Ziad"
+    ],
+    "last": [
+      "Hassan",
+      "Ibrahim",
+      "Mahmoud",
+      "El Sayed",
+      "Fathy",
+      "Ashour",
+      "Gaber",
+      "Hamdy",
+      "Kamal",
+      "Farouk",
+      "Al-Dawsari",
+      "Al-Qahtani",
+      "Al-Harbi",
+      "Al-Shammari",
+      "Al-Ghamdi",
+      "Al-Otaibi",
+      "Al-Shehri",
+      "Al-Faraj",
+      "Benali",
+      "Alaoui",
+      "Bennani",
+      "Idrissi",
+      "Tazi",
+      "Berrada",
+      "Mansouri",
+      "Chafai",
+      "Ziani",
+      "Rahman",
+      "Nasser",
+      "Khalil"
+    ]
+  },
+  "west_african": {
+    "first": [
+      "Kofi",
+      "Kwame",
+      "Abdoulaye",
+      "Moussa",
+      "Ibrahima",
+      "Sadio",
+      "Cheikh",
+      "Amadou",
+      "Sekou",
+      "Ousmane",
+      "Mamadou",
+      "Yaya",
+      "Didier",
+      "Serge",
+      "Wilfried",
+      "Victor",
+      "Samuel",
+      "Emmanuel",
+      "Joseph",
+      "Daniel",
+      "Francis",
+      "Patrick",
+      "Kelvin",
+      "Mohamed",
+      "Ismaila",
+      "Boubacar",
+      "Lamine",
+      "Idrissa",
+      "Fousseni",
+      "Aly"
+    ],
+    "last": [
+      "Mensah",
+      "Boateng",
+      "Asante",
+      "Diallo",
+      "Traore",
+      "Konate",
+      "Camara",
+      "Keita",
+      "Coulibaly",
+      "Diop",
+      "Ndiaye",
+      "Sarr",
+      "Ba",
+      "Toure",
+      "Kone",
+      "Yao",
+      "Bamba",
+      "Aurier",
+      "Zaha",
+      "Mane",
+      "Gueye",
+      "Onana",
+      "Eto",
+      "Aboubakar",
+      "Mbeumo",
+      "Ndidi",
+      "Osimhen",
+      "Chukwueze",
+      "Aina",
+      "Okafor"
+    ]
+  },
+  "east_african": {
+    "first": [
+      "Samuel",
+      "David",
+      "Peter",
+      "John",
+      "Joseph",
+      "Brian",
+      "Kevin",
+      "Michael",
+      "Emmanuel",
+      "Dennis",
+      "Allan",
+      "Abel",
+      "Moses",
+      "Isaac",
+      "George",
+      "Ali",
+      "Hassan",
+      "Juma",
+      "Said",
+      "Amani",
+      "Tawanda",
+      "Tendai",
+      "Blessing",
+      "Kelvin",
+      "Elvis",
+      "Collins",
+      "Victor",
+      "Patrick",
+      "Simon",
+      "Andrew"
+    ],
+    "last": [
+      "Mwangi",
+      "Otieno",
+      "Kamau",
+      "Ouma",
+      "Kiptoo",
+      "Musa",
+      "Hassan",
+      "Mohamed",
+      "Abdalla",
+      "Mbeki",
+      "Dlamini",
+      "Ndlovu",
+      "Moyo",
+      "Banda",
+      "Phiri",
+      "Tembo",
+      "Chirwa",
+      "Mbewe",
+      "Mwanza",
+      "Kabwe",
+      "Mutesa",
+      "Okello",
+      "Kato",
+      "Mugisha",
+      "Munyaneza",
+      "Habimana",
+      "Niyonzima",
+      "Mutombo",
+      "Kalala",
+      "Makengo"
+    ]
+  },
+  "east_asian": {
+    "first": [
+      "Haruto",
+      "Ren",
+      "Yuto",
+      "Sota",
+      "Kaito",
+      "Riku",
+      "Daiki",
+      "Takumi",
+      "Shota",
+      "Hiroto",
+      "Ryota",
+      "Kenta",
+      "Min-Jun",
+      "Ji-Hoon",
+      "Hyun-Woo",
+      "Dong-Hyun",
+      "Seung-Min",
+      "Joon-Ho",
+      "Wei",
+      "Jun",
+      "Hao",
+      "Ming",
+      "Tao",
+      "Chen",
+      "Lei",
+      "Jian",
+      "Bo",
+      "Kai",
+      "Long",
+      "Yong"
+    ],
+    "last": [
+      "Sato",
+      "Suzuki",
+      "Takahashi",
+      "Tanaka",
+      "Watanabe",
+      "Ito",
+      "Yamamoto",
+      "Nakamura",
+      "Kobayashi",
+      "Kato",
+      "Yoshida",
+      "Yamada",
+      "Kim",
+      "Lee",
+      "Park",
+      "Choi",
+      "Jung",
+      "Kang",
+      "Cho",
+      "Yoon",
+      "Wang",
+      "Li",
+      "Zhang",
+      "Liu",
+      "Chen",
+      "Yang",
+      "Huang",
+      "Zhao",
+      "Wu",
+      "Zhou"
+    ]
+  },
+  "south_asian": {
+    "first": [
+      "Arjun",
+      "Rohan",
+      "Vikram",
+      "Rahul",
+      "Aman",
+      "Karan",
+      "Nikhil",
+      "Aditya",
+      "Sameer",
+      "Imran",
+      "Faisal",
+      "Hassan",
+      "Bilal",
+      "Ali",
+      "Omar",
+      "Tanvir",
+      "Shakib",
+      "Rafiq",
+      "Naveen",
+      "Sanjay",
+      "Pranav",
+      "Dev",
+      "Ravi",
+      "Kamal",
+      "Amit",
+      "Farhan",
+      "Saif",
+      "Zahid",
+      "Kabir",
+      "Anil"
+    ],
+    "last": [
+      "Sharma",
+      "Patel",
+      "Singh",
+      "Kumar",
+      "Mehta",
+      "Gupta",
+      "Reddy",
+      "Nair",
+      "Khan",
+      "Ahmed",
+      "Hussain",
+      "Malik",
+      "Iqbal",
+      "Rahman",
+      "Islam",
+      "Chowdhury",
+      "Das",
+      "Roy",
+      "Perera",
+      "Fernando",
+      "Silva",
+      "Jayasinghe",
+      "Bhat",
+      "Kapoor",
+      "Joshi",
+      "Verma",
+      "Mishra",
+      "Gill",
+      "Sandhu",
+      "Ali"
+    ]
+  },
+  "southeast_asian": {
+    "first": [
+      "An",
+      "Minh",
+      "Huy",
+      "Duc",
+      "Tuan",
+      "Quang",
+      "Bao",
+      "Nam",
+      "Somchai",
+      "Niran",
+      "Kittisak",
+      "Thanawat",
+      "Arif",
+      "Rizky",
+      "Fajar",
+      "Dimas",
+      "Budi",
+      "Ahmad",
+      "Firdaus",
+      "Hakim",
+      "Jun",
+      "Miguel",
+      "Paolo",
+      "Carlos",
+      "Nico",
+      "Ramon",
+      "Andres",
+      "Javier",
+      "Khairul",
+      "Syafiq"
+    ],
+    "last": [
+      "Nguyen",
+      "Tran",
+      "Le",
+      "Pham",
+      "Hoang",
+      "Vu",
+      "Dang",
+      "Bui",
+      "Srisai",
+      "Chaiyaporn",
+      "Boonmee",
+      "Sukjai",
+      "Santoso",
+      "Wijaya",
+      "Pratama",
+      "Setiawan",
+      "Saputra",
+      "Hidayat",
+      "Lim",
+      "Tan",
+      "Lee",
+      "Santos",
+      "Reyes",
+      "Cruz",
+      "Garcia",
+      "Mendoza",
+      "Dela Cruz",
+      "Ramirez",
+      "Rahman",
+      "Yusof"
+    ]
+  },
+  "latin_caribbean": {
+    "first": [
+      "Luis",
+      "José",
+      "Carlos",
+      "Miguel",
+      "Juan",
+      "Andrés",
+      "Diego",
+      "Fernando",
+      "Ricardo",
+      "Jorge",
+      "Eduardo",
+      "Manuel",
+      "Roberto",
+      "Ángel",
+      "Cristian",
+      "Kevin",
+      "Bryan",
+      "Jonathan",
+      "Anthony",
+      "Jean",
+      "Samuel",
+      "Daniel",
+      "Mario",
+      "Rafael",
+      "Emilio",
+      "Leonardo",
+      "Gabriel",
+      "Esteban",
+      "Sebastián",
+      "Mauricio"
+    ],
+    "last": [
+      "Rodríguez",
+      "Martínez",
+      "López",
+      "González",
+      "Pérez",
+      "Hernández",
+      "Sánchez",
+      "Ramírez",
+      "Torres",
+      "Flores",
+      "Rivera",
+      "Gómez",
+      "Díaz",
+      "Reyes",
+      "Morales",
+      "Cruz",
+      "Ortiz",
+      "Ramos",
+      "Vargas",
+      "Castillo",
+      "Jean",
+      "Pierre",
+      "Joseph",
+      "Charles",
+      "Baptiste",
+      "Williams",
+      "Brown",
+      "Campbell",
+      "Thomas",
+      "Lewis"
+    ]
+  },
+  "oceania": {
+    "first": [
+      "Liam",
+      "Noah",
+      "Oliver",
+      "Jack",
+      "William",
+      "James",
+      "Thomas",
+      "Lucas",
+      "Ethan",
+      "Mason",
+      "Tane",
+      "Wiremu",
+      "Nikau",
+      "Manaia",
+      "Jone",
+      "Peni",
+      "Sione",
+      "Tavita",
+      "Manu",
+      "Tevita",
+      "Michael",
+      "David",
+      "Joseph",
+      "Samuel",
+      "Ben",
+      "Daniel",
+      "Ryan",
+      "Jordan",
+      "Caleb",
+      "Aiden"
+    ],
+    "last": [
+      "Smith",
+      "Wilson",
+      "Taylor",
+      "Brown",
+      "Williams",
+      "Thompson",
+      "Martin",
+      "Anderson",
+      "Walker",
+      "Roberts",
+      "Rangi",
+      "Tame",
+      "Ngata",
+      "Hemi",
+      "Faumuina",
+      "Tuilagi",
+      "Vunipola",
+      "Nadolo",
+      "Mata",
+      "Samoa",
+      "Fifita",
+      "Kerevi",
+      "Nakarawa",
+      "Tuivasa",
+      "Pulu",
+      "Latu",
+      "Tupou",
+      "Savea",
+      "Ioane",
+      "Moala"
+    ]
+  }
+};
+const COUNTRY_NAME_GROUP = {
+  "Spain": "iberian",
+  "England": "english",
+  "France": "french",
+  "Germany": "germanic",
+  "Italy": "italian",
+  "Portugal": "lusophone",
+  "Netherlands": "germanic",
+  "Belgium": "french",
+  "Croatia": "slavic",
+  "Serbia": "slavic",
+  "Denmark": "nordic",
+  "Sweden": "nordic",
+  "Norway": "nordic",
+  "Finland": "nordic",
+  "Iceland": "nordic",
+  "Scotland": "english",
+  "Wales": "english",
+  "Ireland": "english",
+  "Northern Ireland": "english",
+  "Switzerland": "french",
+  "Austria": "germanic",
+  "Poland": "slavic",
+  "Czechia": "slavic",
+  "Slovakia": "slavic",
+  "Hungary": "slavic",
+  "Romania": "slavic",
+  "Bulgaria": "slavic",
+  "Greece": "greek",
+  "Türkiye": "arabic",
+  "Russia": "slavic",
+  "Ukraine": "slavic",
+  "Slovenia": "slavic",
+  "Bosnia and Herzegovina": "slavic",
+  "Albania": "slavic",
+  "North Macedonia": "slavic",
+  "Georgia": "slavic",
+  "Armenia": "slavic",
+  "Israel": "arabic",
+  "Cyprus": "arabic",
+  "Belarus": "slavic",
+  "Moldova": "slavic",
+  "Kosovo": "slavic",
+  "Brazil": "lusophone",
+  "Argentina": "iberian",
+  "Uruguay": "iberian",
+  "Colombia": "iberian",
+  "Chile": "iberian",
+  "Ecuador": "iberian",
+  "Paraguay": "iberian",
+  "Peru": "iberian",
+  "Venezuela": "iberian",
+  "Bolivia": "iberian",
+  "Mexico": "iberian",
+  "United States": "english",
+  "Canada": "english",
+  "Costa Rica": "iberian",
+  "Panama": "iberian",
+  "Jamaica": "english",
+  "Honduras": "iberian",
+  "Guatemala": "iberian",
+  "El Salvador": "iberian",
+  "Trinidad and Tobago": "english",
+  "Haiti": "latin_caribbean",
+  "Curaçao": "english",
+  "Dominican Republic": "iberian",
+  "Cuba": "iberian",
+  "Nicaragua": "iberian",
+  "Suriname": "english",
+  "Guyana": "english",
+  "Martinique": "latin_caribbean",
+  "Japan": "east_asian",
+  "South Korea": "east_asian",
+  "Saudi Arabia": "arabic",
+  "Iran": "arabic",
+  "Australia": "oceania",
+  "Qatar": "arabic",
+  "China": "east_asian",
+  "Uzbekistan": "arabic",
+  "Iraq": "arabic",
+  "United Arab Emirates": "arabic",
+  "Oman": "arabic",
+  "Bahrain": "arabic",
+  "Jordan": "arabic",
+  "Syria": "arabic",
+  "Lebanon": "arabic",
+  "Kuwait": "arabic",
+  "Thailand": "southeast_asian",
+  "Vietnam": "southeast_asian",
+  "Indonesia": "southeast_asian",
+  "Malaysia": "southeast_asian",
+  "Singapore": "southeast_asian",
+  "Philippines": "southeast_asian",
+  "India": "south_asian",
+  "Pakistan": "south_asian",
+  "Bangladesh": "south_asian",
+  "North Korea": "east_asian",
+  "Tajikistan": "arabic",
+  "Kyrgyzstan": "arabic",
+  "Morocco": "arabic",
+  "Egypt": "arabic",
+  "Senegal": "west_african",
+  "Nigeria": "west_african",
+  "Ivory Coast": "west_african",
+  "Algeria": "arabic",
+  "Ghana": "west_african",
+  "South Africa": "east_african",
+  "Cameroon": "west_african",
+  "Tunisia": "arabic",
+  "Mali": "west_african",
+  "Burkina Faso": "west_african",
+  "DR Congo": "west_african",
+  "Guinea": "west_african",
+  "Cape Verde": "lusophone",
+  "Gabon": "west_african",
+  "Zambia": "east_african",
+  "Angola": "lusophone",
+  "Uganda": "east_african",
+  "Kenya": "east_african",
+  "Tanzania": "east_african",
+  "Mozambique": "lusophone",
+  "Zimbabwe": "east_african",
+  "Benin": "west_african",
+  "Togo": "west_african",
+  "Equatorial Guinea": "west_african",
+  "Sudan": "arabic",
+  "Libya": "arabic",
+  "Congo": "west_african",
+  "Namibia": "east_african",
+  "Malawi": "east_african",
+  "New Zealand": "oceania",
+  "Solomon Islands": "oceania",
+  "Fiji": "oceania",
+  "Papua New Guinea": "oceania",
+  "Tahiti": "oceania",
+  "New Caledonia": "oceania",
+  "Vanuatu": "oceania",
+  "Samoa": "oceania"
+};
+export const NAME_POOLS = Object.fromEntries(NATIONAL_TEAMS.map((team) => [team.name, NAME_POOL_GROUPS[COUNTRY_NAME_GROUP[team.name] || 'english']]));
+export const POSITION_BLUEPRINT = [{ position: 'GK' }, { position: 'DF' }, { position: 'DF' }, { position: 'MF' }, { position: 'MF' }, { position: 'FW' }, { position: 'FW' }];
+export const INTERNATIONAL_COMPETITION_NAMES = { WCQ: 'World Cup Qualifying', WC: 'World Cup', EUROQ: 'European Championship Qualifying', EURO: 'European Championship', AFCONQ: 'Africa Cup Qualifying', AFCON: 'Africa Cup of Nations', ASIACUPQ: 'Asian Cup Qualifying', ASIACUP: 'Asian Cup', GOLDQ: 'Gold Cup Qualifying', GOLDCUP: 'Gold Cup', COPA: 'Copa América', OFC: 'Oceania Nations Cup', COPAF: 'South American Friendlies', OFCF: 'Oceania Friendlies' };
+
+export const INTERNATIONAL_COMPETITION_CATALOG = [
+  { id: 'WCQ', name: 'World Cup Qualifying', confederation: 'World', type: 'qualifier' },
+  { id: 'WC', name: 'World Cup', confederation: 'World', type: 'finals' },
+  { id: 'EUROQ', name: 'European Championship Qualifying', confederation: 'Europe', type: 'qualifier' },
+  { id: 'EURO', name: 'European Championship', confederation: 'Europe', type: 'finals' },
+  { id: 'COPA', name: 'Copa América', confederation: 'South America', type: 'finals' },
+  { id: 'AFCONQ', name: 'Africa Cup Qualifying', confederation: 'Africa', type: 'qualifier' },
+  { id: 'AFCON', name: 'Africa Cup of Nations', confederation: 'Africa', type: 'finals' },
+  { id: 'ASIACUPQ', name: 'Asian Cup Qualifying', confederation: 'Asia', type: 'qualifier' },
+  { id: 'ASIACUP', name: 'Asian Cup', confederation: 'Asia', type: 'finals' },
+  { id: 'GOLDQ', name: 'Gold Cup Qualifying', confederation: 'North America', type: 'qualifier' },
+  { id: 'GOLDCUP', name: 'Gold Cup', confederation: 'North America', type: 'finals' },
+  { id: 'OFC', name: 'Oceania Nations Cup', confederation: 'Oceania', type: 'finals' }
+];

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "http-server . -p 4173 -c-1",
     "start": "http-server . -p 4173 -c-1",
-    "check": "node --check src/data.js && node --check src/engine.js && node --check src/match-model.js && node --check src/market-policy.js && node --check src/visuals.js && node --check src/app.js && node --check api/save.js && node --check api/load.js",
+    "check": "node --check src/data.js && node --check src/engine.js && node --check src/match-model.js && node --check src/squad-model.js && node --check src/match-engine.js && node --check src/market-policy.js && node --check src/visuals.js && node --check src/app.js && node --check api/save.js && node --check api/load.js",
     "test": "node scripts/smoke-test.mjs",
     "balance": "node scripts/balance-test.mjs",
     "regression": "node scripts/regression-v315.mjs",
@@ -28,7 +28,18 @@
     "regression-v28": "node scripts/regression-v28.mjs",
     "runtime-ui": "node scripts/runtime-ui-smoke.mjs",
     "tactics": "node scripts/tactics-test.mjs",
-    "regression-simulation": "node scripts/regression-simulation.mjs"
+    "regression-simulation": "node scripts/regression-simulation.mjs",
+    "calibration": "node scripts/calibration.mjs",
+    "perf": "node scripts/perf-benchmark.mjs",
+    "regression-phase0": "node scripts/regression-phase0.mjs",
+    "regression-phase1": "node scripts/regression-phase1.mjs",
+    "regression-v4-ui": "node scripts/regression-v4-ui.mjs",
+    "regression-all": "node scripts/run-regressions.mjs",
+    "regression-phase2": "node scripts/regression-phase2.mjs",
+    "regression-phase3": "node scripts/regression-phase3.mjs",
+    "regression-phase4": "node scripts/regression-phase4.mjs",
+    "regression-phase5": "node scripts/regression-phase5.mjs",
+    "regression-phase6": "node scripts/regression-phase6.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.0",

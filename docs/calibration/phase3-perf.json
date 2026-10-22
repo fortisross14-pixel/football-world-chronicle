@@ -1,0 +1,24 @@
+[
+  {
+    "seed": 271828,
+    "seasons": 20,
+    "createSeconds": 1.73,
+    "averageSeasonSeconds": 2.35,
+    "averageOffseasonSeconds": 4.59,
+    "slowestOffseasonSeconds": 5.72,
+    "activePlayers": 12465,
+    "totalPlayers": 32555,
+    "saveMegabytes": 240.9
+  },
+  {
+    "seed": 314159,
+    "seasons": 20,
+    "createSeconds": 2.1,
+    "averageSeasonSeconds": 2.25,
+    "averageOffseasonSeconds": 4.56,
+    "slowestOffseasonSeconds": 6.32,
+    "activePlayers": 12462,
+    "totalPlayers": 32458,
+    "saveMegabytes": 241.2
+  }
+]
