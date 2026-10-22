@@ -6,6 +6,7 @@ A browser-first football universe simulator with 137 domestic systems, continent
 
 - **Squads:** top-flight clubs name 15 players (11 + 4). Coaches have preferred and fallback formations, and formation fit shapes lineups, strength, transfers and coach appointments. Condensed and second-division clubs keep four named players plus unnamed depth ratings.
 - **Matches:** a minute-by-minute engine with substitutions, game-state tactics, red-card effects, real extra time and kick-by-kick shootouts. Coaching styles counter each other rock-paper-scissors style. The Showcase replays the real match timeline.
+- **Light leagues, live screens:** league games are quick results (tables, scorers, season ratings); the full engine is kept for knockouts, continental and international football. Season end and the offseason play out behind live screens.
 - **Fitness and availability:** fitness, rotation in low-stakes games, injuries (from knocks to career-threatening) and suspensions; thin squads suffer over long seasons.
 - **Players who change:** hidden potential with scouting ranges, development driven by minutes, coaching and league, in-season form, personality traits, captains, academy graduates and loans.
 - **A living world:** derbies with their own heat and head-to-head ledger, a home edge that varies with crowds, travel and altitude, live records and milestones, mid-season sackings with interim coaches, and transfer-window drama.

@@ -1,5 +1,14 @@
 # v4 match engine and player model (in progress)
 
+## v4.1 — Lighter leagues and live screens
+
+- Every league game is now a quick result (scoreline and scorers, week by week): tables with points, GF and GA, top scorers, best players and goalkeepers all remain, with league appearances and ratings credited every four weeks. The full minute-by-minute engine plays continental and international football, domestic cups from the quarter-finals, two-legged ties, Showcase games and any club you follow. Detailed match logs (cards, substitutions, chances) are no longer kept for league games.
+- Simulate to season end now plays week by week behind a live screen: progress, honours decided so far (top-5 league champions and cup winners, European trophies), knockout rounds in the Champions League, Europa League and Libertadores, and the top-5 league leaders with their top scorers. Showcase-selected games stay hidden.
+- The offseason (including Continue to Offseason after Awards Night) runs in stages behind its own live screen: top signings, coaching changes and star retirements fill in as they happen. Results are identical to a single run.
+- Seasons run about 30 % faster on the same machine.
+- Fix: pricing a Champions League fixture before its group ranking was set could change later results; odds previews no longer store anything.
+- Fix: the season-goals record is released after every season, not only when Showcase games were held.
+
 ## Phase 6 — Following feed, predictions and odds
 
 - Following feed (Chronicle → Following, also linked from the home page): results, stories, transfers, loans and current injuries for the clubs, players, coaches and nations you follow, newest first. Showcase-embargoed results and their stories never appear.
