@@ -2188,7 +2188,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 31,
+    dataRevision: 32,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -2210,6 +2210,7 @@ export function createWorld(seed = Date.now() % 2147483647) {
     pendingSeasonRetirements: [],
     pendingOwnerChanges: [],
     showcasePreferences: {},
+    predictions: { current: null, history: [] },
     pendingPayrollChanges: [],
     internationalCycle: { worldCupQualified: [], regionalQualified: {} },
     current: null,
@@ -3817,6 +3818,100 @@ function runLoanMarket(state) {
 }
 
 
+// ─── Predictions game ────────────────────────────────────────────────────────────
+// Before a ball is kicked the reader picks league champions, the Champions League
+// winner, the Ballon d'Or and the World Golden Boot. Picks lock once the season starts
+// and are scored at Awards Night (after every Showcase result is revealed).
+const PREDICTION_LEAGUES = ['ENG1', 'ESP1', 'ITA1', 'GER1', 'FRA1'];
+export const PREDICTION_POINTS = { league: { hit: 3, close: 1 }, UCL: { hit: 5, close: 2 }, ballon_dor: { hit: 5, close: 2 }, golden_boot: { hit: 3, close: 1 } };
+
+function ensurePredictions(state) {
+  state.predictions ||= { current: null, history: [] };
+  state.predictions.history ||= [];
+  if (!state.predictions.current || state.predictions.current.season !== state.season) {
+    state.predictions.current = { season: state.season, picks: {} };
+  }
+  return state.predictions;
+}
+
+export function predictionsLocked(state) {
+  return (state.current?.week || 0) > 0 || Boolean(state.current?.completed);
+}
+
+export function getPredictionForm(state) {
+  const predictions = ensurePredictions(state);
+  const questions = [];
+  for (const leagueId of PREDICTION_LEAGUES) {
+    const league = state.current.leagues?.[leagueId];
+    if (!league) continue;
+    const options = league.table.map((row) => getClub(state, row.teamId)).filter(Boolean)
+      .sort((a, b) => getTeamPower(state, b.id, false) - getTeamPower(state, a.id, false)).slice(0, 10)
+      .map((club) => ({ id: club.id, kind: 'club' }));
+    questions.push({ key: leagueId, type: 'league', label: `${league.name} champions`, competitionId: leagueId, options });
+  }
+  const uclClubs = state.clubs.filter((club) => club.confederation === 'Europe' && club.division === 1 && club.tier === 'detailed')
+    .sort((a, b) => getTeamPower(state, b.id, false) - getTeamPower(state, a.id, false)).slice(0, 16)
+    .map((club) => ({ id: club.id, kind: 'club' }));
+  questions.push({ key: 'UCL', type: 'UCL', label: 'Champions League winners', competitionId: 'UCL', options: uclClubs });
+  const stars = state.players.filter((player) => player.status === 'active' && player.clubId)
+    .sort((a, b) => b.rating - a.rating).slice(0, 20);
+  questions.push({ key: 'ballon_dor', type: 'ballon_dor', label: "Ballon d'Or", options: stars.map((player) => ({ id: player.id, kind: 'player' })) });
+  const scorers = state.players.filter((player) => player.status === 'active' && player.clubId && player.position === 'FW')
+    .sort((a, b) => b.rating - a.rating).slice(0, 20);
+  questions.push({ key: 'golden_boot', type: 'golden_boot', label: 'World Golden Boot', options: scorers.map((player) => ({ id: player.id, kind: 'player' })) });
+  return { season: state.season, locked: predictionsLocked(state), picks: { ...predictions.current.picks }, questions, points: PREDICTION_POINTS };
+}
+
+export function setPrediction(state, key, value) {
+  if (predictionsLocked(state)) return false;
+  const predictions = ensurePredictions(state);
+  if (!value) delete predictions.current.picks[key];
+  else predictions.current.picks[key] = String(value);
+  return true;
+}
+
+// Scores the season's picks against the outcomes. Pure: nothing is stored here.
+export function scorePredictions(state, season = state.season, picks = state.predictions?.current?.season === season ? state.predictions.current.picks : null) {
+  if (!picks || !Object.keys(picks).length) return null;
+  const champions = (state.history.champions || []).filter((row) => row.season === season);
+  const awards = (state.history.awards || []).filter((row) => row.season === season);
+  const rows = [];
+  for (const [key, pick] of Object.entries(picks)) {
+    let outcome = null, close = false, type = key;
+    if (PREDICTION_LEAGUES.includes(key)) {
+      type = 'league';
+      const title = champions.find((row) => row.competitionId === key);
+      outcome = title?.winnerId || null;
+      close = Boolean(title && title.runnerUpId === pick);
+    } else if (key === 'UCL') {
+      const title = champions.find((row) => row.competitionId === 'UCL');
+      outcome = title?.winnerId || null;
+      close = Boolean(title && title.runnerUpId === pick);
+    } else if (key === 'ballon_dor' || key === 'golden_boot') {
+      const podium = awards.filter((row) => row.category === key).sort((a, b) => a.rank - b.rank);
+      outcome = podium[0]?.playerId || null;
+      close = podium.slice(1, 3).some((row) => row.playerId === pick);
+    } else continue;
+    const table = PREDICTION_POINTS[type];
+    const points = !outcome ? 0 : outcome === pick ? table.hit : close ? table.close : 0;
+    rows.push({ key, pick, outcome, points, hit: outcome === pick, close: outcome !== pick && close });
+  }
+  return { season, rows, points: rows.reduce((sum, row) => sum + row.points, 0), max: rows.reduce((sum, row) => sum + PREDICTION_POINTS[PREDICTION_LEAGUES.includes(row.key) ? 'league' : row.key].hit, 0) };
+}
+
+// At the start of the next season the scored card joins the history.
+function archivePredictions(state) {
+  const current = state.predictions?.current;
+  if (!current || current.season !== state.season) return;
+  const score = scorePredictions(state, current.season, current.picks);
+  if (score) state.predictions.history.push({ ...score, seasonLabel: formatSeason(current.season), picks: { ...current.picks } });
+  state.predictions.current = null;
+}
+
+export function getPredictionHistory(state) {
+  return (state.predictions?.history || []).slice().reverse();
+}
+
 // ─── Mid-season sackings ─────────────────────────────────────────────────────────
 // Every three weeks boards review coaches whose side sits well below expectations
 // and is in poor form. Patience, coach reputation and recent trophies protect the
@@ -4378,6 +4473,7 @@ function simulateMatch(state, {
   }
   state.current.matches.push(match);
   if (match.shootout) recordShootout(state, match);
+  noteUpset(state, match);
   updateRecordsFromMatch(state, match, result.players);
   if (servedBans?.size) serveBans(state, competitionId, servedBans);
   applyDiscipline(state, match, competitionId, teamIdFor);
@@ -4439,6 +4535,39 @@ function matchOdds(expectations) {
   return [probabilities.home, probabilities.draw, probabilities.away].map((value) => Number(value.toFixed(3)));
 }
 
+// Bookmaker prices: the model probabilities with a 6 % overround, as decimal odds.
+export function decimalOdds(probabilities) {
+  if (!probabilities) return null;
+  return probabilities.map((value) => Number(Math.max(1.01, 1 / (Math.max(0.005, value) * 1.06)).toFixed(2)));
+}
+
+// Pre-match odds for a fixture that has not been played (featured matches, Showcase).
+export function getFixtureOdds(state, { homeId, awayId, competitionId, stage = null, knockout = false, isInternational = false, neutral = false }) {
+  const expectations = matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational, neutral, derby: isDerby(homeId, awayId, isInternational) });
+  const probabilities = matchOdds(expectations);
+  return { probabilities, decimal: decimalOdds(probabilities) };
+}
+
+// Upsets of the season: winners the bookmakers rated least likely (full-engine matches,
+// not shootouts). A compact list survives the season-end match archive; readers of it
+// must still apply the Showcase embargo.
+function noteUpset(state, match) {
+  if (!match.odds || !match.winnerId || match.light || match.penalties) return;
+  const side = match.winnerId === match.homeId ? 0 : match.winnerId === match.awayId ? 2 : -1;
+  if (side < 0) return;
+  const price = decimalOdds(match.odds)[side];
+  if (price < 4) return;
+  const list = state.current.upsets ||= [];
+  if (list.length >= 30 && price <= list[list.length - 1].price) return;
+  list.push({ price, probability: match.odds[side], match: { id: match.id, competitionId: match.competitionId, competitionName: match.competitionName, stage: match.stage || null, week: match.week, homeId: match.homeId, awayId: match.awayId, homeGoals: match.homeGoals, awayGoals: match.awayGoals, winnerId: match.winnerId, isInternational: Boolean(match.isInternational), extraTime: Boolean(match.extraTime), goalEvents: [] } });
+  list.sort((a, b) => b.price - a.price);
+  if (list.length > 30) list.length = 30;
+}
+
+export function getSeasonUpsets(state, limit = 10) {
+  return (state.current.upsets || []).slice(0, limit);
+}
+
 function generateMatchNews(state, match, homeStrength, awayStrength) {
   const homeName = getTeamName(state, match.homeId, match.isInternational);
   const awayName = getTeamName(state, match.awayId, match.isInternational);
@@ -4469,11 +4598,13 @@ function generateMatchNews(state, match, homeStrength, awayStrength) {
     });
   }
   const favorite = homeStrength - awayStrength >= 10 ? match.homeId : awayStrength - homeStrength >= 10 ? match.awayId : null;
-  if (favorite && match.winnerId && match.winnerId !== favorite) {
+  const winnerPrice = match.winnerId && match.odds ? decimalOdds(match.odds)[match.winnerId === match.homeId ? 0 : 2] : null;
+  if ((favorite && match.winnerId && match.winnerId !== favorite) || (winnerPrice && winnerPrice >= 5 && relevance >= 40)) {
+    const beaten = match.winnerId === match.homeId ? match.awayId : match.homeId;
     state.current.news.unshift({
-      id: `news-${match.id}-upset`, week: match.week, importance: relevance >= 48 ? 'major' : 'digest', category: 'Results', storyType: 'result', relevance: relevance + 12,
-      headline: `${getTeamName(state, match.winnerId, match.isInternational)} stun ${getTeamName(state, favorite, match.isInternational)}`,
-      body: `${homeName} ${match.homeGoals}-${match.awayGoals} ${awayName} in ${match.competitionName}${match.stage ? ` (${match.stage})` : ''}.`, matchId: match.id
+      id: `news-${match.id}-upset`, week: match.week, importance: relevance >= 48 ? 'major' : 'digest', category: 'Results', storyType: 'upset', relevance: relevance + 12 + Math.min(20, Math.round((winnerPrice || 0) * 1.5)),
+      headline: `${getTeamName(state, match.winnerId, match.isInternational)} stun ${getTeamName(state, beaten, match.isInternational)}`,
+      body: `${homeName} ${match.homeGoals}-${match.awayGoals} ${awayName} in ${match.competitionName}${match.stage ? ` (${match.stage})` : ''}${winnerPrice ? `; the bookmakers had them at ${winnerPrice.toFixed(2)}` : ''}.`, matchId: match.id
     });
   } else if (stageWeight >= 16 || competitionWeight >= 25) {
     state.current.news.unshift({
@@ -8361,6 +8492,7 @@ function captureShowcaseMatch(state, match) {
   return {
     id: `showcase-${match.id}`,
     matchId: match.id,
+    odds: match.odds || null,
     competitionId: match.competitionId,
     competitionName: match.competitionName,
     stage: match.stage,
@@ -8672,6 +8804,7 @@ export function startNextSeason(state) {
     });
   }
   releaseHeldRecords(state);
+  archivePredictions(state);
   returnLoanedPlayers(state);
   invalidateRuntimeCache(state);
   evolveWorld(state);
@@ -9496,6 +9629,11 @@ export function upgradeWorld(state) {
     if (state.records) state.records.countersReady = false;
     ensureCareerCounters(state);
     state.dataRevision = 31;
+  }
+  if (state.dataRevision < 32) {
+    // v4 Phase 6: predictions game container (picks stay with the reader's save).
+    state.predictions ||= { current: null, history: [] };
+    state.dataRevision = 32;
   }
   return state;
 }

@@ -1,5 +1,13 @@
 # v4 match engine and player model (in progress)
 
+## Phase 6 — Following feed, predictions and odds
+
+- Following feed (Chronicle → Following, also linked from the home page): results, stories, transfers, loans and current injuries for the clubs, players, coaches and nations you follow, newest first. Showcase-embargoed results and their stories never appear.
+- Predictions game (Awards → Predictions): before the first week, pick the Premier League, LaLiga, Serie A, Bundesliga and Ligue 1 champions, the Champions League winner, the Ballon d'Or and the World Golden Boot. Picks lock once the season starts. Points: 3 per league (1 for the runner-up), 5 for the Champions League (2 for the losing finalist), 5 for the Ballon d'Or (2 for the podium), 3 for the Golden Boot (1 for the podium); 28 in all. The card is scored at Awards Night once every award is revealed and joins a season-by-season history.
+- Bookmaker odds: decimal prices (model probabilities with a 6 % margin) on Showcase match cards, the Showcase match screen and upcoming continental, international, derby and followed-team fixtures. Prices are well calibrated against results.
+- Upsets: stories now quote the winner's price, long-priced winners (5.00 or more) in notable games make the news, and Magazine → Results lists the season's biggest upsets against the odds.
+- Data revision 32 (predictions container). Picks never affect the simulation.
+
 ## Phase 5 — Derbies, home advantage, records, sackings and transfer drama
 
 - Derbies (the historic rivalries) are always played by the full engine. They are more heated (about a third more cards and half as many red cards again), slightly more intense, and carry a much smaller home edge. Every derby gets its own headline, and an all-time head-to-head ledger (wins, draws, losses, goals, last six meetings) appears on the club Rivalries tab.

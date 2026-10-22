@@ -9,9 +9,10 @@ A browser-first football universe simulator with 137 domestic systems, continent
 - **Fitness and availability:** fitness, rotation in low-stakes games, injuries (from knocks to career-threatening) and suspensions; thin squads suffer over long seasons.
 - **Players who change:** hidden potential with scouting ranges, development driven by minutes, coaching and league, in-season form, personality traits, captains, academy graduates and loans.
 - **A living world:** derbies with their own heat and head-to-head ledger, a home edge that varies with crowds, travel and altitude, live records and milestones, mid-season sackings with interim coaches, and transfer-window drama.
+- **For the reader:** a personal Following feed, a pre-season predictions game scored at Awards Night, bookmaker odds on featured and Showcase matches, and upsets against the odds in the Magazine.
 - `npm run calibration` reports match realism and award spread; `npm run perf` times 20 seasons. Results are in docs/CALIBRATION.md.
 - `node scripts/run-regressions.mjs` runs the regression suite, including the v4 phase scripts.
-- Existing saves upgrade automatically (data revision 26 and later). No Neon schema changes.
+- Existing saves upgrade automatically (data revisions 26–32). No Neon schema changes.
 
 ## v3.16.1 offseason editor
 

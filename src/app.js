@@ -55,7 +55,14 @@ import {
   getPlayerProfileDetails,
   getClubLoans,
   getWorldRecords,
-  getDerbyRecord
+  getDerbyRecord,
+  decimalOdds,
+  getFixtureOdds,
+  getSeasonUpsets,
+  getPredictionForm,
+  setPrediction,
+  scorePredictions,
+  getPredictionHistory
 } from './engine.js';
 import { styleMatchup, styleMatchupSummary } from './match-engine.js';
 import { playerPortrait as visualPlayerPortrait, coachPortrait as visualCoachPortrait, clubLogoUrls, competitionEmblem } from './visuals.js';
@@ -479,6 +486,7 @@ function sectionLinks(section, currentRoute) {
     return [
       [
         ['#/magazine/headlines', 'Headlines', magazineTab === 'headlines'],
+        ['#/magazine/following', 'Following', magazineTab === 'following'],
         ['#/magazine/results', 'Results', magazineTab === 'results'],
         ['#/magazine/preseason', 'Preseason', magazineTab === 'preseason'],
         ['#/magazine/transfers', 'Transfer desk', magazineTab === 'transfers']
@@ -792,7 +800,7 @@ function homeHeadlines() {
 function homeFollowing() {
   const items = followingLinks(route());
   if (!items.length) return '';
-  return `<section class="following-strip section-gap" aria-label="Following"><h2 class="section-title">Following</h2><div class="follow-chips">${items.map(([href, mark, name]) => `<a class="follow-chip" href="${href}">${mark}<span>${esc(name)}</span></a>`).join('')}</div></section>`;
+  return `<section class="following-strip section-gap" aria-label="Following"><h2 class="section-title">Following</h2><div class="follow-chips">${items.map(([href, mark, name]) => `<a class="follow-chip" href="${href}">${mark}<span>${esc(name)}</span></a>`).join('')}<a class="follow-chip" href="#/magazine/following"><span>Your feed</span>${icon('chevron')}</a></div></section>`;
 }
 
 function worldPage() {
@@ -1096,7 +1104,7 @@ function weeklyView(description, base, rawWeek) {
     if (finalLocked) return `<div class="fixture-row large showcase-embargo-row"><span>Awaiting semi-final winners</span><strong>SHOWCASE</strong><span>?</span></div>`;
     return `<div class="fixture-row large showcase-embargo-row">${teamLink(match.homeId, match.isInternational)}<span>SHOWCASE PENDING</span>${teamLink(match.awayId, match.isInternational)}</div>`;
   }).join('');
-  return `${bracketView(description)}<section class="panel section-gap"><div class="panel-head"><div><h3>Week ${week}</h3></div><span class="muted">Selected showcase results stay private until you simulate those matches.</span></div><div class="week-strip">${buttons.map((item) => `<a href="${base}/weekly/${item}" class="${item === week ? 'active' : ''} ${playedWeeks.includes(item) ? 'played' : ''}">${item}</a>`).join('')}</div><div class="matches-list section-gap">${weekMatches.map((match) => matchRow(match)).join('')}${hiddenRows || ''}${!weekMatches.length && !hiddenWeekMatches.length ? (fixtures.length ? fixtures.map((fixture) => `<div class="fixture-row large">${teamLink(fixture.homeId, description.type === 'international')}<span>vs</span>${teamLink(fixture.awayId, description.type === 'international')}</div>`).join('') : scheduledWeeks.includes(week) ? '<div class="empty-state">The draw or qualified teams will be confirmed before this round.</div>' : `<div class="empty-state">No ${esc(description.name)} games are scheduled for this week.</div>`) : ''}</div></section>`;
+  return `${bracketView(description)}<section class="panel section-gap"><div class="panel-head"><div><h3>Week ${week}</h3></div><span class="muted">Selected showcase results stay private until you simulate those matches.</span></div><div class="week-strip">${buttons.map((item) => `<a href="${base}/weekly/${item}" class="${item === week ? 'active' : ''} ${playedWeeks.includes(item) ? 'played' : ''}">${item}</a>`).join('')}</div><div class="matches-list section-gap">${weekMatches.map((match) => matchRow(match)).join('')}${hiddenRows || ''}${!weekMatches.length && !hiddenWeekMatches.length ? (fixtures.length ? fixtures.map((fixture) => `<div class="fixture-row large">${teamLink(fixture.homeId, description.type === 'international')}<span>vs</span>${teamLink(fixture.awayId, description.type === 'international')}${fixtureOddsMarkup(fixture, description.id, description.type === 'international')}</div>`).join('') : scheduledWeeks.includes(week) ? '<div class="empty-state">The draw or qualified teams will be confirmed before this round.</div>' : `<div class="empty-state">No ${esc(description.name)} games are scheduled for this week.</div>`) : ''}</div></section>`;
 }
 
 function leagueTable(rows, relegationCount = 0) {
@@ -1686,8 +1694,137 @@ function recentCompletedCompetitionCards() {
   return entries.sort((a, b) => b.season - a.season || b.completionWeek - a.completionWeek || b.relevance - a.relevance).slice(0, 12);
 }
 
+// ─── v4 Phase 6: following feed, odds, predictions ───────────────────────────────
+function oddsLine(probabilities, homeLabel = '1', awayLabel = '2') {
+  const prices = decimalOdds(probabilities);
+  if (!prices) return '';
+  return `<span class="odds-line" title="Bookmaker prices before kick-off"><span><b>${esc(homeLabel)}</b>${prices[0].toFixed(2)}</span><span><b>X</b>${prices[1].toFixed(2)}</span><span><b>${esc(awayLabel)}</b>${prices[2].toFixed(2)}</span></span>`;
+}
+
+// Fixtures worth pricing: continental and international games, derbies and anything
+// involving something the reader follows.
+function featuredFixture(fixture, competitionId, isInternational) {
+  const followed = isInternational ? (state.preferences.favoriteNationIds || []) : (state.preferences.favoriteClubIds || []);
+  if (followed.includes(fixture.homeId) || followed.includes(fixture.awayId)) return true;
+  if (isInternational || !state.current.leagues?.[competitionId]) return true;
+  return RIVALRY_DEFINITIONS.some((row) => (row.clubAId === fixture.homeId && row.clubBId === fixture.awayId) || (row.clubAId === fixture.awayId && row.clubBId === fixture.homeId));
+}
+
+function fixtureOddsMarkup(fixture, competitionId, isInternational) {
+  if (!featuredFixture(fixture, competitionId, isInternational)) return '';
+  try {
+    return oddsLine(getFixtureOdds(state, { homeId: fixture.homeId, awayId: fixture.awayId, competitionId, isInternational, knockout: !state.current.leagues?.[competitionId] }).probabilities);
+  } catch (_) {
+    return '';
+  }
+}
+
+function followedSets() {
+  const prefs = state.preferences || {};
+  return {
+    clubs: new Set(prefs.favoriteClubIds || []),
+    players: new Set(prefs.favoritePlayerIds || []),
+    coaches: new Set(prefs.favoriteCoachIds || []),
+    nations: new Set(prefs.favoriteNationIds || []),
+    competitions: new Set(prefs.favoriteCompetitionIds || [])
+  };
+}
+
+// Personal feed: stories, results, transfers and injuries for everything followed,
+// newest first. Showcase-embargoed results and their stories never appear.
+function followingFeedRows(limit = 60) {
+  const follow = followedSets();
+  const teamFollowed = (id, international) => international ? follow.nations.has(id) : follow.clubs.has(id);
+  const names = [];
+  for (const id of follow.clubs) { const club = clubById(id); if (club) names.push(club.name); }
+  for (const id of follow.players) { const player = playerById(id); if (player) names.push(player.name); }
+  for (const id of follow.coaches) { const coach = coachById(id); if (coach) names.push(coach.name); }
+  for (const id of follow.nations) { const nation = nationalById(id); if (nation) names.push(nation.name); }
+  const rows = [];
+  const matchIds = new Set();
+  // Live matches plus archived knockouts (league matches are archived at season end).
+  for (const match of rawCompetitionMatchesAll()) {
+    if (matchIds.has(match.id) || isShowcaseMatchEmbargoed(state, match)) continue;
+    const mine = teamFollowed(match.homeId, match.isInternational) || teamFollowed(match.awayId, match.isInternational)
+      || (match.goalEvents || []).some((goal) => follow.players.has(goal.scorerId));
+    if (!mine) continue;
+    matchIds.add(match.id);
+    const scorers = (match.goalEvents || []).filter((goal) => follow.players.has(goal.scorerId)).map((goal) => playerById(goal.scorerId)?.name).filter(Boolean);
+    rows.push({ week: match.week || 0, kind: 'Result', html: `${matchRow(match, true)}${scorers.length ? `<small class="feed-note">Scored: ${esc([...new Set(scorers)].join(', '))}</small>` : ''}` });
+  }
+  for (const story of publicNewsRows()) {
+    const mine = (story.entityType === 'player' && follow.players.has(story.entityId)) || (story.entityType === 'club' && follow.clubs.has(story.entityId))
+      || (story.matchId && matchIds.has(story.matchId)) || names.some((name) => story.headline?.includes(name));
+    if (!mine) continue;
+    rows.push({ week: story.week || 0, kind: story.category || 'News', html: `<strong>${esc(story.headline)}</strong><p>${esc(story.body || '')}</p>` });
+  }
+  for (const move of state.current.transfers || []) {
+    if (!(follow.players.has(move.playerId) || follow.clubs.has(move.toClubId) || follow.clubs.has(move.fromClubId))) continue;
+    const player = playerById(move.playerId);
+    if (!player) continue;
+    rows.push({ week: 0, kind: move.loan ? 'Loan' : 'Transfer', html: `<strong>${playerLink(move.playerId)}</strong><p>${move.fromClubId ? esc(clubById(move.fromClubId)?.name || '') : 'Free agent'} → ${esc(clubById(move.toClubId)?.name || '')}${move.loan ? ' on loan' : move.fee ? ` for ${money(move.fee)}` : ''}</p>` });
+  }
+  for (const id of follow.players) {
+    const status = getPlayerAvailability(state, id);
+    if (status?.injured) rows.push({ week: state.current.week, kind: 'Injury', html: `<strong>${playerLink(id)}</strong><p>${esc(status.injury.label)} · back in about ${status.injury.weeksLeft} week${status.injury.weeksLeft === 1 ? '' : 's'}</p>` });
+  }
+  return rows.sort((a, b) => b.week - a.week).slice(0, limit);
+}
+
+function followingFeedPage() {
+  const follow = followedSets();
+  const following = follow.clubs.size + follow.players.size + follow.coaches.size + follow.nations.size;
+  const rows = following ? followingFeedRows() : [];
+  const body = !following
+    ? '<div class="empty-state">Follow clubs, players, coaches or nations (the star on their pages) to build your own feed.</div>'
+    : rows.length ? `<ol class="feed-list">${rows.map((row) => `<li><span class="mag-archive-date">${row.week ? `Week ${row.week}` : 'Summer'}</span><span class="story-category">${esc(row.kind)}</span><div>${row.html}</div></li>`).join('')}</ol>`
+    : '<div class="empty-state">Nothing new about what you follow yet this season.</div>';
+  return `${pageHead('WORLD FOOTBALL MAGAZINE', 'Following', 'Your personal feed: results, stories, transfers and injuries for the clubs, people and nations you follow.')}${followingPanel() || ''}<section class="panel section-gap"><div class="panel-head"><h3>Your feed</h3><span class="panel-meta">${esc(state.current.seasonLabel || getSeasonLabel(state.season))}</span></div>${body}</section>`;
+}
+
+function upsetsPanel() {
+  const rows = getSeasonUpsets(state, 30).filter((row) => !isShowcaseMatchEmbargoed(state, row.match)).slice(0, 8);
+  if (!rows.length) return '';
+  return `<section class="panel section-gap"><div class="panel-head"><h3>Upsets against the odds</h3><span class="panel-meta">Longest-priced winners this season</span></div><div class="matches-list">${rows.map((row) => `<div class="upset-row">${matchRow(row.match, true)}<span class="odds-chip">Winner at ${row.price.toFixed(2)}</span></div>`).join('')}</div></section>`;
+}
+
+function predictionOptionLabel(option) {
+  if (option.kind === 'club') return clubById(option.id)?.name || option.id;
+  const player = playerById(option.id);
+  return player ? `${player.name} (${clubById(player.clubId)?.shortName || clubById(player.clubId)?.name || ''})` : option.id;
+}
+
+function predictionsPage() {
+  const form = getPredictionForm(state);
+  const points = (question) => form.points[question.type] || form.points.league;
+  const pickName = (question, id) => { const option = question.options.find((row) => row.id === id) || { id, kind: question.type === 'ballon_dor' || question.type === 'golden_boot' ? 'player' : 'club' }; return predictionOptionLabel(option); };
+  const questions = form.questions.map((question) => {
+    const pick = form.picks[question.key] || '';
+    const control = form.locked
+      ? `<strong>${pick ? esc(pickName(question, pick)) : '<span class="muted">No pick</span>'}</strong>`
+      : `<select data-prediction-key="${esc(question.key)}" aria-label="${esc(question.label)}"><option value="">No pick</option>${question.options.map((option) => `<option value="${esc(option.id)}" ${option.id === pick ? 'selected' : ''}>${esc(predictionOptionLabel(option))}</option>`).join('')}</select>`;
+    return `<div class="prediction-row"><div>${question.competitionId ? competitionEmblem(question.competitionId, 'xs') : ''}<span>${esc(question.label)}</span><small>${points(question).hit} pts · ${points(question).close} for ${question.type === 'ballon_dor' || question.type === 'golden_boot' ? 'the podium' : 'runner-up'}</small></div>${control}</div>`;
+  }).join('');
+  const history = getPredictionHistory(state);
+  const historyRows = history.map((row) => `<tr><td>${esc(row.seasonLabel)}</td><td><strong>${row.points}</strong> / ${row.max}</td><td>${row.rows.filter((item) => item.hit).length} correct</td></tr>`).join('');
+  const best = history.reduce((top, row) => (!top || row.points > top.points ? row : top), null);
+  return `<section class="panel section-gap"><div class="panel-head"><h3>${esc(state.current.seasonLabel || getSeasonLabel(state.season))} predictions</h3><span class="panel-meta">${form.locked ? 'Locked: the season is under way' : 'Pick before the first week is played'}</span></div><div class="prediction-list">${questions}</div><p class="muted prediction-note">Scored at Awards Night, after every Showcase result is revealed.</p></section>
+    <section class="panel section-gap"><div class="panel-head"><h3>History</h3><span class="panel-meta">${best ? `Best: ${best.points} in ${esc(best.seasonLabel)}` : 'No scored seasons yet'}</span></div>${historyRows ? `<div class="table-scroll"><table class="data-table"><thead><tr><th>Season</th><th>Points</th><th>Hits</th></tr></thead><tbody>${historyRows}</tbody></table></div>` : '<div class="empty-state compact">Your scored seasons will appear here.</div>'}</section>`;
+}
+
+// Awards Night: the reader's card, shown once every award is revealed.
+function predictionScoreCard() {
+  const score = scorePredictions(state);
+  if (!score) return '';
+  const form = getPredictionForm(state);
+  const label = (key) => form.questions.find((question) => question.key === key)?.label || key;
+  const name = (key, id) => !id ? '—' : (key === 'ballon_dor' || key === 'golden_boot') ? (playerById(id)?.name || id) : (clubById(id)?.name || id);
+  return `<section class="prediction-score"><div><span class="block-label">Your predictions</span><strong>${score.points} / ${score.max} points</strong></div><ul>${score.rows.map((row) => `<li class="${row.hit ? 'hit' : row.close ? 'close' : ''}"><span>${esc(label(row.key))}</span><span>${esc(name(row.key, row.pick))}</span><b>+${row.points}</b></li>`).join('')}</ul></section>`;
+}
+
 function magazinePage(tabRaw = 'results') {
-  const tab = ['headlines','preseason','transfers','results','rankings','compare','fhof'].includes(tabRaw) ? tabRaw : 'headlines';
+  const tab = ['headlines','following','preseason','transfers','results','rankings','compare','fhof'].includes(tabRaw) ? tabRaw : 'headlines';
+  if (tab === 'following') return followingFeedPage();
   if (tab === 'compare') return comparatorPage();
   if (tab === 'fhof') return fhofPage();
   if (tab === 'rankings') return magazineRankingsPage();
@@ -1759,7 +1896,7 @@ function magazinePage(tabRaw = 'results') {
     return `${pageHead('WORLD FOOTBALL MAGAZINE', 'Transfer desk', 'The window freezes after preseason, preserving the biggest moves and decorated stars changing clubs.')}${magazineTabs(tab)}<section class="panel"><div class="panel-head"><div><h3>${state.current.seasonLabel} major moves</h3></div></div>${transferList(transfers.slice(0, 30))}</section>`;
   }
   const completed = recentCompletedCompetitionCards();
-  return `${pageHead('WORLD FOOTBALL MAGAZINE', 'Results', 'Recently completed competitions, their champions and the players who defined each campaign.')}${magazineTabs(tab)}<div class="completed-competition-grid">${completed.map((item) => `<article class="completed-competition-card"><div class="completed-card-head"><div><span>${esc(item.region)}</span><h3>${esc(item.competitionName)}</h3><small>${esc(item.seasonLabel)}</small></div><span class="competition-complete-chip">FINAL</span></div><div class="completed-finalists"><div><span>WINNER</span>${teamLink(item.winnerId, item.isInternational)}</div><div><span>RUNNER-UP</span>${item.runnerUpId ? teamLink(item.runnerUpId, item.isInternational) : '<strong>—</strong>'}</div></div><div class="completed-awards"><div><span>MVP</span>${item.mvpId ? playerLink(item.mvpId) : '<strong>—</strong>'}</div><div><span>TOP SCORER</span>${item.topScorerId ? `${playerLink(item.topScorerId)}${Number.isFinite(item.topScorerGoals) ? `<small>${item.topScorerGoals} goals</small>` : ''}` : '<strong>—</strong>'}</div></div></article>`).join('') || '<div class="empty-state">No major competition has finished yet. Completed tournaments will appear here with winner, runner-up, MVP and top scorer.</div>'}</div>`;
+  return `${pageHead('WORLD FOOTBALL MAGAZINE', 'Results', 'Recently completed competitions, their champions and the players who defined each campaign.')}${magazineTabs(tab)}<div class="completed-competition-grid">${completed.map((item) => `<article class="completed-competition-card"><div class="completed-card-head"><div><span>${esc(item.region)}</span><h3>${esc(item.competitionName)}</h3><small>${esc(item.seasonLabel)}</small></div><span class="competition-complete-chip">FINAL</span></div><div class="completed-finalists"><div><span>WINNER</span>${teamLink(item.winnerId, item.isInternational)}</div><div><span>RUNNER-UP</span>${item.runnerUpId ? teamLink(item.runnerUpId, item.isInternational) : '<strong>—</strong>'}</div></div><div class="completed-awards"><div><span>MVP</span>${item.mvpId ? playerLink(item.mvpId) : '<strong>—</strong>'}</div><div><span>TOP SCORER</span>${item.topScorerId ? `${playerLink(item.topScorerId)}${Number.isFinite(item.topScorerGoals) ? `<small>${item.topScorerGoals} goals</small>` : ''}` : '<strong>—</strong>'}</div></div></article>`).join('') || '<div class="empty-state">No major competition has finished yet. Completed tournaments will appear here with winner, runner-up, MVP and top scorer.</div>'}</div>${upsetsPanel()}`;
 }
 
 function rawCompetitionMatchesAll() {
@@ -1824,9 +1961,10 @@ function aOrAnRating(rating) {
 }
 
 function awardsPage(sectionRaw = 'current', categoryRaw = 'ballon_dor') {
-  const section = sectionRaw === 'history' ? 'history' : 'current';
+  const section = ['history', 'predictions'].includes(sectionRaw) ? sectionRaw : 'current';
   const category = ['ballon_dor','golden_boot','kopa','positions'].includes(categoryRaw) ? categoryRaw : 'ballon_dor';
-  const mainTabs = `<nav class="tab-bar"><a href="#/awards/current" class="${section === 'current' ? 'active' : ''}">Current Year</a><a href="#/awards/history/${category}" class="${section === 'history' ? 'active' : ''}">History</a></nav>`;
+  const mainTabs = `<nav class="tab-bar"><a href="#/awards/current" class="${section === 'current' ? 'active' : ''}">Current Year</a><a href="#/awards/history/${category}" class="${section === 'history' ? 'active' : ''}">History</a><a href="#/awards/predictions" class="${section === 'predictions' ? 'active' : ''}">Predictions</a></nav>`;
+  if (section === 'predictions') return `${pageHead('ANNUAL AWARDS', 'Predictions', 'Call the league champions, the Champions League, the Ballon d’Or and the Golden Boot before the season starts.')}${mainTabs}${predictionsPage()}`;
   if (section === 'current') {
     const race = getAnnualAwardRace(state);
     const raceTable = (title, rows, note) => `<section class="panel"><div class="panel-head"><div><h3>${esc(title)}</h3></div><span class="muted">${esc(note)}</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Player</th><th>Apps</th><th>Goals</th><th>Assists</th><th>Weighted goals</th><th>Rating</th><th>Trophy bonus</th><th>Score</th></tr></thead><tbody>${rows.slice(0, 10).map((row, index) => `<tr><td>${index + 1}</td><td>${playerLink(row.playerId)}</td><td>${row.components.apps}</td><td>${row.components.goals}</td><td>${row.components.assists}</td><td>${row.components.weightedGoals}</td><td>${row.components.averageRating}</td><td>${row.components.trophyBonus}</td><td><strong>${row.components.teamDiversityScore ?? row.components.score}</strong></td></tr>`).join('') || '<tr><td colspan="9">The race begins after players record enough matches.</td></tr>'}</tbody></table></div></section>`;
@@ -2004,7 +2142,7 @@ function postseasonGamesPage() {
       }
       const homeMark = hideTeams ? '<span class="showcase-team-placeholder">?</span>' : postseasonTeamMark(match.homeId, match.isInternational, 'md');
       const awayMark = hideTeams ? '<span class="showcase-team-placeholder">?</span>' : postseasonTeamMark(match.awayId, match.isInternational, 'md');
-      return `<button class="postseason-match-card ${match.resolved ? 'resolved' : ''} ${locked ? 'locked' : ''}" ${locked ? 'disabled' : ''} data-action="open-postseason-match" data-match-id="${esc(match.id)}"><span class="postseason-stage">${esc(match.stage || 'Knockout')}</span><div class="postseason-match-teams"><div>${homeMark}<strong>${esc(home)}</strong></div><b>${match.resolved ? match.finalScore.home : '–'}</b><span>vs</span><b>${match.resolved ? match.finalScore.away : '–'}</b><div>${awayMark}<strong>${esc(away)}</strong></div></div><small>${esc(status)}</small></button>`;
+      return `<button class="postseason-match-card ${match.resolved ? 'resolved' : ''} ${locked ? 'locked' : ''}" ${locked ? 'disabled' : ''} data-action="open-postseason-match" data-match-id="${esc(match.id)}"><span class="postseason-stage">${esc(match.stage || 'Knockout')}</span><div class="postseason-match-teams"><div>${homeMark}<strong>${esc(home)}</strong></div><b>${match.resolved ? match.finalScore.home : '–'}</b><span>vs</span><b>${match.resolved ? match.finalScore.away : '–'}</b><div>${awayMark}<strong>${esc(away)}</strong></div></div><small>${esc(status)}</small>${!match.resolved && !hideTeams && match.odds ? oddsLine(match.odds) : ''}</button>`;
     }).join('')}</div></section>`;
   }).join('');
   return `${pageHead('POSTSEASON', `${state.current.seasonLabel} Showcase Games`, 'Watch the major matches you selected. Two-leg ties are played in full, aggregate scores evolve naturally, and later rounds stay hidden until the teams actually qualify.')}
@@ -2061,7 +2199,7 @@ function postseasonAwardsPage() {
     actionMarkup = `<button class="primary-button" data-action="select-postseason-award" data-award-index="${firstHidden >= 0 ? firstHidden : 0}">Go to Unrevealed Award</button><button class="control-button" data-action="reveal-all-awards">Reveal All</button>`;
   }
   return `${pageHead('AWARDS NIGHT', `${state.current.seasonLabel} World Awards`, 'Reveal each podium and stop on the winner. Move to the next award only when you choose to; the award tabs can also be used to revisit any category.')}
-    <section class="awards-night-shell"><div class="award-ceremony-progress">${cards}</div>${active ? `<div class="award-stage ${active.title === "Ballon d'Or" ? 'ballon-stage' : ''}"><span class="award-counter">${activeIndex + 1} of ${awards.length}</span><h1>${esc(active.title)}</h1><div class="award-podium">${postseasonPodiumEntry(podium.find((row)=>row.rank===3),3,stage>=1)}${postseasonPodiumEntry(podium.find((row)=>row.rank===2),2,stage>=2)}${postseasonPodiumEntry(winner,1,stage>=3,true)}</div>${stage >= 3 ? postseasonWinnerDetails(winner) : '<div class="award-reveal-placeholder">Podium hidden</div>'}</div>` : '<div class="empty-state">No annual awards were generated for this season.</div>'}<div class="award-ceremony-actions">${actionMarkup}</div></section>`;
+    <section class="awards-night-shell"><div class="award-ceremony-progress">${cards}</div>${active ? `<div class="award-stage ${active.title === "Ballon d'Or" ? 'ballon-stage' : ''}"><span class="award-counter">${activeIndex + 1} of ${awards.length}</span><h1>${esc(active.title)}</h1><div class="award-podium">${postseasonPodiumEntry(podium.find((row)=>row.rank===3),3,stage>=1)}${postseasonPodiumEntry(podium.find((row)=>row.rank===2),2,stage>=2)}${postseasonPodiumEntry(winner,1,stage>=3,true)}</div>${stage >= 3 ? postseasonWinnerDetails(winner) : '<div class="award-reveal-placeholder">Podium hidden</div>'}</div>` : '<div class="empty-state">No annual awards were generated for this season.</div>'}${allRevealed ? predictionScoreCard() : ''}<div class="award-ceremony-actions">${actionMarkup}</div></section>`;
 }
 
 function postseasonPage(section = 'setup') {
@@ -2166,7 +2304,7 @@ function postseasonMatchModal() {
   } else {
     actionMarkup = '<button class="primary-button" data-action="watch-postseason-match">Simulate Game</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
   }
-  return `<div class="showcase-modal-backdrop${overlayEnter ? ' overlay-enter' : ''}"><section class="showcase-match-modal"><button class="close-button showcase-close" data-action="close-postseason-match" ${postseasonAnimating ? 'disabled' : ''}>${icon('close')}</button><div class="showcase-modal-head"><span class="showcase-comp">${esc(match.competitionName)}</span><h3>${esc(match.stage || 'Knockout')}</h3>${match.styles ? `<small class="showcase-tactics">${esc(tacticalEdgeText(match.styles.home, match.styles.away, homeName, awayName))}</small>` : ''}</div>${currentGoalBanner}<div class="showcase-scoreboard"><div>${postseasonTeamMark(match.homeId,match.isInternational,'lg')}<strong>${esc(homeName)}</strong></div><div class="showcase-score"><span>${esc(clockLabel)}</span><b>${tick.homeGoals}</b><i>–</i><b>${tick.awayGoals}</b>${agg}${pen}</div><div>${postseasonTeamMark(match.awayId,match.isInternational,'lg')}<strong>${esc(awayName)}</strong></div></div><div class="showcase-live-grid"><div class="showcase-events"><span class="block-label">Match events</span>${events}${penaltyFeed}</div><div class="showcase-stats"><span class="block-label">Live stats</span>${statRows.map(([label,key]) => `<div class="showcase-stat-row"><strong>${key === 'possession' ? `${tick.home?.[key] ?? 50}%` : tick.home?.[key] ?? 0}</strong><span>${label}</span><strong>${key === 'possession' ? `${tick.away?.[key] ?? 50}%` : tick.away?.[key] ?? 0}</strong></div>`).join('')}</div></div>${showcaseLineups(match, homeName, awayName)}<div class="showcase-modal-actions">${actionMarkup}</div></section></div>`;
+  return `<div class="showcase-modal-backdrop${overlayEnter ? ' overlay-enter' : ''}"><section class="showcase-match-modal"><button class="close-button showcase-close" data-action="close-postseason-match" ${postseasonAnimating ? 'disabled' : ''}>${icon('close')}</button><div class="showcase-modal-head"><span class="showcase-comp">${esc(match.competitionName)}</span><h3>${esc(match.stage || 'Knockout')}</h3>${match.odds ? oddsLine(match.odds) : ''}${match.styles ? `<small class="showcase-tactics">${esc(tacticalEdgeText(match.styles.home, match.styles.away, homeName, awayName))}</small>` : ''}</div>${currentGoalBanner}<div class="showcase-scoreboard"><div>${postseasonTeamMark(match.homeId,match.isInternational,'lg')}<strong>${esc(homeName)}</strong></div><div class="showcase-score"><span>${esc(clockLabel)}</span><b>${tick.homeGoals}</b><i>–</i><b>${tick.awayGoals}</b>${agg}${pen}</div><div>${postseasonTeamMark(match.awayId,match.isInternational,'lg')}<strong>${esc(awayName)}</strong></div></div><div class="showcase-live-grid"><div class="showcase-events"><span class="block-label">Match events</span>${events}${penaltyFeed}</div><div class="showcase-stats"><span class="block-label">Live stats</span>${statRows.map(([label,key]) => `<div class="showcase-stat-row"><strong>${key === 'possession' ? `${tick.home?.[key] ?? 50}%` : tick.home?.[key] ?? 0}</strong><span>${label}</span><strong>${key === 'possession' ? `${tick.away?.[key] ?? 50}%` : tick.away?.[key] ?? 0}</strong></div>`).join('')}</div></div>${showcaseLineups(match, homeName, awayName)}<div class="showcase-modal-actions">${actionMarkup}</div></section></div>`;
 }
 
 function transferList(transfers, compact = false) {
@@ -3578,6 +3716,12 @@ function bindImages(root = document) {
 
 function bind() {
   bindImages();
+  for (const select of document.querySelectorAll('[data-prediction-key]')) {
+    select.addEventListener('change', async (event) => {
+      if (setPrediction(state, select.dataset.predictionKey, event.target.value)) await saveState();
+      render();
+    });
+  }
   const globalSearch = document.getElementById('global-search');
   if (globalSearch) { setTimeout(() => globalSearch.focus(), 20); globalSearch.addEventListener('input', (event) => searchResults(event.target.value)); }
   const playerSearchInput = document.getElementById('player-search');

@@ -1397,3 +1397,36 @@ input::placeholder { color: var(--text-3); }
 .form-arrow.up { color: var(--green); }
 .form-arrow.down { color: #ff8a95; }
 
+/* v4 Phase 6: following feed, odds, upsets and predictions */
+.feed-list { list-style: none; margin: 0; padding: 0; }
+.feed-list li { display: grid; grid-template-columns: 90px 120px minmax(0, 1fr); gap: 14px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.feed-list li:last-child { border-bottom: 0; }
+.feed-list p { margin-top: 3px; color: var(--text-3); font-size: var(--fs-13); }
+.feed-note { display: block; margin-top: 4px; color: var(--text-3); font-size: var(--fs-12); }
+.odds-line { display: inline-flex; gap: 10px; font-size: var(--fs-12); font-variant-numeric: tabular-nums; color: var(--text-2); }
+.odds-line b { margin-right: 4px; color: var(--text-3); font-weight: 700; }
+.fixture-row .odds-line { grid-column: 1 / -1; justify-self: center; }
+.postseason-match-card .odds-line, .showcase-modal-head .odds-line { justify-content: center; margin-top: 6px; }
+.upset-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.odds-chip { padding: 2px 8px; border-radius: var(--r-sm); background: var(--gold-glow); color: var(--gold); font-size: var(--fs-12); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.prediction-list { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.prediction-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; background: var(--bg-1); }
+.prediction-row > div { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.prediction-row small { color: var(--text-3); font-size: var(--fs-12); }
+.prediction-row select { max-width: 280px; min-width: 0; }
+.prediction-note { margin-top: 10px; font-size: var(--fs-12); }
+.prediction-score { margin-top: 18px; padding: 14px 16px; border-radius: var(--r-md); background: var(--bg-1); border: 1px solid var(--line); }
+.prediction-score > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.prediction-score strong { font-size: var(--fs-19); font-weight: 800; }
+.prediction-score ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
+.prediction-score li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 40px; gap: 10px; font-size: var(--fs-13); color: var(--text-3); }
+.prediction-score li b { text-align: right; font-variant-numeric: tabular-nums; }
+.prediction-score li.hit { color: var(--text); }
+.prediction-score li.hit b { color: var(--green); }
+.prediction-score li.close b { color: var(--gold); }
+@media (max-width: 640px) {
+  .feed-list li { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .prediction-row { flex-direction: column; align-items: stretch; }
+  .prediction-row select { max-width: none; }
+  .upset-row { grid-template-columns: minmax(0, 1fr); }
+}

@@ -285,3 +285,25 @@ indexed (it ran for every match), career counters created with each player so pl
 objects keep one shape, records bookkeeping without per-match allocations, and the
 bidding-war rival found in one pass. The calibration script's own timing is unreliable
 for this run (the machine slept during it); the table above is from `npm run perf`.
+
+## Phase 6 — following feed, predictions and odds
+
+Phase 6 does not change the simulation: a world played 14 weeks gives the same match,
+card and player hash as the Phase 5 build, and pricing fixtures or making predictions
+between weeks leaves results unchanged (`regression-phase6`). The Phase 5 calibration
+and balance results therefore stand.
+
+Odds calibration (seed 60601, one season, full-engine matches; home-win price band →
+priced vs actual): 10–20 % 0.149 / 0.131, 20–30 % 0.252 / 0.282, 30–40 % 0.351 / 0.370,
+40–50 % 0.449 / 0.468, 50–60 % 0.546 / 0.541, 60–70 % 0.647 / 0.687, 70–80 % 0.749 / 0.779,
+80–90 % 0.837 / 0.863. Prices carry a 6 % margin. The longest-priced winner of that season
+won at 33.69, and 24 upset stories ran.
+
+Predictions: picking the strongest side for every question scored 12 of 28 that season.
+
+### Performance
+
+Back-to-back four-season runs on seed 314159 (same machine, same load): Phase 5 3.77–4.72 s
+and 3.67–4.03 s a season, Phase 6 3.61–4.11 s. No measurable change. Absolute times in this
+run are high because the machine was under about 35 % background load; the Phase 5 table
+above, measured on a quiet machine, is the reference.

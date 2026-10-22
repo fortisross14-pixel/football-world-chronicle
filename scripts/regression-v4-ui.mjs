@@ -2,13 +2,16 @@
 // runtime-ui-smoke). The app loads a world that has just finished its season, so
 // Showcase screens can be opened too. Each phase adds the screens it touched.
 import assert from 'node:assert/strict';
-import { createWorld, simulateToSeasonEnd } from '../src/engine.js';
+import { createWorld, simulateToSeasonEnd, isShowcaseMatchEmbargoed } from '../src/engine.js';
 import { SAVE_KEY } from '../src/data.js';
 
 const world = createWorld(7262001);
 world.showcasePreferences = { UCL: 'semis', 'CUP-ENG1': 'final' };
 world.current.postseason.selections = { ...world.showcasePreferences };
 simulateToSeasonEnd(world);
+// Phase 6: follow the Champions League finalists, whose final is still embargoed.
+const uclFinal = (world.current.archivedKnockoutMatches || []).concat(world.current.matches).find((match) => match.competitionId === 'UCL' && /^final$/i.test(match.stage || ''));
+world.preferences.favoriteClubIds = [uclFinal.homeId, uclFinal.awayId];
 const savedWorld = JSON.stringify(world);
 
 const handlers = {};
@@ -91,5 +94,18 @@ expect('live records', visit('#/almanac/records'), ['Live records', 'Invincibles
 const derbyKey = Object.keys(world.records?.derbies || {})[0];
 assert(derbyKey, 'derby ledger has entries');
 expect('club rivalries ledger', visit(`#/club/${derbyKey.split('|')[0]}/rivalries`), ['Historic rivalry', 'rivalry-recent']);
+
+// Phase 6: following feed (embargo holds), predictions, odds and upsets.
+assert(isShowcaseMatchEmbargoed(world, uclFinal), 'the UCL final is embargoed');
+const feed = visit('#/magazine/following');
+expect('following feed', feed, ['Your feed', 'feed-list', 'match-row']);
+const finalGoals = (uclFinal.goalEvents || []).map((goal) => `${world.players.find((player) => player.id === goal.scorerId)?.name} ${goal.added ? `${goal.minute}+${goal.added}` : goal.minute}'`);
+const feedText = feed.replace(/<[^>]+>/g, ' ');
+const crossesFinal = finalGoals.filter((text) => feedText.includes(text));
+// A scorer could have scored at the same minute in another game; the final must not appear as a block.
+assert(!finalGoals.length || crossesFinal.length < finalGoals.length, 'the embargoed final stays out of the feed');
+expect('predictions tab', visit('#/awards/predictions'), ['Predictions', 'prediction-row', 'History']);
+expect('showcase odds', visit('#/postseason/games'), ['odds-line']);
+expect('upsets panel', visit('#/magazine/results'), ['Upsets against the odds', 'odds-chip']);
 
 console.log(JSON.stringify({ checks, passed: true }, null, 2));
