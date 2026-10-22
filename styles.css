@@ -1449,3 +1449,19 @@ input::placeholder { color: var(--text-3); }
 @media (max-width: 640px) {
   .live-hero { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* v4.2 international draw */
+.pot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.pot-column { display: grid; gap: 4px; align-content: start; }
+.pot-team { padding: 4px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-13); }
+.pot-team:last-child { border-bottom: 0; }
+.rank.qualify.third { box-shadow: inset 0 0 0 1px currentColor; }
+
+/* v4.2 live screen: complete state */
+.live-done { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; padding: 14px 18px; border-radius: var(--r-lg); background: var(--bg-1); border: 1px solid var(--line-2); }
+.live-done strong { display: block; font-size: var(--fs-16); font-weight: 800; }
+.live-done span { color: var(--text-2); font-size: var(--fs-13); }
+.live-done-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* v4.2 award flags */
+.award-name { display: inline-flex; align-items: center; gap: 8px; }

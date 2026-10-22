@@ -66,7 +66,9 @@ import {
   startNextSeasonSteps,
   getOffseasonProgress,
   isShowcaseSelectedMatch,
-  showcaseSelectionMode
+  showcaseSelectionMode,
+  getClubSquadTarget,
+  getSquadReshape
 } from './engine.js';
 import { styleMatchup, styleMatchupSummary } from './match-engine.js';
 import { playerPortrait as visualPlayerPortrait, coachPortrait as visualCoachPortrait, clubLogoUrls, competitionEmblem } from './visuals.js';
@@ -119,6 +121,9 @@ let simBusy = false;
 // While a long run plays out week by week (or stage by stage), the page area shows a
 // live screen instead of the routed page: 'season' or 'offseason'.
 let simLive = null;
+// After a live run the screen stays open in a "Simulation complete" state until the
+// user closes it: { kind: 'season' | 'offseason', href, label }.
+let simLiveDone = null;
 let simBusyLabel = '';
 let lastRenderedRoute = '';
 let overlayEnter = false; // animate an overlay only on the render that opens it
@@ -346,10 +351,15 @@ function crest(id, size = 'md') {
     ? `--crest-bg:${visual[0]};--crest-ink:${visual[1]};--crest-border:${visual[2]}`
     : `--crest-bg:hsl(${club?.crestHue ?? 210},60%,42%);--crest-ink:#fff;--crest-border:hsla(${club?.crestHue ?? 210},60%,28%,.55)`;
   const logos = clubLogoUrls(club);
-  const logo = logos[0] || '';
-  const alternatives = logos.slice(1).join('|');
-  return `<span class="crest crest-${size} ${logo ? 'crest-with-logo' : ''}" style="${style}" title="${esc(club?.name || id)}"><span class="crest-fallback">${esc(initials)}</span>${logo ? `<img data-club-logo src="${logo}" data-logo-alts="${esc(alternatives)}" alt="" loading="lazy" decoding="async">` : ''}</span>`;
+  // Once a club's logo has loaded (or every source failed), later renders reuse that
+  // result, so crests stay put through live match updates.
+  const resolved = LOGO_RESOLVED.get(id);
+  const logo = resolved !== undefined ? resolved : logos[0] || '';
+  const alternatives = resolved !== undefined ? '' : logos.slice(1).join('|');
+  return `<span class="crest crest-${size} ${logo ? 'crest-with-logo' : ''}" style="${style}" title="${esc(club?.name || id)}"><span class="crest-fallback">${esc(initials)}</span>${logo ? `<img data-club-logo data-club-id="${esc(id)}" src="${logo}" data-logo-alts="${esc(alternatives)}" alt="" ${resolved ? '' : 'loading="lazy" '}decoding="async">` : ''}</span>`;
 }
+
+const LOGO_RESOLVED = new Map();
 
 function playerPortrait(player, size = 'md') {
   return visualPlayerPortrait(player, countryName(player?.nationality), size);
@@ -1121,10 +1131,36 @@ function leagueTable(rows, relegationCount = 0) {
   }).join('')}</tbody></table></div>`;
 }
 
+const sortGroupRows = (rows) => [...(rows || [])].sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf);
+
+// Third-placed teams across the groups, best first; the top ones go through.
+function bestThirdRows(comp) {
+  return (comp.groups || []).map((group) => ({ ...sortGroupRows(group.table)[2], groupId: group.id }))
+    .filter((row) => row.teamId)
+    .sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf || a.teamId.localeCompare(b.teamId));
+}
+
 function groupTables(description) {
-  const groups = description.object.groups || [];
+  const comp = description.object;
+  const groups = comp.groups || [];
   if (!groups.length) return '';
-  return `<div class="group-grid">${groups.map((group) => `<section class="panel"><div class="panel-head"><div><h3>Group ${esc(group.id)}</h3></div></div><div class="mini-table">${[...(group.table || [])].sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf).map((row, index) => `<div class="mini-table-row"><span class="rank ${index < 2 ? 'qualify' : ''}">${index + 1}</span>${teamLink(row.teamId, description.type === 'international')}<strong>${row.points}</strong><small>${row.gd >= 0 ? '+' : ''}${row.gd}</small></div>`).join('')}</div></section>`).join('')}</div>`;
+  const advance = comp.format?.advance || 2;
+  const thirds = comp.format?.bestThirds ? new Set(bestThirdRows(comp).slice(0, comp.format.bestThirds).map((row) => row.teamId)) : null;
+  return `<div class="group-grid">${groups.map((group) => `<section class="panel"><div class="panel-head"><div><h3>Group ${esc(group.id)}</h3></div></div><div class="mini-table">${sortGroupRows(group.table).map((row, index) => `<div class="mini-table-row"><span class="rank ${index < advance ? 'qualify' : thirds?.has(row.teamId) && index === 2 ? 'qualify third' : ''}">${index + 1}</span>${teamLink(row.teamId, description.type === 'international')}<strong>${row.points}</strong><small>${row.gd >= 0 ? '+' : ''}${row.gd}</small></div>`).join('')}</div></section>`).join('')}</div>${internationalDrawPanels(description)}`;
+}
+
+// Seeded draw (v4.2): the pots, the best third-placed table and the ranking used for seeding.
+function internationalDrawPanels(description) {
+  const comp = description.object;
+  if (description.type !== 'international' || !comp.draw) return '';
+  const intl = true;
+  const pots = (comp.draw.pots || []).map((pot, index) => `<div class="pot-column"><span class="block-label">Pot ${index + 1}</span>${pot.map((id) => `<div class="pot-team">${teamLink(id, intl)}</div>`).join('')}</div>`).join('');
+  const ranking = (comp.draw.ranking || []).slice(0, 16).map((row, index) => `<tr><td><span class="rank">${index + 1}</span></td><td>${teamLink(row.id, intl)}</td><td class="num">${row.strength}</td><td class="num">${row.form ? `+${row.form}` : '—'}</td><td class="num"><strong>${row.score}</strong></td></tr>`).join('');
+  const thirdsCount = comp.format?.bestThirds || 0;
+  const thirds = thirdsCount ? bestThirdRows(comp).map((row, index) => `<tr class="${index < thirdsCount ? 'qualify-row' : ''}"><td><span class="rank ${index < thirdsCount ? 'qualify' : ''}">${index + 1}</span></td><td>${teamLink(row.teamId, intl)}</td><td>${esc(row.groupId)}</td><td class="num">${row.played}</td><td class="num">${row.gd >= 0 ? '+' : ''}${row.gd}</td><td class="num">${row.gf}</td><td class="num"><strong>${row.points}</strong></td></tr>`).join('') : '';
+  return `${thirds ? `<section class="panel section-gap"><div class="panel-head"><h3>Best third-placed teams</h3><span class="panel-meta">The top ${thirdsCount} go through</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Team</th><th>Group</th><th class="num">P</th><th class="num">GD</th><th class="num">GF</th><th class="num">Pts</th></tr></thead><tbody>${thirds}</tbody></table></div></section>` : ''}
+    <div class="two-column section-gap"><section class="panel"><div class="panel-head"><h3>Draw pots</h3><span class="panel-meta">One team from each pot per group${comp.id === 'WC' ? '; at most one per confederation, two for Europe' : ''}</span></div><div class="pot-grid">${pots}</div></section>
+    <section class="panel"><div class="panel-head"><h3>Seeding ranking</h3><span class="panel-meta">Squad strength plus recent major-tournament results</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Team</th><th class="num">Strength</th><th class="num">Form</th><th class="num">Score</th></tr></thead><tbody>${ranking}</tbody></table></div></section></div>`;
 }
 
 const leaderPanel = (title, id, metric, position = null) => `<section class="panel"><div class="panel-head"><div><h3>${esc(title)}</h3></div></div>${leaders(id, metric, 10, position)}</section>`;
@@ -1619,36 +1655,178 @@ function universalCompetitionOptions(selected = 'ALL', includeAll = false) {
   return `${allOption}${[...groups.entries()].map(([group, items]) => `<optgroup label="${esc(group)}">${items.sort((a,b)=>a.name.localeCompare(b.name)).map((item) => `<option value="${item.id}" ${selected === item.id ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</optgroup>`).join('')}`;
 }
 
+// ─── Region → Country → Competition filters (stats screens) ──────────────────────
+const STAT_REGIONS = ['Europe', 'South America', 'North America', 'Africa', 'Asia', 'Oceania'];
+const GLOBAL_COMPETITION_IDS = ['WC', 'WCQ', 'CWC', 'ICUP'];
+const STAT_FILTER_DEFAULTS = { desk: { region: 'Europe', country: 'International', competition: 'UCL' }, players: { region: 'ALL', country: 'ALL', competition: 'ALL' }, coaches: { region: 'ALL', country: 'ALL', competition: 'ALL' } };
+const statFilters = {};
+
+// Last selection per screen: a per-viewer convenience kept in browser storage only.
+function statFilter(screen) {
+  if (!statFilters[screen]) {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(`fwc-stat-filter-${screen}`) || 'null'); } catch (_) { saved = null; }
+    statFilters[screen] = { ...STAT_FILTER_DEFAULTS[screen], ...(saved && typeof saved === 'object' ? saved : {}) };
+  }
+  return statFilters[screen];
+}
+
+function setStatFilter(screen, level, value) {
+  const filter = statFilter(screen);
+  filter[level] = value;
+  if (level === 'region') { filter.country = 'ALL'; filter.competition = 'ALL'; }
+  if (level === 'country') filter.competition = 'ALL';
+  try { localStorage.setItem(`fwc-stat-filter-${screen}`, JSON.stringify(filter)); } catch (_) { /* storage unavailable */ }
+}
+
+function competitionName(id) {
+  return descriptor(id)?.name || INTERNATIONAL_COMPETITION_CATALOG.find((item) => item.id === id)?.name || competitionLabel(id);
+}
+
+function domesticCompetitions(league) {
+  const rows = [{ id: league.id, name: league.name }, { id: `CUP-${league.id}`, name: league.cupName }];
+  if (league.superCupName) rows.push({ id: `SC-${league.id}`, name: league.superCupName });
+  return rows;
+}
+
+function internationalCompetitionsFor(region) {
+  const continental = CONTINENTAL_DEFINITIONS.filter((item) => region === 'ALL' || item.confederation === region).map((item) => ({ id: item.id, name: item.name }));
+  const nations = INTERNATIONAL_COMPETITION_CATALOG.filter((item) => item.confederation !== 'World' && (region === 'ALL' || item.confederation === region)).map((item) => ({ id: item.id, name: item.name }));
+  const global = region === 'ALL' ? GLOBAL_COMPETITION_IDS.map((id) => ({ id, name: competitionName(id) })) : [];
+  return [...global, ...continental, ...nations];
+}
+
+// The competitions a selection covers. null means every competition in the world.
+function statCompetitionOptions(filter) {
+  if (filter.country === 'International') return internationalCompetitionsFor(filter.region);
+  if (filter.country !== 'ALL') {
+    const league = LEAGUE_DEFINITIONS.find((item) => item.country === filter.country);
+    return league ? domesticCompetitions(league) : [];
+  }
+  if (filter.region === 'ALL') return null;
+  const domestic = LEAGUE_DEFINITIONS.filter((league) => league.confederation === filter.region).flatMap(domesticCompetitions);
+  return [...domestic, ...internationalCompetitionsFor(filter.region)];
+}
+
+function statCompetitionSet(filter) {
+  if (filter.competition !== 'ALL') return new Set([filter.competition]);
+  const options = statCompetitionOptions(filter);
+  return options ? new Set(options.map((item) => item.id)) : null;
+}
+
+function statFilterLabel(filter) {
+  if (filter.competition !== 'ALL') return competitionName(filter.competition);
+  if (filter.region === 'ALL' && filter.country === 'ALL') return 'Every competition';
+  if (filter.country === 'International') return filter.region === 'ALL' ? 'All international competitions' : `${filter.region} international competitions`;
+  if (filter.country !== 'ALL') return `All ${filter.country} competitions`;
+  return `All ${filter.region} competitions`;
+}
+
+function statFilterControls(screen) {
+  const filter = statFilter(screen);
+  const regions = [['ALL', 'All'], ...STAT_REGIONS.map((region) => [region, region])];
+  const countries = [['ALL', 'All'], ['International', 'International'], ...(filter.region === 'ALL' ? [] : LEAGUE_DEFINITIONS.filter((league) => league.confederation === filter.region).map((league) => [league.country, league.country]).sort((a, b) => a[1].localeCompare(b[1])))];
+  const competitions = [['ALL', 'All'], ...((statCompetitionOptions(filter) || []).map((item) => [item.id, item.name]))];
+  const select = (level, label, options, value) => `<label>${label}<select data-stat-filter="${screen}" data-level="${level}">${options.map(([id, name]) => `<option value="${esc(id)}" ${id === value ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select></label>`;
+  return `${select('region', 'Region', regions, filter.region)}${select('country', 'Country', countries, filter.country)}${select('competition', 'Competition', competitions, filter.competition)}`;
+}
+
+// Current-season rows of competitions still under Showcase embargo are left out.
+const statEmbargoed = (competitionId) => isShowcaseCompetitionEmbargoed(state, competitionId);
+// Rows from this season (live, or archived at season close) of an embargoed competition.
+const statRowHidden = (row) => (row.season === undefined || row.season === state.season) && statEmbargoed(row.competitionId);
+
+function aggregatePlayersFor(set) {
+  const map = new Map();
+  const add = (row) => {
+    if (set && !set.has(row.competitionId)) return;
+    const item = map.get(row.playerId) || { playerId: row.playerId, games: 0, goals: 0, assists: 0, cleanSheets: 0, ratingWeighted: 0, titles: 0 };
+    item.games += row.apps || 0;
+    item.goals += row.goals || 0;
+    item.assists += row.assists || 0;
+    item.cleanSheets += row.cleanSheets || 0;
+    item.ratingWeighted += (row.averageRating || 0) * (row.apps || 0);
+    map.set(row.playerId, item);
+  };
+  for (const row of state.history.playerSeasons) if (!statRowHidden(row)) add(row);
+  for (const row of Object.values(state.current.playerStats || {})) if (!statRowHidden(row)) add(row);
+  for (const honour of publicHistoryHonours()) {
+    if (set && !set.has(honour.competitionId)) continue;
+    const item = map.get(honour.playerId) || { playerId: honour.playerId, games: 0, goals: 0, assists: 0, cleanSheets: 0, ratingWeighted: 0, titles: 0 };
+    item.titles += 1;
+    map.set(honour.playerId, item);
+  }
+  return [...map.values()].map((row) => ({ ...row, averageRating: row.games ? row.ratingWeighted / row.games : 0 }));
+}
+
+function aggregateTeamsFor(set) {
+  const map = new Map();
+  const ensure = (id) => {
+    if (!map.has(id)) map.set(id, { teamId: id, games: 0, wins: 0, draws: 0, losses: 0, goals: 0, cleanSheets: 0, titles: 0, isInternational: Boolean(nationalById(id)) && !clubById(id) });
+    return map.get(id);
+  };
+  for (const row of state.history.clubCompetitionSeasons || []) {
+    if ((set && !set.has(row.competitionId)) || statRowHidden(row)) continue;
+    const item = ensure(row.teamId);
+    item.games += row.apps || 0; item.wins += row.wins || 0; item.draws += row.draws || 0; item.losses += row.losses || 0;
+    item.goals += row.gf || 0; item.cleanSheets += row.cleanSheets || 0;
+  }
+  if (!state.current.completed) {
+    for (const match of rawCompetitionMatchesAll()) {
+      if (match.showcaseFallback || (set && !set.has(match.competitionId)) || isShowcaseMatchEmbargoed(state, match)) continue;
+      const home = ensure(match.homeId);
+      const away = ensure(match.awayId);
+      home.games += 1; away.games += 1;
+      home.goals += match.homeGoals; away.goals += match.awayGoals;
+      if (match.awayGoals === 0) home.cleanSheets += 1;
+      if (match.homeGoals === 0) away.cleanSheets += 1;
+      if (match.homeGoals > match.awayGoals) { home.wins += 1; away.losses += 1; }
+      else if (match.homeGoals < match.awayGoals) { away.wins += 1; home.losses += 1; }
+      else { home.draws += 1; away.draws += 1; }
+    }
+  }
+  for (const champion of publicHistoryChampions()) if (!set || set.has(champion.competitionId)) ensure(champion.winnerId).titles += 1;
+  return [...map.values()];
+}
+
+function aggregateCoachesFor(set) {
+  const map = new Map();
+  const live = state.current.completed ? [] : Object.values(state.current.coachStats || {});
+  for (const row of [...(state.history.coachCompetitionSeasons || []), ...live]) {
+    if ((set && !set.has(row.competitionId)) || statRowHidden(row)) continue;
+    const item = map.get(row.coachId) || { coachId: row.coachId, games: 0, wins: 0, draws: 0, losses: 0, gf: 0, ga: 0, cleanSheets: 0, titles: 0 };
+    for (const field of ['games', 'wins', 'draws', 'losses', 'gf', 'ga', 'cleanSheets', 'titles']) item[field] += row[field] || 0;
+    map.set(row.coachId, item);
+  }
+  return [...map.values()].map((row) => ({ ...row, winPct: row.games ? row.wins / row.games : 0 }));
+}
+
 function magazineRankingCompetitionOptions() {
   return universalCompetitionOptions(magazineRankingCompetition, false);
 }
 
 function magazineRankingsPage() {
-  let description = descriptor(magazineRankingCompetition);
-  if (!description) {
-    magazineRankingCompetition = 'UCL';
-    description = descriptor('UCL');
-  }
-  const controls = `<section class="panel rankings-control-panel"><div class="filter-toolbar"><label>Competition<select id="magazine-ranking-competition">${magazineRankingCompetitionOptions()}</select></label><label>Metric<select id="magazine-ranking-metric">${[
+  const filter = statFilter('desk');
+  const set = statCompetitionSet(filter);
+  const controls = `<section class="panel rankings-control-panel"><div class="filter-toolbar">${statFilterControls('desk')}<label>Metric<select id="magazine-ranking-metric">${[
     ['general','General team ranking'],['playerGoals','Top scoring players'],['playerAssists','Most assists'],['playerRating','Top rated players'],['playerCleanSheets','Most clean sheets'],['playerTitles','Most player titles'],['teamTitles','Most team titles'],['teamGoals','Most team goals'],['teamCleanSheets','Most team clean sheets'],['coachTitles','Most coach titles'],['coachWins','Most coach wins']
   ].map(([value,label]) => `<option value="${value}" ${magazineRankingMetric === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><span>All-time plus current season · Top 50</span></div></section>`;
-  const international = description.type === 'international';
-  let title = description.name;
+  let title = statFilterLabel(filter);
   let table = '';
   if (magazineRankingMetric.startsWith('player')) {
     const key = { playerGoals:'goals', playerAssists:'assists', playerRating:'averageRating', playerCleanSheets:'cleanSheets', playerTitles:'titles' }[magazineRankingMetric];
-    const rows = aggregatePlayerCompetition(description).sort((a,b) => key === 'averageRating' ? b.averageRating-a.averageRating || b.games-a.games : (b[key]||0)-(a[key]||0) || b.games-a.games).slice(0,50);
+    const rows = aggregatePlayersFor(set).sort((a,b) => key === 'averageRating' ? b.averageRating-a.averageRating || b.games-a.games : (b[key]||0)-(a[key]||0) || b.games-a.games).slice(0,50);
     table = `<table class="data-table"><thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Current club</th><th>Games</th><th>Goals</th><th>Assists</th><th>CS</th><th>Rating</th><th>Titles</th></tr></thead><tbody>${rows.map((row,index)=>{const player=playerById(row.playerId);return `<tr><td>${index+1}</td><td>${playerLink(row.playerId)}</td><td>${player?.position||'—'}</td><td>${player?.clubId?teamLink(player.clubId):'Free / retired'}</td><td>${row.games}</td><td><strong>${row.goals}</strong></td><td>${row.assists}</td><td>${row.cleanSheets}</td><td>${row.averageRating?row.averageRating.toFixed(2):'—'}</td><td><strong>${row.titles}</strong></td></tr>`;}).join('')||'<tr><td colspan="10">No ranking data yet.</td></tr>'}</tbody></table>`;
   } else if (magazineRankingMetric.startsWith('coach')) {
     const key = magazineRankingMetric === 'coachWins' ? 'wins' : 'titles';
-    const rows = getCompetitionCoachLeaderboard(state, description.id).sort((a,b)=>(b[key]||0)-(a[key]||0)||b.games-a.games).slice(0,50);
+    const rows = aggregateCoachesFor(set).sort((a,b)=>(b[key]||0)-(a[key]||0)||b.games-a.games).slice(0,50);
     table = `<table class="data-table"><thead><tr><th>#</th><th>Coach</th><th>Current job</th><th>Rarity</th><th>Games</th><th>Wins</th><th>GF</th><th>GA</th><th>Titles</th></tr></thead><tbody>${rows.map((row,index)=>{const coach=coachById(row.coachId);return `<tr><td>${index+1}</td><td>${coachLink(row.coachId)}</td><td>${coachJob(coach)}</td><td>${coach?staffRarityBadge(coach.rarity):'—'}</td><td>${row.games}</td><td><strong>${row.wins}</strong></td><td>${row.gf}</td><td>${row.ga}</td><td><strong>${row.titles}</strong></td></tr>`;}).join('')||'<tr><td colspan="9">No coach ranking data yet.</td></tr>'}</tbody></table>`;
   } else {
-    const rows = aggregateTeamCompetition(description).rows;
+    const rows = aggregateTeamsFor(set);
     rows.forEach((row)=>{row.generalScore=(row.titles||0)*100+(row.wins||0)*3+(row.goals||0)+(row.cleanSheets||0)*2;});
     const key = { general:'generalScore', teamTitles:'titles', teamGoals:'goals', teamCleanSheets:'cleanSheets' }[magazineRankingMetric] || 'generalScore';
     rows.sort((a,b)=>(b[key]||0)-(a[key]||0)||b.wins-a.wins).splice(50);
-    table = `<table class="data-table"><thead><tr><th>#</th><th>Team</th><th>Games</th><th>Wins</th><th>Goals</th><th>Clean sheets</th><th>Titles</th><th>General score</th></tr></thead><tbody>${rows.map((row,index)=>`<tr><td>${index+1}</td><td>${teamLink(row.teamId,international)}</td><td>${row.games}</td><td><strong>${row.wins}</strong></td><td>${row.goals}</td><td>${row.cleanSheets}</td><td><strong>${row.titles}</strong></td><td>${Math.round(row.generalScore)}</td></tr>`).join('')||'<tr><td colspan="8">No team ranking data yet.</td></tr>'}</tbody></table>`;
+    table = `<table class="data-table"><thead><tr><th>#</th><th>Team</th><th>Games</th><th>Wins</th><th>Goals</th><th>Clean sheets</th><th>Titles</th><th>General score</th></tr></thead><tbody>${rows.map((row,index)=>`<tr><td>${index+1}</td><td>${teamLink(row.teamId,row.isInternational)}</td><td>${row.games}</td><td><strong>${row.wins}</strong></td><td>${row.goals}</td><td>${row.cleanSheets}</td><td><strong>${row.titles}</strong></td><td>${Math.round(row.generalScore)}</td></tr>`).join('')||'<tr><td colspan="8">No team ranking data yet.</td></tr>'}</tbody></table>`;
   }
   return `${pageHead('WORLD FOOTBALL MAGAZINE','Rankings',`Every major league, cup and international competition in one searchable statistical desk.`)}${magazineTabs('rankings')}${controls}<section class="panel section-gap"><div class="panel-head"><div><h3>${esc(title)}</h3></div><span class="panel-chip">${esc(magazineRankingMetric.replace(/([A-Z])/g,' $1'))}</span></div><div class="table-scroll">${table}</div></section>`;
 }
@@ -2159,7 +2337,7 @@ function postseasonGamesPage() {
 function postseasonPodiumEntry(entry, rank, visible, winner = false) {
   if (!visible || !entry) return `<div class="award-podium-entry placeholder rank-${rank}"><span>${rank === 1 ? 'WINNER' : rank === 2 ? 'SECOND' : 'THIRD'}</span><strong>?</strong></div>`;
   const player = playerById(entry.playerId);
-  return `<div class="award-podium-entry revealed rank-${rank} ${podiumFresh(entry, rank) ? 'just-revealed' : ''} ${winner ? 'winner' : ''}">${player ? playerPortrait(player, winner ? 'lg' : 'md') : ''}<div><span>${rank === 1 ? 'WINNER' : rank === 2 ? 'SECOND' : 'THIRD'}</span><strong>${esc(entry.name)}</strong><small>${entry.position} · ${entry.clubId ? esc(clubById(entry.clubId)?.name || 'Club') : esc(countryName(entry.nationality))}</small></div></div>`;
+  return `<div class="award-podium-entry revealed rank-${rank} ${podiumFresh(entry, rank) ? 'just-revealed' : ''} ${winner ? 'winner' : ''}">${player ? playerPortrait(player, winner ? 'lg' : 'md') : ''}<div><span>${rank === 1 ? 'WINNER' : rank === 2 ? 'SECOND' : 'THIRD'}</span><strong class="award-name">${flag(entry.nationality || player?.nationality, 'xs')}${esc(entry.name)}</strong><small>${entry.position} · ${entry.clubId ? esc(clubById(entry.clubId)?.name || 'Club') : esc(countryName(entry.nationality))}</small></div></div>`;
 }
 
 function podiumFresh(entry, rank) {
@@ -2175,7 +2353,7 @@ function postseasonWinnerDetails(entry) {
   const stats = entry.stats || {};
   const trophies = (entry.trophies || []).map((name) => `<span>${esc(name)}</span>`).join('');
   const awards = (entry.awards || []).map((name) => `<span>${esc(name)}</span>`).join('');
-  return `<div class="award-winner-details">${player ? playerPortrait(player,'xl') : ''}<div class="award-winner-copy"><h2>${esc(entry.name)}</h2><p>${entry.position} · ${entry.clubId ? esc(clubById(entry.clubId)?.name || 'Club') : esc(countryName(entry.nationality))}</p><div class="award-season-stats"><div><strong>${stats.apps || 0}</strong><span>Games</span></div><div><strong>${stats.goals || 0}</strong><span>Goals</span></div><div><strong>${stats.assists || 0}</strong><span>Assists</span></div><div><strong>${stats.averageRating ? Number(stats.averageRating).toFixed(2) : '—'}</strong><span>Rating</span></div>${entry.position === 'GK' || entry.position === 'DF' ? `<div><strong>${stats.cleanSheets || 0}</strong><span>Clean sheets</span></div>` : ''}</div>${trophies ? `<div class="award-honour-row"><b>Trophies</b>${trophies}</div>` : ''}${awards ? `<div class="award-honour-row"><b>Awards</b>${awards}</div>` : ''}</div></div>`;
+  return `<div class="award-winner-details">${player ? playerPortrait(player,'xl') : ''}<div class="award-winner-copy"><h2 class="award-name">${flag(entry.nationality || player?.nationality, 'sm')}${esc(entry.name)}</h2><p>${entry.position} · ${entry.clubId ? esc(clubById(entry.clubId)?.name || 'Club') : esc(countryName(entry.nationality))}</p><div class="award-season-stats"><div><strong>${stats.apps || 0}</strong><span>Games</span></div><div><strong>${stats.goals || 0}</strong><span>Goals</span></div><div><strong>${stats.assists || 0}</strong><span>Assists</span></div><div><strong>${stats.averageRating ? Number(stats.averageRating).toFixed(2) : '—'}</strong><span>Rating</span></div>${entry.position === 'GK' || entry.position === 'DF' ? `<div><strong>${stats.cleanSheets || 0}</strong><span>Clean sheets</span></div>` : ''}</div>${trophies ? `<div class="award-honour-row"><b>Trophies</b>${trophies}</div>` : ''}${awards ? `<div class="award-honour-row"><b>Awards</b>${awards}</div>` : ''}</div></div>`;
 }
 
 function postseasonAwardsPage() {
@@ -2319,12 +2497,38 @@ function transferList(transfers, compact = false) {
   return `<div class="transfer-list ${compact ? 'compact' : ''}">${transfers.map((transfer) => {
     const player = playerById(transfer.playerId);
     const portrait = player && ['epic','legend','generational'].includes(player.rarity) ? playerPortrait(player,'sm') : '';
-    return `<div class="transfer-row"><div class="transfer-player transfer-player-visual">${portrait}<div>${player ? `${rarityBadge(player.rarity)}${playerLink(player.id, false)}` : 'Unknown player'}<small>${player ? `${player.position} · ${player.roleLabel}` : ''}</small></div></div><div class="transfer-route"><span>${transfer.fromClubId ? esc(clubById(transfer.fromClubId)?.name) : 'Free agency'}</span><b>→</b><span>${esc(clubById(transfer.toClubId)?.name)}</span></div><strong>${transfer.loan ? 'Loan' : transfer.freeTransfer ? 'Free' : money(transfer.fee)}</strong></div>`;
+    return `<div class="transfer-row"><div class="transfer-player transfer-player-visual">${portrait}<div>${player ? `${rarityBadge(player.rarity)}${playerLink(player.id, false)}` : 'Unknown player'}<small>${player ? `${player.position} · ${player.roleLabel}` : ''}</small></div></div><div class="transfer-route"><span>${transfer.fromClubId ? esc(clubById(transfer.fromClubId)?.name) : 'Free agency'}</span><b>→</b><span>${esc(clubById(transfer.toClubId)?.name)}</span></div><strong>${transfer.loan ? 'Loan' : transfer.signedAfterRelease ? 'Signed after release' : transfer.freeTransfer ? 'Free' : money(transfer.fee)}</strong></div>`;
   }).join('')}</div>`;
 }
 
+// Squad Reshape: who each club released to match its coach's squad, and where they went.
+function reshapeRows(limit = 200) {
+  const reshape = getSquadReshape(state);
+  if (!reshape) return { rows: [], reshape: null };
+  const signedBy = new Map(reshape.signings.filter((row) => row.afterRelease).map((row) => [row.playerId, row.clubId]));
+  const rank = (row) => STAR_RARITIES[row.rarity]?.rank || 1;
+  const rows = [...reshape.releases].sort((a, b) => rank(b) - rank(a) || b.rating - a.rating).slice(0, limit).map((row) => ({ ...row, signedBy: signedBy.get(row.playerId) || null }));
+  return { rows, reshape };
+}
+
+function reshapeList(rows) {
+  if (!rows.length) return '<div class="empty-state compact">No releases recorded this offseason.</div>';
+  return `<div class="transfer-list">${rows.map((row) => {
+    const player = playerById(row.playerId);
+    return `<div class="transfer-row"><div class="transfer-player"><div>${player ? `${rarityBadge(player.rarity)}${playerLink(player.id, false)}` : 'Unknown player'}<small>${esc(row.position)} · ${row.rating}</small></div></div><div class="transfer-route"><span>${esc(clubById(row.clubId)?.name || '')}</span><b>→</b><span>${row.signedBy ? esc(clubById(row.signedBy)?.name || '') : '<span class="muted">Free agent</span>'}</span></div><strong>${row.signedBy ? 'Signed after release' : 'Released'}</strong></div>`;
+  }).join('')}</div>`;
+}
+
+function reshapePanel() {
+  const { rows, reshape } = reshapeRows();
+  if (!reshape) return '<section class="panel"><div class="empty-state">The Squad Reshape runs at the end of the offseason market.</div></section>';
+  const resigned = reshape.signings.filter((row) => row.afterRelease).length;
+  return `<div class="stats-ribbon">${statCard('Released', reshape.releases.length, 'Surplus to the coach\'s squad')}${statCard('Signed after release', resigned)}${statCard('Free agents signed', reshape.signings.length - resigned)}${statCard('New squad players', reshape.spawned)}</div>
+    <section class="panel section-gap"><div class="panel-head"><h3>Squad Reshape</h3><span class="panel-meta">Each club matches its coach's formation: surplus positions release the lowest rarity first, then the lowest rating</span></div>${reshapeList(rows)}</section>`;
+}
+
 function transferMarketTabs(active) {
-  return `<nav class="tab-bar"><a href="#/transfers/players" class="${active === 'players' ? 'active' : ''}">Players</a><a href="#/transfers/loans" class="${active === 'loans' ? 'active' : ''}">Loans</a><a href="#/transfers/coaches" class="${active === 'coaches' ? 'active' : ''}">Coaches</a></nav>`;
+  return `<nav class="tab-bar"><a href="#/transfers/players" class="${active === 'players' ? 'active' : ''}">Players</a><a href="#/transfers/loans" class="${active === 'loans' ? 'active' : ''}">Loans</a><a href="#/transfers/released" class="${active === 'released' ? 'active' : ''}">Released</a><a href="#/transfers/coaches" class="${active === 'coaches' ? 'active' : ''}">Coaches</a></nav>`;
 }
 
 function coachMoveList(moves) {
@@ -2339,7 +2543,10 @@ function coachMoveList(moves) {
 }
 
 function transfersPage(tabRaw = 'players') {
-  const tab = tabRaw === 'coaches' ? 'coaches' : tabRaw === 'loans' ? 'loans' : 'players';
+  const tab = tabRaw === 'coaches' ? 'coaches' : tabRaw === 'loans' ? 'loans' : tabRaw === 'released' ? 'released' : 'players';
+  if (tab === 'released') {
+    return `${pageHead('TRANSFER MARKET', `${state.current.seasonLabel} releases`, 'After the market, every club matches its coach\'s squad of 15. Surplus players are released and the clubs that are short sign from the same pool.')}${transferMarketTabs(tab)}${reshapePanel()}`;
+  }
   if (tab === 'loans') {
     const loans = state.history.transfers.filter((transfer) => transfer.loan && transfer.season === state.season).reverse();
     const allLoans = state.history.transfers.filter((transfer) => transfer.loan);
@@ -2391,6 +2598,7 @@ function playersPage(tabRaw = 'overview') {
 
 function playerStatisticsTable(activePlayers) {
   const ids = new Set(activePlayers.map((player) => player.id));
+  const playerSet = statCompetitionSet(statFilter('players'));
   const totals = new Map();
   const ensure = (id) => {
     if (!totals.has(id)) totals.set(id, { games: 0, goals: 0, assists: 0, cleanSheets: 0, ratingWeighted: 0, titles: 0 });
@@ -2399,7 +2607,8 @@ function playerStatisticsTable(activePlayers) {
   const rowsSource = [...state.history.playerSeasons, ...Object.values(state.current.playerStats || {})];
   for (const row of rowsSource) {
     if (!ids.has(row.playerId)) continue;
-    if (playerStatsCompetition !== 'ALL' && row.competitionId !== playerStatsCompetition) continue;
+    if (playerSet && !playerSet.has(row.competitionId)) continue;
+    if (statRowHidden(row)) continue;
     if (playerStatsScope !== 'all' && (playerStatsScope === 'international') !== Boolean(row.isInternational)) continue;
     const item = ensure(row.playerId);
     item.games += row.apps || 0; item.goals += row.goals || 0; item.assists += row.assists || 0; item.cleanSheets += row.cleanSheets || 0;
@@ -2407,7 +2616,7 @@ function playerStatisticsTable(activePlayers) {
   }
   for (const honour of publicHistoryHonours()) {
     if (!ids.has(honour.playerId)) continue;
-    if (playerStatsCompetition !== 'ALL' && honour.competitionId !== playerStatsCompetition) continue;
+    if (playerSet && !playerSet.has(honour.competitionId)) continue;
     if (playerStatsScope !== 'all' && (playerStatsScope === 'international') !== Boolean(honour.isInternational)) continue;
     ensure(honour.playerId).titles += 1;
   }
@@ -2416,7 +2625,7 @@ function playerStatisticsTable(activePlayers) {
     return { player, totals: { ...value, averageRating: value.games ? value.ratingWeighted / value.games : 0 } };
   });
   rows.sort((a, b) => playerStatsSort === 'rating' ? b.totals.averageRating - a.totals.averageRating || b.totals.games - a.totals.games : (b.totals[playerStatsSort] || 0) - (a.totals[playerStatsSort] || 0) || b.player.rating - a.player.rating);
-  return `<section class="panel"><div class="filter-toolbar"><label>Continent (origin)<select id="people-origin-region-filter">${regionOptions(peopleOriginRegionFilter)}</select></label><label>Continent (team)<select id="people-team-region-filter">${regionOptions(peopleTeamRegionFilter)}</select></label><label>Position<select id="player-position-filter"><option value="ALL">All positions</option>${['GK','DF','MF','FW'].map((position) => `<option value="${position}" ${playerPositionFilter === position ? 'selected' : ''}>${position}</option>`).join('')}</select></label><label>Competition<select id="player-stats-competition">${universalCompetitionOptions(playerStatsCompetition, true)}</select></label><label>Scope<select id="player-stats-scope"><option value="club" ${playerStatsScope === 'club' ? 'selected' : ''}>Club football</option><option value="international" ${playerStatsScope === 'international' ? 'selected' : ''}>International football</option><option value="all" ${playerStatsScope === 'all' ? 'selected' : ''}>Combined</option></select></label><label>Sort by<select id="player-stats-sort">${[['goals','Goals'],['games','Games'],['assists','Assists'],['cleanSheets','Clean sheets'],['rating','Average score'],['titles','Titles']].map(([value,label]) => `<option value="${value}" ${playerStatsSort === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><span>Top 50 shown</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Player</th><th>Position</th><th>Club</th><th>Games</th><th>Goals</th><th>Assists</th><th>Clean sheets</th><th>Average score</th><th>Total titles</th></tr></thead><tbody>${rows.slice(0, 50).map(({ player, totals }, index) => `<tr><td>${index + 1}</td><td>${playerLink(player.id)}</td><td>${player.position}</td><td>${player.clubId ? teamLink(player.clubId) : player.status === 'retired' ? '<span class="muted">Retired</span>' : 'Free agent'}</td><td>${totals.games}</td><td><strong>${totals.goals}</strong></td><td>${totals.assists}</td><td>${totals.cleanSheets}</td><td>${totals.games ? totals.averageRating.toFixed(2) : '—'}</td><td><strong>${totals.titles}</strong></td></tr>`).join('')}</tbody></table></div></section>`;
+  return `<section class="panel"><div class="filter-toolbar"><label>Continent (origin)<select id="people-origin-region-filter">${regionOptions(peopleOriginRegionFilter)}</select></label><label>Continent (team)<select id="people-team-region-filter">${regionOptions(peopleTeamRegionFilter)}</select></label><label>Position<select id="player-position-filter"><option value="ALL">All positions</option>${['GK','DF','MF','FW'].map((position) => `<option value="${position}" ${playerPositionFilter === position ? 'selected' : ''}>${position}</option>`).join('')}</select></label>${statFilterControls('players')}<label>Scope<select id="player-stats-scope"><option value="club" ${playerStatsScope === 'club' ? 'selected' : ''}>Club football</option><option value="international" ${playerStatsScope === 'international' ? 'selected' : ''}>International football</option><option value="all" ${playerStatsScope === 'all' ? 'selected' : ''}>Combined</option></select></label><label>Sort by<select id="player-stats-sort">${[['goals','Goals'],['games','Games'],['assists','Assists'],['cleanSheets','Clean sheets'],['rating','Average score'],['titles','Titles']].map(([value,label]) => `<option value="${value}" ${playerStatsSort === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><span>Top 50 shown</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Player</th><th>Position</th><th>Club</th><th>Games</th><th>Goals</th><th>Assists</th><th>Clean sheets</th><th>Average score</th><th>Total titles</th></tr></thead><tbody>${rows.slice(0, 50).map(({ player, totals }, index) => `<tr><td>${index + 1}</td><td>${playerLink(player.id)}</td><td>${player.position}</td><td>${player.clubId ? teamLink(player.clubId) : player.status === 'retired' ? '<span class="muted">Retired</span>' : 'Free agent'}</td><td>${totals.games}</td><td><strong>${totals.goals}</strong></td><td>${totals.assists}</td><td>${totals.cleanSheets}</td><td>${totals.games ? totals.averageRating.toFixed(2) : '—'}</td><td><strong>${totals.titles}</strong></td></tr>`).join('')}</tbody></table></div></section>`;
 }
 
 
@@ -2427,6 +2636,7 @@ function presidentsPeoplePage() {
 }
 
 function coachStatisticsTable() {
+  const coachSet = statCompetitionSet(statFilter('coaches'));
   const totals = new Map();
   const ensure = (id) => {
     if (!totals.has(id)) totals.set(id, { games: 0, wins: 0, draws: 0, losses: 0, gf: 0, ga: 0, cleanSheets: 0, titles: 0 });
@@ -2434,7 +2644,7 @@ function coachStatisticsTable() {
   };
   const source = [...(state.history.coachCompetitionSeasons || []), ...Object.values(state.current.coachStats || {})];
   for (const row of source) {
-    if (coachStatsCompetition !== 'ALL' && row.competitionId !== coachStatsCompetition) continue;
+    if ((coachSet && !coachSet.has(row.competitionId)) || statRowHidden(row)) continue;
     if (coachStatsScope !== 'all' && (coachStatsScope === 'international') !== Boolean(row.isInternational)) continue;
     const item = ensure(row.coachId);
     for (const field of ['games','wins','draws','losses','gf','ga','cleanSheets','titles']) item[field] += row[field] || 0;
@@ -2457,7 +2667,7 @@ function coachStatisticsTable() {
     conceded: (a,b) => (a.games >= 10 ? a.concededPerGame : 999) - (b.games >= 10 ? b.concededPerGame : 999) || b.games-a.games
   };
   rows.sort(sorters[coachStatsSort] || sorters.titles);
-  return `<section class="panel"><div class="filter-toolbar"><label>Continent (origin)<select id="people-origin-region-filter">${regionOptions(peopleOriginRegionFilter)}</select></label><label>Continent (team)<select id="people-team-region-filter">${regionOptions(peopleTeamRegionFilter)}</select></label><label>Competition<select id="coach-stats-competition">${universalCompetitionOptions(coachStatsCompetition, true)}</select></label><label>Scope<select id="coach-stats-scope"><option value="all" ${coachStatsScope === 'all' ? 'selected' : ''}>Club + international</option><option value="club" ${coachStatsScope === 'club' ? 'selected' : ''}>Club only</option><option value="international" ${coachStatsScope === 'international' ? 'selected' : ''}>International only</option></select></label><label>Sort by<select id="coach-stats-sort">${[['titles','Titles'],['games','Games'],['wins','Wins'],['winPct','Win percentage'],['goals','Goals scored'],['conceded','Fewest conceded / game']].map(([value,label]) => `<option value="${value}" ${coachStatsSort === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><span>Top 50 shown</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Coach</th><th>Rarity</th><th>Current job</th><th>Games</th><th>Wins</th><th>Win %</th><th>GF</th><th>GA</th><th>CS</th><th>Titles</th></tr></thead><tbody>${rows.slice(0,50).map((row,index) => `<tr><td>${index+1}</td><td>${coachLink(row.coach.id)}</td><td>${staffRarityBadge(row.coach.rarity)}</td><td>${coachJob(row.coach)}</td><td>${row.games}</td><td><strong>${row.wins}</strong></td><td>${row.games ? `${(row.winPct*100).toFixed(1)}%` : '—'}</td><td>${row.gf}</td><td>${row.ga}</td><td>${row.cleanSheets}</td><td><strong>${row.titles}</strong></td></tr>`).join('') || '<tr><td colspan="11">No coach records match these filters.</td></tr>'}</tbody></table></div></section>`;
+  return `<section class="panel"><div class="filter-toolbar"><label>Continent (origin)<select id="people-origin-region-filter">${regionOptions(peopleOriginRegionFilter)}</select></label><label>Continent (team)<select id="people-team-region-filter">${regionOptions(peopleTeamRegionFilter)}</select></label>${statFilterControls('coaches')}<label>Scope<select id="coach-stats-scope"><option value="all" ${coachStatsScope === 'all' ? 'selected' : ''}>Club + international</option><option value="club" ${coachStatsScope === 'club' ? 'selected' : ''}>Club only</option><option value="international" ${coachStatsScope === 'international' ? 'selected' : ''}>International only</option></select></label><label>Sort by<select id="coach-stats-sort">${[['titles','Titles'],['games','Games'],['wins','Wins'],['winPct','Win percentage'],['goals','Goals scored'],['conceded','Fewest conceded / game']].map(([value,label]) => `<option value="${value}" ${coachStatsSort === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><span>Top 50 shown</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>Coach</th><th>Rarity</th><th>Current job</th><th>Games</th><th>Wins</th><th>Win %</th><th>GF</th><th>GA</th><th>CS</th><th>Titles</th></tr></thead><tbody>${rows.slice(0,50).map((row,index) => `<tr><td>${index+1}</td><td>${coachLink(row.coach.id)}</td><td>${staffRarityBadge(row.coach.rarity)}</td><td>${coachJob(row.coach)}</td><td>${row.games}</td><td><strong>${row.wins}</strong></td><td>${row.games ? `${(row.winPct*100).toFixed(1)}%` : '—'}</td><td>${row.gf}</td><td>${row.ga}</td><td>${row.cleanSheets}</td><td><strong>${row.titles}</strong></td></tr>`).join('') || '<tr><td colspan="11">No coach records match these filters.</td></tr>'}</tbody></table></div></section>`;
 }
 
 function coachesPeoplePage(tabRaw = 'overview') {
@@ -2791,33 +3001,66 @@ function pitchSurname(name = '') {
   return parts.length > 1 ? parts.slice(1).join(' ') : parts[0] || '';
 }
 
+// Pitch labels: first initial + surname ("J. García"). Within one line-up, clashes use
+// the full first name ("Juan García" / "José García"), then a second initial. Players
+// known by a single name keep it.
+function shortPlayerName(name = '', level = 0) {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return parts[0] || '';
+  const surname = parts.slice(1).join(' ');
+  if (level === 0) return `${parts[0][0]}. ${surname}`;
+  if (level === 1) return `${parts[0]} ${surname}`;
+  return parts.length > 2 ? `${parts[0][0]}. ${parts[1][0]}. ${parts.slice(2).join(' ')}` : String(name);
+}
+
+function pitchNames(players) {
+  const labels = new Map();
+  const list = players.filter(Boolean);
+  for (const player of list) labels.set(player.id, shortPlayerName(player.name));
+  for (let level = 1; level <= 2; level += 1) {
+    const seen = new Map();
+    for (const player of list) seen.set(labels.get(player.id), (seen.get(labels.get(player.id)) || 0) + 1);
+    for (const player of list) if (seen.get(labels.get(player.id)) > 1) labels.set(player.id, shortPlayerName(player.name, level));
+  }
+  return labels;
+}
+
 function slotLineCode(slotType) {
   if (slotType === 'GK') return 'gk';
   if (['FB', 'CB', 'WB'].includes(slotType)) return 'df';
-  if (['DM', 'CM', 'AM', 'WM'].includes(slotType)) return 'mf';
+  if (['DM', 'CM', 'AM', 'WM', 'WBM'].includes(slotType)) return 'mf';
   return 'fw';
 }
 
 function formationPitch(view, { compact = false } = {}) {
   if (!view?.xi?.length) return '<div class="empty-state compact">No starting XI available.</div>';
+  const names = pitchNames([...view.xi, ...(view.bench || [])].map((row) => (row.playerId ? playerById(row.playerId) : null)));
   const tokens = view.xi.map((row) => {
     const player = row.playerId ? playerById(row.playerId) : null;
     const line = slotLineCode(row.slotType);
     const style = `left:${row.x}%;top:${100 - row.y}%`;
-    const label = player ? esc(pitchSurname(player.name)) : 'Squad player';
+    const label = player ? esc(names.get(player.id)) : 'Reserve';
     const off = row.slotFit < 0.9 ? ' off-position' : '';
     const inner = `<b>${row.rating}</b><span>${label}</span>${compact ? '' : `<small>${esc(row.slotType)}</small>`}`;
     return player
       ? `<a class="pitch-player pos-ring-${line}${off}" style="${style}" href="#/player/${esc(player.id)}/overview" title="${esc(player.name)} · ${esc(row.slotType)}${off ? ' (out of position)' : ''}">${inner}</a>`
-      : `<span class="pitch-player pos-ring-${line} depth" style="${style}" title="Unnamed squad player">${inner}</span>`;
+      : `<span class="pitch-player pos-ring-${line} depth" style="${style}" title="Reserve player">${inner}</span>`;
   }).join('');
   return `<div class="formation-pitch${compact ? ' compact' : ''}" role="img" aria-label="Starting XI in a ${esc(view.formationId)}"><span class="pitch-lines" aria-hidden="true"><i class="pitch-half"></i><i class="pitch-circle"></i><i class="pitch-box top"></i><i class="pitch-box bottom"></i></span>${tokens}</div>`;
 }
 
 function formationSummary(view) {
   if (!view) return '';
-  const fallback = view.fallback && view.preferredFormation !== view.formationId ? ` · preferred ${esc(view.preferredFormation)} does not suit this squad` : '';
-  return `${esc(view.formationId)} · fit ${view.fit} (${formationFitLabel(view.fit)})${fallback}`;
+  return `${esc(view.formationId)} · fit ${view.fit} (${formationFitLabel(view.fit)}) · ${esc(systemChoiceText(view))}`;
+}
+
+// Which way the coach went when his players do not suit his system.
+function systemChoiceText(view) {
+  if (!view) return '';
+  const outOfPosition = (view.xi || []).filter((row) => row.slotFit < 0.9).length;
+  if (view.fallback && view.preferredFormation !== view.formationId) return `Backup system: switched from his preferred ${view.preferredFormation} to fit the players`;
+  if (outOfPosition) return `Preferred system, with ${outOfPosition} player${outOfPosition === 1 ? '' : 's'} out of position`;
+  return 'Preferred system';
 }
 
 function startingElevenPanel(teamId, isInternational = false, title = 'Starting XI') {
@@ -2825,9 +3068,13 @@ function startingElevenPanel(teamId, isInternational = false, title = 'Starting 
   if (!view?.xi?.length) return '';
   const benchRows = view.bench.map((row) => {
     const player = row.playerId ? playerById(row.playerId) : null;
-    return player ? squadRow(player) : `<div class="squad-row"><span class="position-pill pos-${row.position.toLowerCase()}">${row.position}</span><div><strong>Squad player</strong><small>Unnamed depth</small></div><b>${row.rating}</b></div>`;
+    return player ? squadRow(player) : reserveRow(row);
   }).join('');
-  return `<section class="panel"><div class="panel-head"><h3>${esc(title)}</h3><span class="panel-meta">${formationSummary(view)}</span></div><div class="lineup-layout"><div>${formationPitch(view)}</div><div><div class="stats-ribbon compact-ribbon">${statCard('Formation', esc(view.formationId), view.fallback ? 'Fallback shape' : 'Coach preference')}${statCard('Fit', view.fit, formationFitLabel(view.fit))}</div><span class="block-label lineup-bench-label">Substitutes</span><div class="squad-list">${benchRows || '<div class="empty-state compact">No substitutes named.</div>'}</div></div></div></section>`;
+  return `<section class="panel"><div class="panel-head"><h3>${esc(title)}</h3><span class="panel-meta">${formationSummary(view)}</span></div><div class="lineup-layout"><div>${formationPitch(view)}</div><div><div class="stats-ribbon compact-ribbon">${statCard('Formation', esc(view.formationId), view.fallback ? `Backup system (prefers ${esc(view.preferredFormation)})` : 'Preferred system')}${statCard('Fit', view.fit, formationFitLabel(view.fit))}</div><span class="block-label lineup-bench-label">Substitutes</span><div class="squad-list">${benchRows || '<div class="empty-state compact">No substitutes named.</div>'}</div></div></div></section>`;
+}
+
+function reserveRow(row) {
+  return `<div class="squad-row reserve-row"><span class="position-pill pos-${row.position.toLowerCase()}">${row.position}</span><div><strong>Reserve player</strong><small>Unnamed squad player</small></div><b>${row.rating}</b></div>`;
 }
 
 function coachFormationText(coach) {
@@ -2944,9 +3191,14 @@ function clubPage(id, tabRaw = 'overview') {
 
   if (tab === 'squad') {
     const groups = [['GK', 'Goalkeepers'], ['DF', 'Defenders'], ['MF', 'Midfielders'], ['FW', 'Forwards']];
-    return `${head}${startingElevenPanel(club.id, false)}<section class="panel section-gap"><div class="panel-head"><h3>First-team squad</h3><span class="panel-meta">${history.allCurrentPlayers.length} named players</span></div><div class="squad-groups">${groups.map(([code, label]) => {
+    const squadView = getTeamSquadView(state, club.id, false);
+    const reserves = squadView ? [...squadView.xi, ...squadView.bench].filter((row) => !row.playerId) : [];
+    const target = getClubSquadTarget(state, club.id);
+    const targetText = target ? `Coach's squad: GK ${target.GK} · DF ${target.DF} · MF ${target.MF} · FW ${target.FW}` : '';
+    return `${head}${startingElevenPanel(club.id, false)}<section class="panel section-gap"><div class="panel-head"><h3>First-team squad</h3><span class="panel-meta">${history.allCurrentPlayers.length} named players${reserves.length ? ` · ${reserves.length} reserves` : ` · ${targetText}`}</span></div><div class="squad-groups">${groups.map(([code, label]) => {
       const rows = history.allCurrentPlayers.filter((player) => player.position === code);
-      return rows.length ? `<div class="squad-group"><h4>${label}</h4><div class="squad-list">${rows.map((player) => squadRow(player, ` · ${player.contractYears ? `${player.contractYears} yr` : 'Free'} · ${money(player.marketValue)}`)).join('')}</div></div>` : '';
+      const reserveRows = reserves.filter((row) => row.position === code);
+      return rows.length || reserveRows.length ? `<div class="squad-group"><h4>${label}</h4><div class="squad-list">${rows.map((player) => squadRow(player, ` · ${player.contractYears ? `${player.contractYears} yr` : 'Free'} · ${money(player.marketValue)}`)).join('')}${reserveRows.map(reserveRow).join('')}</div></div>` : '';
     }).join('')}</div></section>
     ${clubLoansPanel(club)}
     <section class="section-gap"><h2 class="section-title">Staff</h2>${clubStaffCards(club, owner, coach)}</section>
@@ -2970,7 +3222,7 @@ function clubPage(id, tabRaw = 'overview') {
     <section class="panel section-gap"><div class="panel-head"><h3>Rivalries</h3><span class="panel-meta">Historic and emerging opponents</span></div>${rivals.length ? `<div class="rivalry-grid">${rivals.map((row) => `<article class="rivalry-card"><div><span class="status-pill ${row.static ? 'gold' : ''}">${row.static ? 'Historic rivalry' : 'Emerging rivalry'}</span><h3>${esc(row.definition.name)}</h3><p>${teamLink(row.opponentId)}</p></div><div class="rivalry-record"><strong>${row.wins}-${row.draws}-${row.losses}</strong><span>W-D-L · ${row.gf}-${row.ga} goals</span><small>${row.matches} stored meetings</small></div>${row.recent?.length ? `<div class="rivalry-recent">${row.recent.slice(0, 5).map((meeting) => `<span title="${esc(competitionLabel(meeting.competitionId))}"><small>${getSeasonLabel(meeting.season)}</small> ${esc(getEntityName(state, meeting.homeId, false))} ${meeting.homeGoals}-${meeting.awayGoals} ${esc(getEntityName(state, meeting.awayId, false))}</span>`).join('')}</div>` : ''}</article>`).join('')}</div>` : '<div class="empty-state">No established rivalry is stored yet.</div>'}</section>`;
   }
   const recent = (state.current.matches || []).filter((m) => !isShowcaseMatchEmbargoed(state, m) && !m.isInternational && [m.homeId, m.awayId].includes(club.id)).sort((a, b) => b.week - a.week).slice(0, 4);
-  return `${head}<div class="two-column wide-left"><section class="panel"><div class="panel-head"><h3>Current core</h3><a href="#/club/${club.id}/squad">Full squad</a></div><div class="squad-list">${history.allCurrentPlayers.slice(0, 8).map((player) => squadRow(player)).join('')}</div></section>
+  return `${head}<div class="two-column wide-left">${startingElevenPanel(club.id, false, 'Starting XI and substitutes') || `<section class="panel"><div class="panel-head"><h3>Squad</h3><a href="#/club/${club.id}/squad">Full squad</a></div><div class="squad-list">${history.allCurrentPlayers.slice(0, 8).map((player) => squadRow(player)).join('')}</div></section>`}
     <div class="stack"><section class="panel"><div class="panel-head"><h3>Season so far</h3><a href="#/club/${club.id}/season">Season</a></div><div class="identity-list"><div><span>League</span><strong>${club.division === 1 ? (position ? `#${position} · ${tableRow?.points ?? 0} pts` : '—') : 'Promotion pool'}</strong></div><div><span>Record</span><strong>${tableRow ? `${tableRow.wins}W ${tableRow.draws}D ${tableRow.losses}L` : '—'}</strong></div><div><span>Form</span>${formPills(tableRow?.form || [])}</div></div>${recent.length ? `<div class="matches-list tight">${recent.map((m) => matchRow(m, true)).join('')}</div>` : ''}</section>
     <section class="panel"><div class="panel-head"><h3>Leadership</h3><a href="#/club/${club.id}/staff">Staff</a></div><div class="identity-list"><div><span>President</span><strong>${owner ? ownerLink(owner.id) : 'Vacant'}</strong></div><div><span>Coach</span><strong>${coach ? coachLink(coach.id) : 'Vacant'}</strong></div><div><span>Coach focus</span><strong>${esc(COACH_FOCUSES[coach?.focus]?.label || '—')}</strong></div><div><span>Formation</span><strong>${esc(formationSummary(getTeamSquadView(state, club.id, false)))}</strong></div></div></section>
     <section class="panel"><div class="panel-head"><h3>Trophy cabinet</h3><a href="#/club/${club.id}/history">History</a></div>${trophyCabinet(honours)}</section></div></div>`;
@@ -3112,12 +3364,12 @@ function almanacPage(sectionRaw = 'champions') {
 }
 
 function offseasonTabs(active) {
-  return `<nav class="tab-bar"><a href="#/offseason/summary" class="${active==='summary'?'active':''}">Summary</a><a href="#/offseason/signings" class="${active==='signings'?'active':''}">Signings</a><a href="#/offseason/coaches" class="${active==='coaches'?'active':''}">Coach Market</a><a href="#/offseason/lifecycle" class="${active==='lifecycle'?'active':''}">Spawn & Retirements</a><a href="#/offseason/payroll" class="${active==='payroll'?'active':''}">Payroll</a><a href="#/offseason/boardroom" class="${active==='boardroom'?'active':''}">Boardroom</a></nav>`;
+  return `<nav class="tab-bar"><a href="#/offseason/summary" class="${active==='summary'?'active':''}">Summary</a><a href="#/offseason/signings" class="${active==='signings'?'active':''}">Signings</a><a href="#/offseason/reshape" class="${active==='reshape'?'active':''}">Squad Reshape</a><a href="#/offseason/coaches" class="${active==='coaches'?'active':''}">Coach Market</a><a href="#/offseason/lifecycle" class="${active==='lifecycle'?'active':''}">Spawn & Retirements</a><a href="#/offseason/payroll" class="${active==='payroll'?'active':''}">Payroll</a><a href="#/offseason/boardroom" class="${active==='boardroom'?'active':''}">Boardroom</a></nav>`;
 }
 
 function offseasonPage(tabRaw='summary') {
   const data = state.current.offseason;
-  const tab = ['summary','signings','coaches','lifecycle','payroll','boardroom'].includes(tabRaw) ? tabRaw : 'summary';
+  const tab = ['summary','signings','reshape','coaches','lifecycle','payroll','boardroom'].includes(tabRaw) ? tabRaw : 'summary';
   if (!data) return `${pageHead('OFFSEASON','No offseason report yet','Complete a season and run the offseason to create the first lifecycle report.')}<section class="panel"><div class="empty-state">Retirements, new players, free agency, transfers, coaching moves and board changes will appear here.</div></section>`;
   const retiredPlayers = data.retirements.filter((item)=>item.type==='player').map((item)=>playerById(item.playerId)).filter(Boolean).sort((a,b)=>(STAR_RARITIES[b.rarity]?.rank||0)-(STAR_RARITIES[a.rarity]?.rank||0)||b.rating-a.rating);
   const retiredCoaches = data.retirements.filter((item)=>item.type==='coach').map((item)=>coachById(item.coachId)).filter(Boolean).sort((a,b)=>(STAFF_RARITIES[b.rarity]?.rank||0)-(STAFF_RARITIES[a.rarity]?.rank||0)||b.quality-a.quality);
@@ -3133,9 +3385,10 @@ function offseasonPage(tabRaw='summary') {
   const rowPlayers=(rows,mode='new')=>rows.map((player)=>`<a class="squad-row squad-row-wide portrait-row" href="#/player/${player.id}/overview">${playerPortrait(player,'sm')}<span class="position-chip">${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${flag(player.nationality,'xs')} ${mode==='new'?(player.clubId?esc(clubById(player.clubId)?.name):'Free agent'):'Retired'} · Age ${state.season-player.birthYear}</small></div><b>${player.rating}</b></a>`).join('')||'<div class="empty-state compact">None this offseason.</div>';
   const head = `${pageHead('OFFSEASON',`${esc(data.seasonLabel)} lifecycle`,`The complete transition between seasons, split into markets, arrivals, retirements and leadership changes.`)}${offseasonTabs(tab)}`;
   if (tab === 'signings') {
-    const rows = transfers.map((move)=>{const player=playerById(move.playerId); return `<tr><td>${playerLink(move.playerId)}</td><td>${player?rarityBadge(player.rarity):'—'}</td><td>${move.fromClubId?teamLink(move.fromClubId):'<span class="muted">Free agent</span>'}</td><td>${teamLink(move.toClubId)}</td><td><strong>${move.freeTransfer?'Free':money(move.fee)}</strong></td><td>${move.marketValue!=null?money(move.marketValue):player?money(player.marketValue):'—'}</td><td>${player?.contractYears||'—'} yr</td></tr>`;}).join('');
+    const rows = transfers.map((move)=>{const player=playerById(move.playerId); return `<tr><td>${playerLink(move.playerId)}</td><td>${player?rarityBadge(player.rarity):'—'}</td><td>${move.fromClubId?teamLink(move.fromClubId):'<span class="muted">Free agent</span>'}</td><td>${teamLink(move.toClubId)}</td><td><strong>${move.signedAfterRelease?'Signed after release':move.freeTransfer?'Free':money(move.fee)}</strong></td><td>${move.marketValue!=null?money(move.marketValue):player?money(player.marketValue):'—'}</td><td>${player?.contractYears||'—'} yr</td></tr>`;}).join('');
     return `${head}<div class="stats-ribbon">${statCard('Transfers',transfers.length)}${statCard('Spent',money(transfers.reduce((sum,row)=>sum+(row.fee||0),0)))}${statCard('Free-agent signings',freeAgentSignings.length)}${statCard('Still available',freeAgents.length)}</div><section class="panel section-gap"><div class="panel-head"><div><h3>Every offseason signing</h3></div></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>Rarity</th><th>From</th><th>To</th><th>Fee</th><th>Market value</th><th>Contract</th></tr></thead><tbody>${rows||'<tr><td colspan="7">No transfers this offseason.</td></tr>'}</tbody></table></div></section>`;
   }
+  if (tab === 'reshape') return `${head}${reshapePanel()}`;
   if (tab === 'coaches') {
     return `${head}<div class="two-column"><section class="panel"><div class="panel-head"><div><h3>Appointments & poaching</h3></div></div><div class="archive-list">${coachMoves.map((move)=>{const coach=coachById(move.coachId);const from=move.fromClubId?clubById(move.fromClubId)?.name:move.fromNationalTeamId?nationalById(move.fromNationalTeamId)?.name:'Free agency';const to=move.toClubId?clubById(move.toClubId)?.name:move.toNationalTeamId?nationalById(move.toNationalTeamId)?.name:'Free agency';return `<div class="archive-row archive-row-portrait"><div class="archive-person">${coach?coachPortrait(coach,'sm'):''}<strong>${coach?coachLink(coach.id):'Coach'}</strong></div><span>${esc(from||'Free agency')} → ${esc(to||'Free agency')}</span><b>${coach?staffRarityBadge(coach.rarity):''}</b></div>`;}).join('')||'<div class="empty-state compact">No coaching changes.</div>'}</div></section><section class="panel"><div class="panel-head"><div><h3>Entering the market</h3></div></div><div class="archive-list">${newCoaches.map((coach)=>`<div class="archive-row archive-row-portrait"><div class="archive-person">${coachPortrait(coach,'sm')}<strong>${coachLink(coach.id)}</strong></div><span>${esc(COACH_PROFILES[coach.profile]?.label||coach.profile)} · ${esc(COACH_FOCUSES[coach.focus]?.label||'Balanced')}</span><b>${staffRarityBadge(coach.rarity)} ${coach.quality}</b></div>`).join('')||'<div class="empty-state compact">No new coaches.</div>'}</div></section></div>`;
   }
@@ -3216,7 +3469,7 @@ function render() {
   const routeChanged = routeKey !== lastRenderedRoute;
   lastRenderedRoute = routeKey;
   const sidebarScroll = document.getElementById('sidebar-nav')?.scrollTop || 0;
-  document.getElementById('app').innerHTML = `<a class="skip-link" href="#main-content">Skip to content</a><div class="app-shell" data-section="${sectionFor(currentRoute)}">${sidebar(currentRoute)}<button class="sidebar-scrim" id="sidebar-scrim" data-action="close-menu" aria-label="Close navigation" tabindex="-1"></button><div class="main-shell">${topbar(currentRoute)}${sectionStrip(currentRoute)}<main id="main-content" tabindex="-1" class="content${routeChanged && !simLive ? ' page-enter' : ''}">${simLive ? liveSimPage() : `${navigationTrail(currentRoute)}${page(currentRoute)}`}</main>${mobileBottomNav(currentRoute)}</div></div>${searchOverlay()}${clubModal()}${postseasonMatchModal()}<div id="toast-root" role="status" aria-live="polite"></div>`;
+  document.getElementById('app').innerHTML = `<a class="skip-link" href="#main-content">Skip to content</a><div class="app-shell" data-section="${sectionFor(currentRoute)}">${sidebar(currentRoute)}<button class="sidebar-scrim" id="sidebar-scrim" data-action="close-menu" aria-label="Close navigation" tabindex="-1"></button><div class="main-shell">${topbar(currentRoute)}${sectionStrip(currentRoute)}<main id="main-content" tabindex="-1" class="content${routeChanged && !simLive ? ' page-enter' : ''}">${simLive || simLiveDone ? liveSimPage() : `${navigationTrail(currentRoute)}${page(currentRoute)}`}</main>${mobileBottomNav(currentRoute)}</div></div>${searchOverlay()}${clubModal()}${postseasonMatchModal()}<div id="toast-root" role="status" aria-live="polite"></div>`;
   const sidebarElement = document.getElementById('sidebar-nav');
   if (sidebarElement) sidebarElement.scrollTop = sidebarScroll;
   overlayEnter = false;
@@ -3274,16 +3527,16 @@ function liveSeasonScreen() {
   const week = state.current.week || 0;
   const leagues = LIVE_LEAGUES.map(liveLeagueCard).join('');
   const cups = LIVE_CUPS.map(liveKnockoutCard).join('');
-  return `<section class="live-hero"><div><span class="block-label">Season in progress</span><h2>Week ${week} of 52</h2></div><div class="live-meter"><i style="width:${Math.round(week / 52 * 100)}%"></i></div></section>
+  return `<section class="live-hero"><div><span class="block-label">${simLive ? 'Season in progress' : state.current.completed ? 'Season complete' : 'Simulation complete'}</span><h2>Week ${week} of 52</h2></div><div class="live-meter"><i style="width:${Math.round(week / 52 * 100)}%"></i></div></section>
     <div class="live-grid section-gap">${liveHonoursCard()}</div>
     ${cups ? `<h2 class="section-title section-gap">Knockout football</h2><div class="live-grid">${cups}</div>` : ''}
     <h2 class="section-title section-gap">League leaders</h2><div class="live-grid">${leagues}</div>`;
 }
 
-const OFFSEASON_STAGES = [['start', 'Season closed'], ['coaches', 'Coaching market'], ['contracts', 'Contracts and retirements'], ['squads', 'New season set up'], ['transfers', 'Transfer market'], ['done', 'Loans and academy']];
+const OFFSEASON_STAGES = [['start', 'Season closed'], ['coaches', 'Coaching market'], ['contracts', 'Contracts and retirements'], ['squads', 'New season set up'], ['transfers', 'Transfer market'], ['reshape', 'Loans, academy and Squad Reshape'], ['done', 'Ready for the new season']];
 
 function liveOffseasonScreen() {
-  const progress = getOffseasonProgress(state);
+  const progress = getOffseasonProgress(state) || (simLiveDone ? finishedOffseasonProgress() : null);
   const stage = progress?.stage || 'start';
   const reached = OFFSEASON_STAGES.findIndex(([id]) => id === stage);
   const steps = OFFSEASON_STAGES.map(([id, label], index) => `<li class="${index < reached ? 'done' : index === reached ? 'active' : ''}">${esc(label)}</li>`).join('');
@@ -3294,7 +3547,7 @@ function liveOffseasonScreen() {
   }).join('');
   const signings = (progress?.topTransfers || []).map((move) => `<div class="archive-row"><strong>${playerLink(move.playerId)}</strong><span>${teamLink(move.fromClubId)} → ${teamLink(move.toClubId)}</span><b>${move.fee ? money(move.fee) : 'Free'}</b></div>`).join('');
   const retirements = (progress?.retirements || []).map((row) => `<div class="archive-row"><strong>${playerLink(row.playerId)}</strong><span>${row.formerClubId ? teamLink(row.formerClubId) : ''}</span></div>`).join('');
-  return `<section class="live-hero"><div><span class="block-label">Offseason in progress</span><h2>${esc(OFFSEASON_STAGES[Math.max(0, reached)]?.[1] || 'Offseason')}</h2></div><ol class="live-steps">${steps}</ol></section>
+  return `<section class="live-hero"><div><span class="block-label">${simLive ? 'Offseason in progress' : 'Offseason complete'}</span><h2>${esc(OFFSEASON_STAGES[Math.max(0, reached)]?.[1] || 'Offseason')}</h2></div><ol class="live-steps">${steps}</ol></section>
     <div class="live-grid section-gap">
       <section class="panel live-card"><div class="panel-head"><h3>Top signings</h3><span class="panel-meta">${progress?.transferCount || 0} transfers so far</span></div><div class="archive-list">${signings || '<div class="empty-state compact">The market opens after the coaching changes.</div>'}</div></section>
       <section class="panel live-card"><div class="panel-head"><h3>Coaching changes</h3></div><div class="archive-list">${coaches || '<div class="empty-state compact">No appointments yet.</div>'}</div></section>
@@ -3302,8 +3555,29 @@ function liveOffseasonScreen() {
     </div>`;
 }
 
+function liveDoneBar() {
+  if (!simLiveDone || simLive) return '';
+  const what = simLiveDone.kind === 'offseason' ? `${esc(state.current.seasonLabel)} is ready to start` : state.current.completed ? 'The season is over. Outcomes below; Showcase games stay hidden until you play them.' : `Played to week ${state.current.week}`;
+  return `<section class="live-done" role="status"><div><strong>Simulation complete</strong><span>${what}</span></div><div class="live-done-actions"><button class="control-button" data-action="live-close">Close</button>${simLiveDone.href ? `<button class="control-button live-continue" data-action="live-continue">${esc(simLiveDone.label)}</button>` : ''}</div></section>`;
+}
+
 function liveSimPage() {
-  return simLive === 'offseason' ? liveOffseasonScreen() : liveSeasonScreen();
+  const kind = simLive || simLiveDone?.kind;
+  return `${liveDoneBar()}${kind === 'offseason' ? liveOffseasonScreen() : liveSeasonScreen()}`;
+}
+
+// What the finished offseason produced (the progress record is gone by then).
+function finishedOffseasonProgress() {
+  const data = state.current.offseason;
+  if (!data) return null;
+  const transfers = (data.transfers || []).filter((move) => !move.loan && move.fromClubId && move.toClubId);
+  return {
+    stage: 'done',
+    coachMoves: (data.coachMoves || []).slice(-40).reverse(),
+    topTransfers: [...transfers].sort((a, b) => (b.fee || 0) - (a.fee || 0)).slice(0, 12),
+    transferCount: transfers.length,
+    retirements: (data.retirements || []).filter((row) => row.type !== 'coach' && ['generational', 'legend', 'epic'].includes(row.rarity)).slice(0, 12)
+  };
 }
 
 const nextPaint = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -3390,6 +3664,7 @@ function toast(message, type = 'normal') {
 
 async function simulate(action) {
   if (simBusy) return;
+  simLiveDone = null;
   // Lock the control bar and let the browser paint the busy state before the
   // synchronous simulation blocks the main thread.
   simBusy = true;
@@ -3419,11 +3694,13 @@ async function runSimulation(action) {
   await saveState();
   hallCache = { signature: '', data: null };
   if (action === 'next-season') {
-    window.location.hash = '#/offseason';
+    simLiveDone = { kind: 'offseason', href: '#/offseason', label: 'Continue to the offseason summary' };
   } else if (state.current.completed && state.current.postseason?.prepared && !state.current.postseason?.completed) {
     const unresolved = (state.current.postseason.showcaseMatches || []).some((match) => !match.resolved);
     state.current.postseason.phase = unresolved ? 'games' : 'awards';
-    window.location.hash = unresolved ? '#/postseason/games' : '#/postseason/awards';
+    simLiveDone = { kind: 'season', href: unresolved ? '#/postseason/games' : '#/postseason/awards', label: unresolved ? 'Continue to the Showcase' : 'Continue to Awards Night' };
+  } else if (action === 'simulate-month' || action === 'simulate-season') {
+    simLiveDone = { kind: 'season', href: null, label: '' };
   }
   simBusy = false;
   simBusyLabel = '';
@@ -3660,7 +3937,7 @@ async function finishPostseason() {
   }
   await saveState();
   hallCache = { signature: '', data: null };
-  window.location.hash = '#/offseason';
+  simLiveDone = { kind: 'offseason', href: '#/offseason', label: 'Continue to the offseason summary' };
   render();
 }
 
@@ -3833,13 +4110,21 @@ function bindImages(root = document) {
     const remaining = String(image.dataset.logoAlts || '').split('|').filter(Boolean);
     const next = remaining.shift();
     if (next) { image.dataset.logoAlts = remaining.join('|'); image.src = next; return; }
+    if (image.dataset.clubId) LOGO_RESOLVED.set(image.dataset.clubId, '');
     image.style.display = 'none';
     image.closest('.crest')?.classList.remove('crest-with-logo');
+  });
+  root.querySelectorAll('[data-club-logo]').forEach((image) => {
+    const remember = () => { if (image.dataset.clubId && image.naturalWidth) LOGO_RESOLVED.set(image.dataset.clubId, image.currentSrc || image.src); };
+    if (image.complete) remember(); else image.addEventListener('load', remember, { once: true });
   });
 }
 
 function bind() {
   bindImages();
+  for (const select of document.querySelectorAll('[data-stat-filter]')) {
+    select.addEventListener('change', (event) => { setStatFilter(select.dataset.statFilter, select.dataset.level, event.target.value); render(); });
+  }
   for (const select of document.querySelectorAll('[data-prediction-key]')) {
     select.addEventListener('change', async (event) => {
       if (setPrediction(state, select.dataset.predictionKey, event.target.value)) await saveState();
@@ -4018,6 +4303,12 @@ document.addEventListener('click', async (event) => {
   if (action === 'select-postseason-award') await selectPostseasonAward(target.dataset.awardIndex);
   if (action === 'reveal-all-awards') await revealAllPostseasonAwards();
   if (action === 'finish-postseason') await finishPostseason();
+  if (action === 'live-close') { simLiveDone = null; render(); }
+  if (action === 'live-continue') {
+    const href = simLiveDone?.href;
+    simLiveDone = null;
+    if (href && location.hash !== href) window.location.hash = href; else render();
+  }
   if (action === 'toggle-menu') {
     const sidebarElement = document.getElementById('sidebar');
     const scrim = document.getElementById('sidebar-scrim');
@@ -4082,6 +4373,8 @@ document.addEventListener('keydown', (event) => {
 });
 
 window.addEventListener('hashchange', () => {
+  // Following a link from the finished live screen closes it.
+  if (!simLive) simLiveDone = null;
   document.body.classList.remove('nav-open');
   searchOpen = false;
   clubModalId = null;

@@ -21,6 +21,9 @@ const SLOT_TYPES = {
   CM: { line: 'MF', label: 'CM', roles: { box_to_box: 1, deep_playmaker: 1, attacking_midfielder: 0.92, defensive_midfielder: 0.92, wide_midfielder: 0.88 } },
   AM: { line: 'MF', label: 'AM', roles: { attacking_midfielder: 1, box_to_box: 0.88, deep_playmaker: 0.88, wide_midfielder: 0.86 },
     other: { false_nine: 0.96, inside_forward: 0.86, winger: 0.84 } },
+  // Wing-back in a back three (3-5-2, 3-4-3): a midfield line, filled naturally by wide midfielders.
+  WBM: { line: 'MF', label: 'WB', roles: { wide_midfielder: 1, box_to_box: 0.86, attacking_midfielder: 0.84 },
+    other: { attacking_full_back: 0.96, defensive_full_back: 0.88, winger: 0.9 } },
   WM: { line: 'MF', label: 'WM', roles: { wide_midfielder: 1, box_to_box: 0.86, attacking_midfielder: 0.88 },
     other: { winger: 0.95, inside_forward: 0.86, attacking_full_back: 0.84 } },
   W: { line: 'FW', label: 'W', roles: { winger: 1, inside_forward: 1, false_nine: 0.86 },
@@ -44,10 +47,10 @@ export const FORMATIONS = {
     ['DM', 50, 42], ['CM', 30, 54], ['CM', 70, 54], ['W', 16, 78], ['ST', 50, 84], ['W', 84, 78]] },
   '4-2-3-1': { label: '4-2-3-1', slots: [
     ['GK', 50, 6], ['FB', 14, 26], ['CB', 38, 22], ['CB', 62, 22], ['FB', 86, 26],
-    ['DM', 38, 42], ['CM', 62, 42], ['W', 16, 66], ['AM', 50, 64], ['W', 84, 66], ['ST', 50, 85]] },
+    ['DM', 38, 42], ['CM', 62, 42], ['WM', 16, 66], ['AM', 50, 64], ['WM', 84, 66], ['ST', 50, 85]] },
   '3-5-2': { label: '3-5-2', slots: [
     ['GK', 50, 6], ['CB', 28, 22], ['CB', 50, 20], ['CB', 72, 22],
-    ['WB', 10, 48], ['DM', 50, 42], ['CM', 32, 56], ['CM', 68, 56], ['WB', 90, 48], ['ST', 38, 81], ['ST', 62, 81]] },
+    ['WBM', 10, 48], ['DM', 50, 42], ['CM', 32, 56], ['CM', 68, 56], ['WBM', 90, 48], ['ST', 38, 81], ['ST', 62, 81]] },
   '5-3-2': { label: '5-3-2', slots: [
     ['GK', 50, 6], ['WB', 10, 32], ['CB', 30, 21], ['CB', 50, 19], ['CB', 70, 21], ['WB', 90, 32],
     ['CM', 30, 52], ['DM', 50, 46], ['CM', 70, 52], ['ST', 38, 80], ['ST', 62, 80]] },
@@ -56,8 +59,33 @@ export const FORMATIONS = {
     ['DM', 50, 40], ['WM', 14, 60], ['CM', 38, 58], ['CM', 62, 58], ['WM', 86, 60], ['ST', 50, 84]] },
   '3-4-3': { label: '3-4-3', slots: [
     ['GK', 50, 6], ['CB', 28, 22], ['CB', 50, 20], ['CB', 72, 22],
-    ['WB', 10, 50], ['CM', 38, 48], ['CM', 62, 48], ['WB', 90, 50], ['W', 18, 78], ['ST', 50, 84], ['W', 82, 78]] }
+    ['WBM', 10, 50], ['CM', 38, 48], ['CM', 62, 48], ['WBM', 90, 50], ['W', 18, 78], ['ST', 50, 84], ['W', 82, 78]] }
 };
+
+// Squad of 15 each formation asks for (at most two goalkeepers). The starting XI's lines
+// plus a bench of a reserve keeper and three outfield players add up to these.
+export const FORMATION_SQUAD_TARGETS = {
+  '4-4-2': { GK: 2, DF: 5, MF: 5, FW: 3 },
+  '4-3-3': { GK: 2, DF: 5, MF: 4, FW: 4 },
+  '4-2-3-1': { GK: 2, DF: 5, MF: 5, FW: 3 },
+  '4-1-4-1': { GK: 2, DF: 5, MF: 6, FW: 2 },
+  '3-5-2': { GK: 2, DF: 4, MF: 6, FW: 3 },
+  '3-4-3': { GK: 2, DF: 4, MF: 5, FW: 4 },
+  '5-3-2': { GK: 2, DF: 6, MF: 4, FW: 3 }
+};
+
+export function squadTargetForFormation(formationId) {
+  return FORMATION_SQUAD_TARGETS[formationId] || FORMATION_SQUAD_TARGETS['4-4-2'];
+}
+
+// Strength bonus from formation fit (shared with the engine).
+export function formationFitBonus(fit) {
+  return Math.max(-1.6, Math.min(0.9, ((fit ?? 85) - 84) * 0.06));
+}
+
+// Strength cost of playing the coach's backup system instead of the preferred one.
+export const BACKUP_SYSTEM_PENALTY = 0.8;
+export const BACKUP_SYSTEM_PENALTY_ADAPTIVE = 0.3;
 export const FORMATION_IDS = Object.keys(FORMATIONS);
 
 // Tactical shape of each formation. Attack/defence are small multipliers used by the
@@ -204,18 +232,24 @@ export function formationFitScore(players, formationId, selection = null) {
 // and the second choice is clearly better.
 // options (fitness, unavailable, bias) are passed to the XI selection, so injuries,
 // suspensions, tiredness and rotation shape tonight's line-up.
+// The coach's dilemma: with the wrong players he either plays people out of position in
+// his preferred system (the fit penalty) or switches to a system he likes less (the
+// backup penalty, options.backupPenalty). He picks whichever costs less.
 export function chooseMatchFormation(players, preferred, secondary, options = {}) {
   const pool = options.unavailable ? players.filter((player) => !options.unavailable.has(player.id)) : players;
   const primaryId = FORMATIONS[preferred] ? preferred : '4-4-2';
   const primary = selectStartingEleven(pool, primaryId, options);
   const primaryFit = formationFitScore(pool, primaryId, primary);
-  if (!secondary || secondary === primaryId || !FORMATIONS[secondary] || primaryFit >= 80) {
-    return { formationId: primaryId, fit: primaryFit, selection: primary, fallback: false };
+  const penalty = options.backupPenalty ?? BACKUP_SYSTEM_PENALTY;
+  if (!secondary || secondary === primaryId || !FORMATIONS[secondary] || primaryFit >= 88) {
+    return { formationId: primaryId, fit: primaryFit, selection: primary, fallback: false, systemPenalty: 0 };
   }
   const second = selectStartingEleven(pool, secondary, options);
   const secondFit = formationFitScore(pool, secondary, second);
-  if (secondFit >= primaryFit + 5) return { formationId: secondary, fit: secondFit, selection: second, fallback: true };
-  return { formationId: primaryId, fit: primaryFit, selection: primary, fallback: false };
+  if (formationFitBonus(secondFit) - penalty > formationFitBonus(primaryFit)) {
+    return { formationId: secondary, fit: secondFit, selection: second, fallback: true, systemPenalty: penalty };
+  }
+  return { formationId: primaryId, fit: primaryFit, selection: primary, fallback: false, systemPenalty: 0 };
 }
 
 // Which outfield line and slot type the formation most needs filling, used by
@@ -248,12 +282,12 @@ export const SQUAD_POSITION_TARGET = { GK: 2, DF: 5, MF: 5, FW: 3 };
 
 // Lightweight unnamed depth for clubs that only carry a small named core. Ratings are
 // derived from the club, so nothing is stored in the save.
-export function depthPlayers(teamKey, strength, namedPlayers, size = SQUAD_SIZE, roll = () => 0.5) {
+export function depthPlayers(teamKey, strength, namedPlayers, size = SQUAD_SIZE, roll = () => 0.5, target = SQUAD_POSITION_TARGET) {
   const counts = { GK: 0, DF: 0, MF: 0, FW: 0 };
   for (const player of namedPlayers) counts[player.position] = (counts[player.position] || 0) + 1;
   const missing = [];
   for (const position of ['GK', 'DF', 'MF', 'FW']) {
-    for (let index = counts[position]; index < SQUAD_POSITION_TARGET[position]; index += 1) missing.push(position);
+    for (let index = counts[position]; index < (target[position] ?? SQUAD_POSITION_TARGET[position]); index += 1) missing.push(position);
   }
   const room = Math.max(0, size - namedPlayers.length);
   const result = [];

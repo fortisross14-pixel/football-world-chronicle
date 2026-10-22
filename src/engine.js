@@ -34,7 +34,11 @@ import {
   slotFit,
   effectiveRating,
   slotLine,
-  depthPlayers
+  depthPlayers,
+  formationFitBonus,
+  squadTargetForFormation,
+  BACKUP_SYSTEM_PENALTY,
+  BACKUP_SYSTEM_PENALTY_ADAPTIVE
 } from './squad-model.js';
 import { countryAffinity, domesticMobilityChance, eliteDepartureChance } from './market-policy.js';
 
@@ -66,7 +70,13 @@ const MATCH_CALIBRATION = {
   attackDivisorKnockout: 23,
   defenceDivisorKnockout: 24,
   attackDivisorKnockoutIntl: 22,
-  defenceDivisorKnockoutIntl: 23
+  defenceDivisorKnockoutIntl: 23,
+  // National teams meet rarely and with short preparation: quality gaps play out
+  // less decisively than in club football (tuned with scripts/calibration-international.mjs).
+  internationalGapScale: 0.6,
+  // Continental finals pit a few strong nations against much weaker fields, so gaps are
+  // compressed more there; World Cup fields are closer and keep more of the gap.
+  internationalGapScaleByCompetition: { WC: 0.65, EURO: 0.3, COPA: 0.25, AFCON: 0.35, ASIACUP: 0.35, GOLDCUP: 0.25, OFC: 0.4 }
 };
 // Role families per squad slot so a generated 15 has centre-backs and full-backs,
 // holding and creative midfielders, and both central and wide forwards.
@@ -85,13 +95,28 @@ const SQUAD_ROLE_HINTS = [
   null, null, null, null
 ];
 const INTERNATIONAL_FINAL_SIZES = {
-  Europe: 16,
-  Africa: 16,
-  Asia: 16,
+  Europe: 24,
+  Africa: 24,
+  Asia: 24,
   'North America': 12,
   'South America': 10,
   Oceania: 8
 };
+
+// Final-tournament formats (v4.2). advance = places per group; bestThirds = extra
+// third-placed qualifiers; knockout = teams in the first knockout round.
+const INTERNATIONAL_FORMATS = {
+  WC: { groups: 8, groupSize: 4, advance: 2, bestThirds: 0, knockout: 16 },
+  EURO: { groups: 6, groupSize: 4, advance: 2, bestThirds: 4, knockout: 16 },
+  AFCON: { groups: 6, groupSize: 4, advance: 2, bestThirds: 4, knockout: 16 },
+  ASIACUP: { groups: 6, groupSize: 4, advance: 2, bestThirds: 4, knockout: 16 },
+  GOLDCUP: { groups: 3, groupSize: 4, advance: 2, bestThirds: 2, knockout: 8 },
+  // South America has ten nations: two groups of five, the top four of each go through.
+  COPA: { groups: 2, groupSize: 5, advance: 4, bestThirds: 0, knockout: 8, groupWeeks: [42, 43, 44, 45, 46] },
+  OFC: { groups: 2, groupSize: 4, advance: 2, bestThirds: 0, knockout: 4 }
+};
+// World Cup draw: at most one team per confederation in a group, two for Europe.
+const WORLD_CUP_GROUP_LIMITS = { Europe: 2 };
 
 const COACH_CAREER_TYPES = {
   prodigy: { label: 'Prodigy', multipliers: [0.94, 0.99, 1.02, 1.02, 1.01, 0.99, 0.96, 0.93, 0.90, 0.89] },
@@ -1769,6 +1794,56 @@ function buildGroups(state, ids, groupCount = 4, doubleRound = false) {
   return groups;
 }
 
+// National-team ranking for seeding: squad strength plus recent results (titles and
+// finals in major tournaments over the last eight seasons, fading with age).
+const MAJOR_INTERNATIONAL_IDS = new Set(['WC', 'EURO', 'COPA', 'AFCON', 'ASIACUP', 'GOLDCUP', 'OFC']);
+export function getNationalTeamRanking(state, ids = NATIONAL_TEAMS.map((team) => team.id)) {
+  const recent = new Map();
+  for (const row of state.history?.champions || []) {
+    if (!MAJOR_INTERNATIONAL_IDS.has(row.competitionId) || row.season < state.season - 8) continue;
+    const fade = 1 - (state.season - row.season) / 10;
+    const weight = row.competitionId === 'WC' ? 1.5 : 1;
+    recent.set(row.winnerId, (recent.get(row.winnerId) || 0) + 3 * weight * fade);
+    if (row.runnerUpId) recent.set(row.runnerUpId, (recent.get(row.runnerUpId) || 0) + 1.5 * weight * fade);
+  }
+  return ids.map((id) => {
+    const strength = calculateTeamStrength(state, id, true);
+    const form = Math.min(6, recent.get(id) || 0);
+    return { id, strength: Number(strength.toFixed(1)), form: Number(form.toFixed(1)), score: Number((strength + form).toFixed(2)) };
+  }).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+}
+
+// Seeded draw: pot 1 holds the strongest teams by ranking, one per group, then pots 2, 3, 4.
+// Within a pot the order is drawn at random; limits (World Cup confederations) are
+// respected where the draw allows, otherwise the team goes to any open group.
+function seededGroups(state, ids, groupCount, { limits = null } = {}) {
+  const ranking = getNationalTeamRanking(state, ids);
+  const pots = [];
+  for (let index = 0; index < ranking.length; index += groupCount) pots.push(ranking.slice(index, index + groupCount).map((row) => row.id));
+  const groups = Array.from({ length: groupCount }, (_, index) => ({
+    id: String.fromCharCode(65 + (index % 26)) + (index >= 26 ? String(Math.floor(index / 26) + 1) : ''),
+    teamIds: [],
+    table: [],
+    rounds: []
+  }));
+  const regionOf = (id) => teamById(id)?.region || 'World';
+  for (const pot of pots) {
+    const filled = new Set();
+    for (const id of shuffle(state, pot)) {
+      const open = shuffle(state, groups.filter((group) => !filled.has(group.id)));
+      const allowed = limits ? open.find((group) => group.teamIds.filter((other) => regionOf(other) === regionOf(id)).length < (limits[regionOf(id)] || 1)) : null;
+      const group = allowed || open[0];
+      group.teamIds.push(id);
+      filled.add(group.id);
+    }
+  }
+  groups.forEach((group) => {
+    group.table = makeTable(group.teamIds);
+    group.rounds = roundRobin(group.teamIds, false);
+  });
+  return { groups, draw: { pots, ranking: ranking.map((row) => ({ id: row.id, score: row.score, strength: row.strength, form: row.form })) } };
+}
+
 function latestLeaguePosition(state, clubId) {
   return getHistoricalIndexes(state).latestLeaguePositions.get(clubId) ?? null;
 }
@@ -1949,10 +2024,15 @@ function makeInternationalCompetition(state, {
   knockoutWeeks = [],
   editionYear = state.season
 }) {
-  const groupCount = ids.length ? Math.max(1, Math.ceil(ids.length / groupSize)) : 0;
+  // A format applies only when the field has its exact size (the World Cup's arrives after qualifying).
+  const format = kind === 'finals' && INTERNATIONAL_FORMATS[id] && ids.length === INTERNATIONAL_FORMATS[id].groups * INTERNATIONAL_FORMATS[id].groupSize ? INTERNATIONAL_FORMATS[id] : null;
+  const groupCount = ids.length ? (format && ids.length === format.groups * format.groupSize ? format.groups : Math.max(1, Math.ceil(ids.length / groupSize))) : 0;
+  const seeded = groupCount ? seededGroups(state, ids, groupCount, { limits: id === 'WC' ? WORLD_CUP_GROUP_LIMITS : null }) : null;
   return {
     id,
     name: INTERNATIONAL_COMPETITION_NAMES[id] || id,
+    format,
+    draw: seeded?.draw || null,
     kind,
     confederation,
     friendly,
@@ -1962,7 +2042,7 @@ function makeInternationalCompetition(state, {
     groupWeeks,
     knockoutWeeks,
     stage: scheduled ? 'Scheduled' : friendly ? 'Friendlies' : kind === 'qualifier' ? 'Qualifying' : 'Group Stage',
-    groups: groupCount ? buildGroups(state, ids, groupCount, false) : [],
+    groups: seeded?.groups || [],
     knockout: null,
     championId: null,
     finalistId: null,
@@ -2099,9 +2179,10 @@ function initializeInternationalCompetitions(state) {
       if (ids.length < Math.min(target, NATIONAL_TEAMS.filter((team) => team.region === region).length)) {
         ids = strongestNationalTeams(NATIONAL_TEAMS.filter((team) => team.region === region).map((team) => team.id), target);
       }
+      const format = INTERNATIONAL_FORMATS[id];
       competitions[id] = makeInternationalCompetition(state, {
-        id, ids, groupSize: ids.length <= 10 ? 5 : 4, kind: 'finals', confederation: region,
-        groupWeeks: [44, 45, 46], knockoutWeeks: [47, 48, 49, 50], editionYear: state.season + 1
+        id, ids, groupSize: format?.groupSize || (ids.length <= 10 ? 5 : 4), kind: 'finals', confederation: region,
+        groupWeeks: format?.groupWeeks || [44, 45, 46], knockoutWeeks: [47, 48, 49, 50], editionYear: state.season + 1
       });
     }
   } else {
@@ -2188,7 +2269,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 32,
+    dataRevision: 33,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -2551,11 +2632,16 @@ function buildTeamSquad(players, depthKey, depthStrength, coach, options = {}) {
   }
   for (const list of Object.values(byPosition)) list.sort((a, b) => b.rating - a.rating);
   let candidates = [...byPosition.GK.slice(0, 3), ...byPosition.DF.slice(0, 8), ...byPosition.MF.slice(0, 8), ...byPosition.FW.slice(0, 6)];
-  if (candidates.length < SQUAD_SIZE) {
-    candidates = [...candidates, ...depthPlayers(depthKey, depthStrength, candidates, SQUAD_SIZE, stableStringRoll)];
-  }
   const { primary, secondary } = coachFormationPair(coach);
-  const choice = chooseMatchFormation(candidates, primary, secondary, options.fitness || options.bias ? { fitness: options.fitness, bias: options.bias } : {});
+  if (candidates.length < SQUAD_SIZE) {
+    // Unnamed reserves follow the coach's squad shape.
+    candidates = [...candidates, ...depthPlayers(depthKey, depthStrength, candidates, SQUAD_SIZE, stableStringRoll, squadTargetForFormation(primary))];
+  }
+  const backupPenalty = coach?.profile === 'adaptive' ? BACKUP_SYSTEM_PENALTY_ADAPTIVE : BACKUP_SYSTEM_PENALTY;
+  const choiceOptions = { backupPenalty };
+  if (options.fitness) choiceOptions.fitness = options.fitness;
+  if (options.bias) choiceOptions.bias = options.bias;
+  const choice = chooseMatchFormation(candidates, primary, secondary, choiceOptions);
   const xi = choice.selection.xi;
   const used = new Set(xi.map((row) => row.player));
   const remaining = candidates.filter((player) => !used.has(player)).sort((a, b) => b.rating - a.rating);
@@ -2572,6 +2658,7 @@ function buildTeamSquad(players, depthKey, depthStrength, coach, options = {}) {
     preferredFormation: primary,
     fit: choice.fit,
     fallback: choice.fallback,
+    systemPenalty: choice.systemPenalty || 0,
     xi,
     bench,
     squad
@@ -2580,12 +2667,13 @@ function buildTeamSquad(players, depthKey, depthStrength, coach, options = {}) {
 
 // Every squad object has the same fields from the start (one hidden class for the
 // hot match path); caches are filled in later.
-function makeSquadRecord({ formationId, preferredFormation, fit, fallback, xi, bench, squad, sources = null, rotated = false, absentStarters = 0 }) {
+function makeSquadRecord({ formationId, preferredFormation, fit, fallback, systemPenalty = 0, xi, bench, squad, sources = null, rotated = false, absentStarters = 0 }) {
   return {
     formationId,
     preferredFormation,
     fit,
     fallback,
+    systemPenalty,
     xi,
     bench,
     squad,
@@ -2596,7 +2684,8 @@ function makeSquadRecord({ formationId, preferredFormation, fit, fallback, xi, b
     absentStarters,
     strengthStatic: undefined,
     unitStatic: null,
-    reservePool: null
+    reservePool: null,
+    lightBench: undefined
   };
 }
 
@@ -2710,9 +2799,6 @@ function addPlayerLog(state, playerId, entry) {
 
 // Formation fit adds or removes up to ~1.5 strength points on top of the effective
 // (position-adjusted) ratings already used for the XI.
-function formationFitBonus(fit) {
-  return clamp(((fit ?? 85) - 84) * 0.06, -1.6, 0.9);
-}
 
 function teamForm(state, teamId, isInternational) {
   return (isInternational ? getRuntimeCache(state).nationalById.get(teamId)?.form : getClub(state, teamId)?.form) || 0;
@@ -2752,7 +2838,7 @@ function staticTeamStrength(state, teamId, isInternational, squad) {
   const starImpact = starImpactForLineup(lineup, 'overall');
   const captain = club?.captainId ? lineup.find((player) => player.id === club.captainId) : null;
   const leadership = captain && hasTrait(captain, 'leader') ? 0.5 : captain ? 0.15 : 0;
-  squad.strengthStatic = leadership + base * (1 - namedInfluence) + weighted * namedInfluence + coachBonus + ownerBonus + starImpact - payrollInstability + formationFitBonus(squad.fit);
+  squad.strengthStatic = leadership + base * (1 - namedInfluence) + weighted * namedInfluence + coachBonus + ownerBonus + starImpact - payrollInstability + formationFitBonus(squad.fit) - (squad.systemPenalty || 0);
   return squad.strengthStatic;
 }
 
@@ -3028,6 +3114,7 @@ function matchdaySquad(state, teamId, isInternational, competitionId, stakes) {
     preferredFormation: base.preferredFormation,
     fit: Math.round(Math.max(30, Math.min(100, base.fit - Math.max(0, baseEffective - tonightEffective) * 0.35))),
     fallback: base.fallback,
+    systemPenalty: base.systemPenalty || 0,
     xi,
     bench,
     squad: squadPlayers,
@@ -3137,6 +3224,7 @@ function serveBans(state, competitionId, served) {
 }
 
 function recoverFitness(state) {
+  recoverTeamFitness(state);
   const set = recoverySet(state);
   for (const player of set) {
     if (player.injury && !isPlayerInjured(state, player)) player.injury = undefined;
@@ -3274,6 +3362,7 @@ function lineupSnapshot(squad) {
     preferredFormation: squad.preferredFormation,
     fit: squad.fit,
     fallback: squad.fallback,
+    systemPenalty: squad.systemPenalty || 0,
     xi: squad.xi.map((row) => ({ playerId: row.player.depth ? null : row.player.id, depth: Boolean(row.player.depth), position: row.player.position, rating: row.player.rating, slotType: row.slotType, x: row.x, y: row.y, slotFit: Number(row.fit.toFixed(2)) })),
     bench: squad.bench.map((player) => ({ playerId: player.depth ? null : player.id, depth: Boolean(player.depth), position: player.position, rating: player.rating }))
   };
@@ -3355,8 +3444,9 @@ function matchExpectations(state, { homeId, awayId, competitionId, stage, knocko
   // but still a football score (around 2.6 vs 0.4), not 3.5 vs 0.15.
   const shape = (base, delta) => base * (1 + c.lambdaAmplitude * Math.tanh(delta / base * c.lambdaScale));
   const contextFactor = Math.exp(c.contextPerPoint * (homeContext - awayContext));
-  const homeLambda = clamp(shape(homeBaseGoals, (homeAttack - awayDefence) / attackDivisor + difference / homeEdgeDivisor) * contextFactor, 0.2, 3.6);
-  const awayLambda = clamp(shape(awayBaseGoals, (awayAttack - homeDefence) / defenceDivisor - difference / awayEdgeDivisor) / contextFactor, 0.18, 3.3);
+  const gapScale = isInternational ? (c.internationalGapScaleByCompetition[competitionId] ?? c.internationalGapScale) : 1;
+  const homeLambda = clamp(shape(homeBaseGoals, ((homeAttack - awayDefence) / attackDivisor + difference / homeEdgeDivisor) * gapScale) * contextFactor, 0.2, 3.6);
+  const awayLambda = clamp(shape(awayBaseGoals, ((awayAttack - homeDefence) / defenceDivisor - difference / awayEdgeDivisor) * gapScale) / contextFactor, 0.18, 3.3);
   return { homeStrength, awayStrength, homeLambda, awayLambda };
 }
 
@@ -3414,12 +3504,81 @@ function pickLightAssister(state, sources, scorer) {
   return null;
 }
 
+// ─── Team fitness (quick model) ──────────────────────────────────────────────────
+// One fitness value per club for the season. Every match costs 12, every week gives 20
+// back, so one game a week stays fresh and congested months wear a team down. Before a
+// quick game the coach rotates up to three players from a bench that is close enough
+// to the XI: each change takes away a share of the fatigue (70 % becomes 80, 88, 94).
+// Below 80 % a team is weaker; 80–95 % is fine; above 95 % gives a small edge.
+const TEAM_FITNESS_MATCH_COST = 12;
+const TEAM_FITNESS_WEEKLY_RECOVERY = 20;
+const ROTATION_FATIGUE_LEFT = [1, 0.667, 0.4, 0.2];
+
+function teamFitness(state, teamId) {
+  return state.current.teamFitness?.[teamId] ?? 100;
+}
+
+function drainTeamFitness(state, teamId) {
+  const map = state.current.teamFitness ||= {};
+  map[teamId] = Math.max(40, (map[teamId] ?? 100) - TEAM_FITNESS_MATCH_COST);
+}
+
+function recoverTeamFitness(state) {
+  const map = state.current.teamFitness;
+  if (!map) return;
+  for (const teamId of Object.keys(map)) {
+    const next = map[teamId] + TEAM_FITNESS_WEEKLY_RECOVERY;
+    if (next >= 100) delete map[teamId]; else map[teamId] = next;
+  }
+}
+
+// Rotation and its effect for tonight, in strength points (negative = weaker).
+function teamFitnessEffect(state, teamId, squad) {
+  const fitness = teamFitness(state, teamId);
+  const wanted = fitness >= 85 ? 0 : fitness >= 75 ? 1 : fitness >= 65 ? 2 : 3;
+  let subs = 0;
+  let rotationCost = 0;
+  if (wanted) {
+    const xiAverage = squad.xi.reduce((sum, row) => sum + (row.player.rating || 60), 0) / Math.max(1, squad.xi.length);
+    for (const player of squad.bench) {
+      if (subs >= wanted) break;
+      if (player.position === 'GK' || (player.rating || 60) < xiAverage - 8) continue;
+      rotationCost += Math.max(0, xiAverage - (player.rating || 60)) * 0.04;
+      subs += 1;
+    }
+  }
+  const effective = 100 - (100 - fitness) * ROTATION_FATIGUE_LEFT[subs];
+  const condition = effective < 80 ? -(80 - effective) * 0.12 : effective >= 95 ? 0.5 : 0;
+  return { fitness, effective, subs, delta: condition - rotationCost };
+}
+
+// Quick-model bench: how close the best three outfield substitutes are to the XI. Deep
+// squads finish games stronger; thin ones fade after half-time.
+function lightBenchFactor(squad) {
+  if (squad.lightBench !== undefined) return squad.lightBench;
+  const xiAverage = squad.xi.reduce((sum, row) => sum + (row.player.rating || 60), 0) / Math.max(1, squad.xi.length);
+  const subs = squad.bench.filter((player) => player.position !== 'GK').slice(0, 3);
+  const benchAverage = subs.length ? subs.reduce((sum, player) => sum + (player.rating || 60), 0) / subs.length : xiAverage - 15;
+  squad.lightBench = clamp(1 + (benchAverage - xiAverage + 8) * 0.008, 0.92, 1.05);
+  return squad.lightBench;
+}
+
+
 function simulateLightMatch(state, { homeId, awayId, competitionId, competitionName, week, knockout, stage, table, neutral, record }) {
-  const homeSquad = getClubSquad(state, homeId);
-  const awaySquad = getClubSquad(state, awayId);
+  // Tonight's 15 as in the full engine: injured and banned players out, tired ones rested.
+  // Quick games rotate only tired, injured or banned players (no low-stakes rotation:
+  // rebuilding a line-up for every early cup tie would cost more than the game itself).
+  const stakes = 'normal';
+  const homeSquad = record ? matchdaySquad(state, homeId, false, competitionId, stakes) : getClubSquad(state, homeId);
+  const awaySquad = record ? matchdaySquad(state, awayId, false, competitionId, stakes) : getClubSquad(state, awayId);
   const expectations = matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational: false, neutral, homeSquad, awaySquad, derby: isDerby(homeId, awayId, false) });
-  let homeGoals = poissonSample(state, expectations.homeLambda * LIGHT_SCORE_FACTOR);
-  let awayGoals = poissonSample(state, expectations.awayLambda * LIGHT_SCORE_FACTOR);
+  const homeCondition = teamFitnessEffect(state, homeId, homeSquad).delta;
+  const awayCondition = teamFitnessEffect(state, awayId, awaySquad).delta;
+  const homeLambda = expectations.homeLambda * LIGHT_SCORE_FACTOR * Math.exp(0.04 * homeCondition - 0.02 * awayCondition);
+  const awayLambda = expectations.awayLambda * LIGHT_SCORE_FACTOR * Math.exp(0.04 * awayCondition - 0.02 * homeCondition);
+  // First and second half drawn separately; the bench shapes the second.
+  let homeGoals = poissonSample(state, homeLambda * 0.45) + poissonSample(state, homeLambda * 0.55 * lightBenchFactor(homeSquad));
+  let awayGoals = poissonSample(state, awayLambda * 0.45) + poissonSample(state, awayLambda * 0.55 * lightBenchFactor(awaySquad));
   if (Math.abs(homeGoals - awayGoals) === 1 && random(state) < LIGHT_EQUALISER_CHANCE) {
     if (homeGoals > awayGoals) awayGoals += 1; else homeGoals += 1;
   }
@@ -3457,6 +3616,7 @@ function simulateLightMatch(state, { homeId, awayId, competitionId, competitionN
     row.points += goalsFor > goalsAgainst ? 3 : goalsFor === goalsAgainst ? 1 : 0;
     if (goalsAgainst === 0) row.cleanSheets += 1;
   }
+  if (record) { drainTeamFitness(state, homeId); drainTeamFitness(state, awayId); }
   // One cheap injury roll per side keeps squads honest over a season.
   if (record) {
     for (const squad of [homeSquad, awaySquad]) {
@@ -4322,6 +4482,8 @@ function simulateMatch(state, {
   const homeSquad = record ? matchdaySquad(state, homeId, isInternational, competitionId, stakes) : getTeamSquad(state, homeId, isInternational);
   const awaySquad = record ? matchdaySquad(state, awayId, isInternational, competitionId, stakes) : getTeamSquad(state, awayId, isInternational);
   const servedBans = record ? bansBeforeKickoff(state, competitionId, [homeId, awayId]) : null;
+  // Full-engine club games tire the team too (European weeks show in the league).
+  if (record && !isInternational) { drainTeamFitness(state, homeId); drainTeamFitness(state, awayId); }
   const derby = isDerby(homeId, awayId, isInternational);
   const expectations = matchExpectations(state, { homeId, awayId, competitionId, stage, knockout: knockout || Boolean(aggregate), isInternational, neutral, homeSquad, awaySquad, derby });
   const homeSources = squadMatchSources(homeSquad);
@@ -5059,12 +5221,40 @@ function finalizeQualifiers(state, comp) {
 }
 
 function prepareInternationalKnockout(state, comp) {
+  if (comp.format) return prepareFormatKnockout(state, comp);
   const desired = ['WC', 'CWC'].includes(comp.id) ? 16 : Math.min(8, 2 ** Math.floor(Math.log2(Math.max(2, comp.groups.length * 2))));
   const sortedGroups = comp.groups.map((group) => sortTable(group.table));
   const top = sortedGroups.flatMap((rows, groupIndex) => rows.slice(0, 2).map((row, index) => ({ ...row, groupId: comp.groups[groupIndex].id, groupPosition: index + 1 })));
   const qualifiers = top
     .sort((a, b) => a.groupPosition - b.groupPosition || b.points - a.points || b.gd - a.gd || b.gf - a.gf)
     .slice(0, desired);
+  comp.knockout = {
+    round: qualifiers.length === 16 ? 'Round of 16' : qualifiers.length === 8 ? 'Quarter-final' : 'Semi-final',
+    active: qualifiers.map((row) => row.teamId),
+    openingPairs: pairSeededTeams(state, qualifiers),
+    rounds: []
+  };
+  comp.stage = comp.knockout.round === 'Round of 16' ? 'Round of 16' : `${comp.knockout.round}s`;
+}
+
+// v4.2 formats: the top places of each group plus the best third-placed teams. Group
+// winners (and the best runners-up) are seeded, so they meet runners-up or third-placed
+// teams from other groups in the first knockout round.
+function bestThirdPlaced(comp) {
+  return comp.groups.map((group) => ({ ...sortTable(group.table)[2], groupId: group.id }))
+    .filter((row) => row.teamId)
+    .sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf || a.teamId.localeCompare(b.teamId));
+}
+
+function prepareFormatKnockout(state, comp) {
+  const format = comp.format;
+  const placed = comp.groups.flatMap((group) => sortTable(group.table).slice(0, format.advance)
+    .map((row, index) => ({ ...row, groupId: group.id, groupPosition: index + 1 })));
+  const thirds = format.bestThirds ? bestThirdPlaced(comp).slice(0, format.bestThirds).map((row) => ({ ...row, groupPosition: 3 })) : [];
+  comp.bestThirds = format.bestThirds ? bestThirdPlaced(comp).map((row, index) => ({ teamId: row.teamId, groupId: row.groupId, points: row.points, gd: row.gd, gf: row.gf, qualified: index < format.bestThirds })) : null;
+  const qualifiers = [...placed, ...thirds]
+    .sort((a, b) => a.groupPosition - b.groupPosition || b.points - a.points || b.gd - a.gd || b.gf - a.gf)
+    .slice(0, format.knockout);
   comp.knockout = {
     round: qualifiers.length === 16 ? 'Round of 16' : qualifiers.length === 8 ? 'Quarter-final' : 'Semi-final',
     active: qualifiers.map((row) => row.teamId),
@@ -5138,7 +5328,10 @@ function simulateInternationalCalendar(state, week) {
             const ids = comp.qualifiedIds.length >= 32
               ? comp.qualifiedIds.slice(0, 32)
               : strongestNationalTeams(NATIONAL_TEAMS.map((team) => team.id), 32);
-            worldCup.groups = buildGroups(state, ids, 8, false);
+            const seeded = seededGroups(state, ids, 8, { limits: WORLD_CUP_GROUP_LIMITS });
+            worldCup.groups = seeded.groups;
+            worldCup.draw = seeded.draw;
+            worldCup.format = INTERNATIONAL_FORMATS.WC;
             worldCup.scheduled = false;
             worldCup.stage = 'Group Stage';
           }
@@ -5149,6 +5342,27 @@ function simulateInternationalCalendar(state, week) {
     }
     if ((comp.knockoutWeeks || []).includes(week)) simulateInternationalKnockout(state, comp, week);
   }
+}
+
+// Calibration only: plays one international cycle in a throwaway world with the normal
+// calendar code. cycle 1 = World Cup qualifying + World Cup; 'regional' = continental
+// qualifiers followed by the continental finals. Returns the finals competitions with
+// the matches they produced.
+export function runInternationalCycleForCalibration(state, cycle) {
+  const season = state.season;
+  const play = (targetCycle) => {
+    state.season = season - (season % 4) + targetCycle + 4;
+    state.current.matches = [];
+    state.current.news = [];
+    state.current.internationalCompetitions = initializeInternationalCompetitions(state);
+    for (let week = 1; week <= 52; week += 1) { state.current.week = week; simulateInternationalCalendar(state, week); }
+    return { competitions: state.current.internationalCompetitions, matches: state.current.matches };
+  };
+  let result;
+  if (cycle === 1) result = play(1);
+  else { play(2); result = play(3); }
+  state.season = season;
+  return result;
 }
 
 function advanceDate(state, days = 7) {
@@ -6411,6 +6625,159 @@ function ensureClubRosters(state) {
   recalculateClubPayrollPressure(state);
 }
 
+// ─── Squad Reshape (offseason, after the market) ─────────────────────────────────
+// Every club with a full named squad matches its coach's 15: surplus players in a
+// position are released (lowest rarity first, then lowest rating), then one pool of
+// released players and free agents is shared out in rounds. Top-league first divisions
+// pick first, the most disappointing seasons first; then the other first divisions.
+// Gaps the pool cannot fill get a new squad player.
+const RESHAPE_POSITIONS = ['GK', 'DF', 'MF', 'FW'];
+
+function reshapeDisappointment(state, club, lastSeasonRows) {
+  const row = lastSeasonRows.get(club.id);
+  if (!row) return 0;
+  const leagueClubs = state.clubs.filter((other) => other.leagueId === club.leagueId && other.division === club.division);
+  const expected = 1 + leagueClubs.filter((other) => (other.reputation || 0) > (club.reputation || 0)).length;
+  return row.position - expected;
+}
+
+function runSquadReshape(state) {
+  invalidateRuntimeCache(state);
+  const cache = getRuntimeCache(state);
+  const report = { releases: [], signings: [], spawned: 0 };
+  state.current.reshape = report;
+  const signingSeason = state.season + (state.current.completed ? 1 : 0);
+  const loanedOut = new Map();
+  for (const player of state.players) {
+    if (player.status === 'active' && player.loan) {
+      const list = loanedOut.get(player.loan.parentClubId) || [];
+      list.push(player);
+      loanedOut.set(player.loan.parentClubId, list);
+    }
+  }
+  const clubs = state.clubs.filter((club) => rosterTargetFor(club) >= SQUAD_SIZE);
+  const rosters = new Map();
+  const counts = new Map();
+  const released = new Set();
+  for (const club of clubs) {
+    const target = clubSquadTarget(state, club);
+    const roster = (cache.clubPlayers.get(club.id) || []).filter((player) => player.status === 'active' && player.clubId === club.id);
+    const count = { GK: 0, DF: 0, MF: 0, FW: 0 };
+    for (const player of [...roster, ...(loanedOut.get(club.id) || [])]) count[player.position] += 1;
+    for (const position of RESHAPE_POSITIONS) {
+      let over = count[position] - target[position];
+      if (over <= 0) continue;
+      const candidates = roster.filter((player) => player.position === position && !player.loan)
+        .sort((a, b) => (STAR_RARITIES[a.rarity]?.rank || 1) - (STAR_RARITIES[b.rarity]?.rank || 1) || a.rating - b.rating);
+      for (const player of candidates) {
+        if (over <= 0) break;
+        player.lastClubId = club.id;
+        player.clubId = null;
+        player.contractYears = 0;
+        player.salary = 0;
+        roster.splice(roster.indexOf(player), 1);
+        count[position] -= 1;
+        over -= 1;
+        released.add(player.id);
+        report.releases.push({ playerId: player.id, clubId: club.id, position, rarity: player.rarity, rating: player.rating });
+        if (['generational', 'legend', 'epic'].includes(player.rarity)) {
+          state.current.news.unshift({ id: `news-${signingSeason}-released-${player.id}`, week: 0, importance: player.rarity === 'epic' ? 'digest' : 'major', category: 'Squad Reshape', storyType: 'transfer',
+            headline: `${club.name} release ${player.name}`, body: `The ${STAR_RARITIES[player.rarity].label.toLowerCase()} ${player.roleLabel.toLowerCase()} does not fit the coach's ${coachFormationPair(getCoach(state, club.id, false)).primary} squad.`, entityType: 'player', entityId: player.id });
+        }
+      }
+    }
+    rosters.set(club.id, roster);
+    counts.set(club.id, count);
+  }
+  // One pool, best first within each position.
+  const pool = { GK: [], DF: [], MF: [], FW: [] };
+  for (const player of state.players) if (player.status === 'active' && !player.clubId && pool[player.position]) pool[player.position].push(player);
+  for (const list of Object.values(pool)) list.sort((a, b) => b.rating - a.rating);
+  const lastSeasonRows = new Map((state.history.clubSeasons || []).filter((row) => row.season === signingSeason - 1).map((row) => [row.clubId, row]));
+  const ordered = [...clubs].sort((a, b) => {
+    const groupA = FULL_DETAIL_LEAGUES.has(a.leagueId) ? 0 : 1;
+    const groupB = FULL_DETAIL_LEAGUES.has(b.leagueId) ? 0 : 1;
+    return groupA - groupB || reshapeDisappointment(state, b, lastSeasonRows) - reshapeDisappointment(state, a, lastSeasonRows) || (b.reputation || 0) - (a.reputation || 0) || a.id.localeCompare(b.id);
+  });
+  const deficit = (club) => {
+    const target = clubSquadTarget(state, club);
+    const count = counts.get(club.id);
+    let best = null;
+    for (const position of RESHAPE_POSITIONS) {
+      const gap = target[position] - count[position];
+      if (gap > 0 && (!best || gap > best.gap)) best = { position, gap };
+    }
+    return best;
+  };
+  let progress = true;
+  while (progress) {
+    progress = false;
+    for (const club of ordered) {
+      const need = deficit(club);
+      if (!need) continue;
+      const roster = rosters.get(club.id);
+      const bill = rosterPayroll(roster);
+      const list = pool[need.position];
+      const index = list.findIndex((player) => recruitmentDestinationAllowed(state, player, club)
+        && (!['epic', 'legend', 'generational'].includes(player.rarity) || primeDestinationAllowed(state, player, club))
+        && canClubCarrySalary(club, bill, salaryOfferFor(state, player, club, 'free'), 0, 1.01));
+      if (index < 0) continue;
+      const player = list.splice(index, 1)[0];
+      const formerClubId = player.lastClubId || null;
+      const preTransfer = playerTransferSnapshot(player);
+      player.clubId = club.id;
+      markPlayerArrival(player, signingSeason);
+      player.contractYears = randomInt(state, 1, 3);
+      player.salary = salaryOfferFor(state, player, club, 'free');
+      player.lastClubId = null;
+      player.happiness = clamp(60 + randomInt(state, -5, 8), 45, 90);
+      roster.push(player);
+      counts.get(club.id)[player.position] += 1;
+      const afterRelease = released.has(player.id);
+      const record = { id: `transfer-${state.nextTransferId++}`, season: signingSeason, seasonLabel: formatSeason(signingSeason), playerId: player.id,
+        fromClubId: formerClubId, toClubId: club.id, fee: 0, marketValue: player.marketValue, freeTransfer: true, preTransfer, reshape: true, signedAfterRelease: afterRelease };
+      state.history.transfers.push(record);
+      state.current.transfers.push(record);
+      report.signings.push({ playerId: player.id, clubId: club.id, fromClubId: formerClubId, position: player.position, afterRelease });
+      if (afterRelease && ['generational', 'legend', 'epic'].includes(player.rarity)) {
+        state.current.news.unshift({ id: `news-${signingSeason}-resigned-${player.id}`, week: 0, importance: 'major', category: 'Squad Reshape', storyType: 'transfer',
+          headline: `${club.name} snap up ${player.name}`, body: `Released by ${getClub(state, formerClubId)?.name || 'his club'}, he signs straight away.`, entityType: 'player', entityId: player.id });
+      }
+      progress = true;
+    }
+  }
+  // Remaining gaps: a new squad player near the club's level.
+  for (const club of ordered) {
+    let need = deficit(club);
+    while (need) {
+      const roster = rosters.get(club.id);
+      const generated = createSquadFiller(state, club, need.position, { debutSeason: signingSeason });
+      generated.salary = Number(Math.min(generated.salary, Math.max(0.25, clubPayrollLimit(club) - rosterPayroll(roster))).toFixed(1));
+      state.players.push(generated);
+      roster.push(generated);
+      counts.get(club.id)[need.position] += 1;
+      report.spawned += 1;
+      need = deficit(club);
+    }
+  }
+  invalidateRuntimeCache(state);
+  recalculateClubPayrollPressure(state);
+  return report;
+}
+
+export function getTeamFitness(state, teamId) {
+  return Math.round(teamFitness(state, teamId));
+}
+
+export function getClubSquadTarget(state, clubId) {
+  const club = getClub(state, clubId);
+  return club ? clubSquadTarget(state, club) : null;
+}
+
+export function getSquadReshape(state) {
+  return state.current?.reshape || state.current?.offseason?.reshape || null;
+}
+
 function compactFreeAgentPool(state) {
   const activeCount = state.players.reduce((sum, player) => sum + (player.status === 'active' ? 1 : 0), 0);
   let excess = Math.max(0, activeCount - (state.targetActivePlayers || activeCount));
@@ -7187,6 +7554,12 @@ function positionNeed(state, club) {
   });
 }
 
+// The squad of 15 the club's coach wants (by his preferred formation).
+function clubSquadTarget(state, club) {
+  const coach = club ? getCoach(state, club.id, false) : null;
+  return squadTargetForFormation(coachFormationPair(coach).primary);
+}
+
 function rosterTargetFor(club) {
   if (!club) return CLUB_ROSTER_TARGET.summary;
   return club.division === 2 ? CLUB_ROSTER_TARGET.reserve : CLUB_ROSTER_TARGET[club.tier] || CLUB_ROSTER_TARGET.summary;
@@ -7216,7 +7589,7 @@ function positionNeedFromRoster(state, club, players = []) {
   const counts = { GK:0, DF:0, MF:0, FW:0 };
   const totals = { GK:0, DF:0, MF:0, FW:0 };
   for (const player of players) { counts[player.position] += 1; totals[player.position] += player.rating; }
-  const ideal = rosterTargetFor(club) >= SQUAD_SIZE ? SQUAD_POSITION_TARGET : { GK:1, DF:1, MF:1, FW:1 };
+  const ideal = rosterTargetFor(club) >= SQUAD_SIZE ? clubSquadTarget(state, club) : { GK:1, DF:1, MF:1, FW:1 };
   const missing = positions.filter((position)=>counts[position] < ideal[position]);
   if (missing.length) return missing.sort((a,b)=>(ideal[b]-counts[b])-(ideal[a]-counts[a]) || ({FW:4,MF:3,DF:2,GK:1}[b]-({FW:4,MF:3,DF:2,GK:1}[a])))[0];
   // Clubs buy for their coach's system: a badly filled slot decides the position.
@@ -8854,6 +9227,9 @@ export function* startNextSeasonSteps(state) {
   runLoanMarket(state);
   invalidateRuntimeCache(state);
   ensureClubRosters(state);
+  runSquadReshape(state);
+  state.offseasonProgress.stage = 'reshape';
+  yield 'reshape';
   compactFreeAgentPool(state);
   refreshAllMarketValues(state);
   invalidateRuntimeCache(state);
@@ -8870,7 +9246,8 @@ export function* startNextSeasonSteps(state) {
     freeAgents: (state.players || []).filter((player) => player.status === 'active' && !player.clubId).sort((a,b)=>b.rating-a.rating).slice(0,80).map((player)=>player.id),
     freeAgentSignings: [...(state.current.offseasonFreeAgentSignings || [])].slice(-120),
     coachMoves: [...(state.history.coachMoves || [])].filter((move)=>move.season === state.season).slice(-120),
-    payrollChanges: [...(state.current.payrollChanges || [])]
+    payrollChanges: [...(state.current.payrollChanges || [])],
+    reshape: state.current.reshape || null
   };
   state.pendingPayrollChanges = [];
   addPreseasonMagazine(state);
@@ -8951,6 +9328,7 @@ export function getTeamSquadView(state, teamId, isInternational = false) {
     preferredFormation: squad.preferredFormation,
     fit: squad.fit,
     fallback: squad.fallback,
+    systemPenalty: squad.systemPenalty || 0,
     xi: squad.xi.map((item) => row(item.player, {
       slotType: item.slotType,
       x: item.x,
@@ -9685,6 +10063,20 @@ export function upgradeWorld(state) {
     // v4 Phase 6: predictions game container (picks stay with the reader's save).
     state.predictions ||= { current: null, history: [] };
     state.dataRevision = 32;
+  }
+  if (state.dataRevision < 33) {
+    // v4.2: tournaments already under way keep their old format and random draw (no
+    // format/draw fields); new formats and seeded draws start with the next edition.
+    for (const comp of Object.values(state.current?.internationalCompetitions || {})) {
+      comp.format ??= null;
+      comp.draw ??= null;
+    }
+    // Team fitness (quick model) and the Squad Reshape report start empty.
+    if (state.current) {
+      state.current.teamFitness ||= {};
+      state.current.reshape ??= null;
+    }
+    state.dataRevision = 33;
   }
   return state;
 }
