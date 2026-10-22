@@ -2825,7 +2825,7 @@ const MAJOR_TOURNAMENT_IDS = new Set(['WC', 'EURO', 'COPA', 'AFCON', 'ASIACUP', 
 // Validated favourite ranking per competition object (rank lookups by team id).
 const FAVORITE_RANK_CACHE = new WeakMap();
 
-function tournamentFavoriteBonus(state, competitionId, teamId, isInternational) {
+function tournamentFavoriteBonus(state, competitionId, teamId, isInternational, preview = false) {
   if (!MAJOR_TOURNAMENT_IDS.has(competitionId)) return 0;
   const isMajorGlobal = competitionId === 'CWC';
   const competition = isMajorGlobal
@@ -2838,7 +2838,15 @@ function tournamentFavoriteBonus(state, competitionId, teamId, isInternational) 
   if (!ranks || ranks.groups !== competition.groups || ranks.ranking !== competition.favoriteRanking) {
     const ids = [...new Set(competition.groups.flatMap((group) => group.teamIds || []))];
     if (!ids.length) return 0;
-    if (!Array.isArray(competition.favoriteRanking) || competition.favoriteRanking.length !== ids.length || competition.favoriteRanking.some((id) => !ids.includes(id))) {
+    const stale = !Array.isArray(competition.favoriteRanking) || competition.favoriteRanking.length !== ids.length || competition.favoriteRanking.some((id) => !ids.includes(id));
+    // The ranking is fixed the first time a real match needs it. A preview (odds for
+    // the UI) must not fix it earlier, or viewing a page would change results.
+    if (stale && preview) {
+      const ranking = [...ids].sort((a, b) => calculateTeamStrength(state, b, isInternational) - calculateTeamStrength(state, a, isInternational));
+      const rank = ranking.indexOf(teamId);
+      return rank === 0 ? 3.2 : rank === 1 ? 2.8 : rank === 2 ? 2.4 : rank === 3 ? 2.0 : rank === 4 ? 1.6 : rank < 10 && rank >= 0 ? 0.7 : 0;
+    }
+    if (stale) {
       competition.favoriteRanking = [...ids].sort((a, b) => calculateTeamStrength(state, b, isInternational) - calculateTeamStrength(state, a, isInternational));
     }
     ranks = { groups: competition.groups, ranking: competition.favoriteRanking, byId: new Map(competition.favoriteRanking.map((id, index) => [id, index])) };
@@ -3313,9 +3321,9 @@ function isDerby(homeId, awayId, isInternational) {
   return !isInternational && Boolean(rivalryDefinitionForIds(homeId, awayId));
 }
 
-function matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational, neutral, homeSquad = null, awaySquad = null, derby = false }) {
-  const homeFavoriteBonus = tournamentFavoriteBonus(state, competitionId, homeId, isInternational);
-  const awayFavoriteBonus = tournamentFavoriteBonus(state, competitionId, awayId, isInternational);
+function matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational, neutral, homeSquad = null, awaySquad = null, derby = false, preview = false }) {
+  const homeFavoriteBonus = tournamentFavoriteBonus(state, competitionId, homeId, isInternational, preview);
+  const awayFavoriteBonus = tournamentFavoriteBonus(state, competitionId, awayId, isInternational, preview);
   const homeCoachContext = coachContextBonus(state, homeId, isInternational, competitionId, stage, knockout);
   const awayCoachContext = coachContextBonus(state, awayId, isInternational, competitionId, stage, knockout);
   const homeDynastyPressure = isInternational ? 0 : continentalDynastyPressure(state, homeId, competitionId);
@@ -3365,17 +3373,16 @@ const LIGHT_SCORE_FACTOR = 1.03;
 // independent scorelines, so a one-goal game is sometimes levelled.
 const LIGHT_EQUALISER_CHANCE = 0.08;
 
+// v4.1: every league game is light (tables, scorers and season ratings are what matter
+// there); domestic cups are light until the quarter-finals. The full engine plays
+// continental and international football, cup quarter-finals onwards, two-legged ties
+// and anything involving a followed club.
 function isLightMatch(state, { competitionId, homeId, awayId, stage, isInternational, aggregate }) {
   if (isInternational || aggregate) return false;
-  if (rivalryDefinitionForIds(homeId, awayId)) return false;
   const favourites = state.preferences?.favoriteClubIds || [];
   if (favourites.includes(homeId) || favourites.includes(awayId)) return false;
-  if (state.current.leagues?.[competitionId]) return !FULL_DETAIL_LEAGUES.has(competitionId);
-  if (String(competitionId).startsWith('CUP-')) {
-    const leagueId = String(competitionId).slice(4);
-    if (FULL_DETAIL_LEAGUES.has(leagueId)) return false;
-    return !/Quarter|Semi|Final/i.test(String(stage || ''));
-  }
+  if (state.current.leagues?.[competitionId]) return true;
+  if (String(competitionId).startsWith('CUP-')) return !/Quarter|Semi|Final/i.test(String(stage || ''));
   return false;
 }
 
@@ -3480,7 +3487,8 @@ function simulateLightMatch(state, { homeId, awayId, competitionId, competitionN
     isInternational: false,
     knockout,
     landmark: false,
-    light: true
+    light: true,
+    derby: rivalryDefinitionForIds(homeId, awayId)?.name || null
   };
   state.current.matches.push(match);
   if (table) updateTable(table, homeId, awayId, homeGoals, awayGoals);
@@ -4218,6 +4226,7 @@ function updateSeasonRecords(state) {
 
 // Matches held back for the Showcase count once the postseason is over.
 function releaseHeldRecords(state) {
+  if (state.records?.allTime?.mostGoalsSeason) state.records.allTime.mostGoalsSeason.held = false;
   const held = state.current.heldRecordMatches || [];
   if (!held.length) return;
   const ids = new Set(held);
@@ -4543,7 +4552,7 @@ export function decimalOdds(probabilities) {
 
 // Pre-match odds for a fixture that has not been played (featured matches, Showcase).
 export function getFixtureOdds(state, { homeId, awayId, competitionId, stage = null, knockout = false, isInternational = false, neutral = false }) {
-  const expectations = matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational, neutral, derby: isDerby(homeId, awayId, isInternational) });
+  const expectations = matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational, neutral, derby: isDerby(homeId, awayId, isInternational), preview: true });
   const probabilities = matchOdds(expectations);
   return { probabilities, decimal: decimalOdds(probabilities) };
 }
@@ -5201,6 +5210,9 @@ export function simulateNextWeek(state) {
   simulateGlobalClubCalendar(state, week);
   addWeeklyDigest(state, week, before);
   reviewCoachesMidSeason(state, week);
+  // Light-match appearances and ratings are credited every four weeks, so in-season
+  // award races and squad pages stay current.
+  if (week % 4 === 0 && week < 52) flushLightAppearances(state);
   if (week >= 52) closeSeason(state);
   return state;
 }
@@ -6795,11 +6807,18 @@ function ambitionHappinessChange(state, player, club) {
 }
 
 function evolveWorld(state) {
+  for (const _ of evolveWorldSteps(state)) { /* run every step */ }
+  return state;
+}
+
+// The offseason runs in steps so the UI can show what has happened so far between them.
+function* evolveWorldSteps(state) {
   processPromotionRelegation(state);
   processOwnerTurnover(state);
   processCoachLifecycle(state);
   invalidateRuntimeCache(state);
   runCoachMarket(state);
+  yield 'coaches';
   updateClubFinancialTiers(state);
   advanceLeagueEras(state);
   updateCountryFinancePools(state);
@@ -6923,6 +6942,7 @@ function evolveWorld(state) {
     updatePlayerDiscontent(state, player, player.clubId ? currentClub : null);
     player.fame = clamp(player.fame + randomInt(state, -1, 2), 5, 100);
   }
+  yield 'contracts';
   applyDynastySalaryPressure(state);
   applyPayrollBudgetConstraints(state);
   generateReplacementStars(state);
@@ -8794,7 +8814,15 @@ function closeSeason(state) {
 }
 
 export function startNextSeason(state) {
-  if (!state.current.completed) return state;
+  for (const _ of startNextSeasonSteps(state)) { /* run every step */ }
+  return state;
+}
+
+// Same offseason as startNextSeason, one stage at a time. Each yield gives the stage just
+// finished; getOffseasonProgress(state) describes what has happened so far.
+export function* startNextSeasonSteps(state) {
+  if (!state.current.completed) return;
+  state.offseasonProgress = { fromSeason: state.season, coachMoves: state.history.coachMoves.length, transfers: state.history.transfers.length, stage: 'start' };
   state.history.postseasons ||= [];
   if (state.current.postseason?.prepared && !state.history.postseasons.some((row) => row.season === state.season)) {
     state.history.postseasons.push({
@@ -8807,7 +8835,8 @@ export function startNextSeason(state) {
   archivePredictions(state);
   returnLoanedPlayers(state);
   invalidateRuntimeCache(state);
-  evolveWorld(state);
+  yield 'start';
+  for (const stage of evolveWorldSteps(state)) { state.offseasonProgress.stage = stage; yield stage; }
   state.season += 1;
   carryInjuriesIntoNewSeason(state);
   state.current = newCurrentSeason(state);
@@ -8816,7 +8845,11 @@ export function startNextSeason(state) {
   state.pendingSeasonRetirements = [];
   state.pendingOwnerChanges = [];
   refreshAllMarketValues(state);
+  state.offseasonProgress.stage = 'squads';
+  yield 'squads';
   runTransferMarket(state, false);
+  state.offseasonProgress.stage = 'transfers';
+  yield 'transfers';
   runAcademyIntake(state);
   runLoanMarket(state);
   invalidateRuntimeCache(state);
@@ -8843,7 +8876,25 @@ export function startNextSeason(state) {
   addPreseasonMagazine(state);
   state.current.offseason.headlines = curateOffseasonHeadlines(state);
   archiveWorldNews(state, state.current.offseason.headlines);
-  return state;
+  state.offseasonProgress = undefined;
+  yield 'done';
+}
+
+// What the offseason has produced so far: coach moves, biggest signings, retirements.
+export function getOffseasonProgress(state) {
+  const progress = state.offseasonProgress;
+  if (!progress) return null;
+  const coachMoves = state.history.coachMoves.slice(progress.coachMoves).filter((move) => move.toClubId || move.toNationalTeamId || move.fromClubId);
+  const transfers = state.history.transfers.slice(progress.transfers).filter((move) => !move.loan && move.fromClubId && move.toClubId);
+  const retirements = (state.pendingSeasonRetirements || []).length ? state.pendingSeasonRetirements : (state.current.retirements || []);
+  return {
+    stage: progress.stage,
+    fromSeason: progress.fromSeason,
+    coachMoves: coachMoves.slice(-40).reverse(),
+    topTransfers: [...transfers].sort((a, b) => (b.fee || 0) - (a.fee || 0)).slice(0, 12),
+    transferCount: transfers.length,
+    retirements: retirements.filter((row) => row.type !== 'coach' && ['generational', 'legend', 'epic'].includes(row.rarity)).slice(0, 12)
+  };
 }
 
 export function getLeagueMarketRankings(state, region = null) {

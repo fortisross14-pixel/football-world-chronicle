@@ -124,7 +124,9 @@ let substituteGoals = 0;
 const lightMatches = matches.filter((match) => match.light);
 for (const match of lightMatches) {
   assert(/^(CUP-)?[A-Z]{3}1$/.test(match.competitionId), 'only domestic leagues and cups are played light');
-  assert(!['ENG1', 'ESP1', 'ITA1', 'GER1', 'FRA1', 'POR1', 'NED1', 'BRA1', 'ARG1'].includes(match.competitionId), 'main leagues keep the full engine');
+  // v4.1: every league game is light now (the user asked for leagues to be results,
+  // tables and season stats only); cups stay full from the quarter-finals.
+  assert(!/^CUP-/.test(match.competitionId) || !/Quarter|Semi|Final/i.test(match.stage || ''), 'cup quarter-finals onwards keep the full engine');
   assert.equal(match.goalEvents.length, match.homeGoals + match.awayGoals);
 }
 for (const match of matches.filter((item) => !item.light)) {

@@ -62,7 +62,11 @@ import {
   getPredictionForm,
   setPrediction,
   scorePredictions,
-  getPredictionHistory
+  getPredictionHistory,
+  startNextSeasonSteps,
+  getOffseasonProgress,
+  isShowcaseSelectedMatch,
+  showcaseSelectionMode
 } from './engine.js';
 import { styleMatchup, styleMatchupSummary } from './match-engine.js';
 import { playerPortrait as visualPlayerPortrait, coachPortrait as visualCoachPortrait, clubLogoUrls, competitionEmblem } from './visuals.js';
@@ -112,6 +116,9 @@ let postseasonPlaybackSpeed = 1;
 let postseasonAwardTimers = [];
 let postseasonAwardAnimating = false;
 let simBusy = false;
+// While a long run plays out week by week (or stage by stage), the page area shows a
+// live screen instead of the routed page: 'season' or 'offseason'.
+let simLive = null;
 let simBusyLabel = '';
 let lastRenderedRoute = '';
 let overlayEnter = false; // animate an overlay only on the render that opens it
@@ -2639,7 +2646,7 @@ function playerStatisticsPage(player, career) {
   const shootoutCard = player.position === 'GK' && shootouts.faced
     ? statCard('Shootout saves', `${shootouts.saved}/${shootouts.faced}`, `${shootouts.won}-${shootouts.lost} in shootouts`)
     : statCard('Shootout penalties', shootouts.taken ? `${shootouts.scored}/${shootouts.taken}` : '—', shootouts.shootouts ? `${shootouts.won}-${shootouts.lost} in shootouts` : 'No shootouts yet');
-  return `<div class="stats-ribbon">${statCard('International caps', career.international.caps)}${statCard('International goals', career.international.goals)}${statCard('Trophies', career.honours.length)}${statCard('Individual awards', career.awards.filter((award) => award.rank === 1).length)}${shootoutCard}</div><section class="panel section-gap"><div class="panel-head"><h3>Match log</h3><span class="panel-meta">Current season · cleared at season close</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th class="num">Wk</th><th>Competition</th><th>Opponent</th><th>Result</th><th class="num">Min</th><th class="num">Goals</th><th class="num">Assists</th><th class="num">Rating</th></tr></thead><tbody>${[...career.logs].reverse().slice(0, 80).map((log) => `<tr><td class="num">${log.week}</td><td>${esc(competitionLabel(log.competitionId))}</td><td>${teamLink(log.opponentId, log.isInternational)}</td><td><span class="result-tag form-${String(log.result || '').toLowerCase()}">${log.result}</span> ${log.score}</td><td class="num">${log.minutes != null ? `${log.minutes}${log.started === false ? '<small> sub</small>' : ''}` : '—'}</td><td class="num">${log.goals || '<span class="muted">0</span>'}</td><td class="num">${log.assists || '<span class="muted">0</span>'}</td><td class="num"><b class="rating-chip ${log.rating >= 8 ? 'high' : log.rating < 6.3 ? 'low' : ''}">${log.rating.toFixed(2)}</b></td></tr>`).join('') || `<tr><td colspan="8">${player.clubId && !isFullDetailLeague(clubById(player.clubId)?.leagueId) ? 'Match-by-match logs are kept for the main leagues, continental and international football. Season totals for this league appear at season close.' : 'No matches played this season.'}</td></tr>`}</tbody></table></div></section><section class="panel section-gap"><div class="panel-head"><h3>Season summaries</h3><span class="panel-meta">Permanent history</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Season</th><th>Competition</th><th>Team</th><th class="num">Games</th><th class="num">Goals</th><th class="num">Assists</th><th class="num">CS</th><th class="num">Rating</th></tr></thead><tbody>${[...career.seasons].reverse().map((row) => `<tr><td>${row.seasonLabel}</td><td>${esc(competitionLabel(row.competitionId))}</td><td>${teamLink(row.teamId, row.isInternational)}</td><td class="num">${row.apps}</td><td class="num"><strong>${row.goals}</strong></td><td class="num">${row.assists}</td><td class="num">${row.cleanSheets}</td><td class="num">${row.averageRating.toFixed(2)}</td></tr>`).join('') || '<tr><td colspan="8">No archived seasons yet.</td></tr>'}</tbody></table></div></section>`;
+  return `<div class="stats-ribbon">${statCard('International caps', career.international.caps)}${statCard('International goals', career.international.goals)}${statCard('Trophies', career.honours.length)}${statCard('Individual awards', career.awards.filter((award) => award.rank === 1).length)}${shootoutCard}</div><section class="panel section-gap"><div class="panel-head"><h3>Match log</h3><span class="panel-meta">Current season · cleared at season close</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th class="num">Wk</th><th>Competition</th><th>Opponent</th><th>Result</th><th class="num">Min</th><th class="num">Goals</th><th class="num">Assists</th><th class="num">Rating</th></tr></thead><tbody>${[...career.logs].reverse().slice(0, 80).map((log) => `<tr><td class="num">${log.week}</td><td>${esc(competitionLabel(log.competitionId))}</td><td>${teamLink(log.opponentId, log.isInternational)}</td><td><span class="result-tag form-${String(log.result || '').toLowerCase()}">${log.result}</span> ${log.score}</td><td class="num">${log.minutes != null ? `${log.minutes}${log.started === false ? '<small> sub</small>' : ''}` : '—'}</td><td class="num">${log.goals || '<span class="muted">0</span>'}</td><td class="num">${log.assists || '<span class="muted">0</span>'}</td><td class="num"><b class="rating-chip ${log.rating >= 8 ? 'high' : log.rating < 6.3 ? 'low' : ''}">${log.rating.toFixed(2)}</b></td></tr>`).join('') || `<tr><td colspan="8">${player.clubId && !(state.preferences.favoriteClubIds || []).includes(player.clubId) ? 'League games are played as quick results: match-by-match logs are kept for continental, international and cup knockout football, and for clubs you follow. League appearances and ratings are added every four weeks.' : 'No matches played this season.'}</td></tr>`}</tbody></table></div></section><section class="panel section-gap"><div class="panel-head"><h3>Season summaries</h3><span class="panel-meta">Permanent history</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Season</th><th>Competition</th><th>Team</th><th class="num">Games</th><th class="num">Goals</th><th class="num">Assists</th><th class="num">CS</th><th class="num">Rating</th></tr></thead><tbody>${[...career.seasons].reverse().map((row) => `<tr><td>${row.seasonLabel}</td><td>${esc(competitionLabel(row.competitionId))}</td><td>${teamLink(row.teamId, row.isInternational)}</td><td class="num">${row.apps}</td><td class="num"><strong>${row.goals}</strong></td><td class="num">${row.assists}</td><td class="num">${row.cleanSheets}</td><td class="num">${row.averageRating.toFixed(2)}</td></tr>`).join('') || '<tr><td colspan="8">No archived seasons yet.</td></tr>'}</tbody></table></div></section>`;
 }
 
 function playerHonoursPage(player, career) {
@@ -3209,11 +3216,119 @@ function render() {
   const routeChanged = routeKey !== lastRenderedRoute;
   lastRenderedRoute = routeKey;
   const sidebarScroll = document.getElementById('sidebar-nav')?.scrollTop || 0;
-  document.getElementById('app').innerHTML = `<a class="skip-link" href="#main-content">Skip to content</a><div class="app-shell" data-section="${sectionFor(currentRoute)}">${sidebar(currentRoute)}<button class="sidebar-scrim" id="sidebar-scrim" data-action="close-menu" aria-label="Close navigation" tabindex="-1"></button><div class="main-shell">${topbar(currentRoute)}${sectionStrip(currentRoute)}<main id="main-content" tabindex="-1" class="content${routeChanged ? ' page-enter' : ''}">${navigationTrail(currentRoute)}${page(currentRoute)}</main>${mobileBottomNav(currentRoute)}</div></div>${searchOverlay()}${clubModal()}${postseasonMatchModal()}<div id="toast-root" role="status" aria-live="polite"></div>`;
+  document.getElementById('app').innerHTML = `<a class="skip-link" href="#main-content">Skip to content</a><div class="app-shell" data-section="${sectionFor(currentRoute)}">${sidebar(currentRoute)}<button class="sidebar-scrim" id="sidebar-scrim" data-action="close-menu" aria-label="Close navigation" tabindex="-1"></button><div class="main-shell">${topbar(currentRoute)}${sectionStrip(currentRoute)}<main id="main-content" tabindex="-1" class="content${routeChanged && !simLive ? ' page-enter' : ''}">${simLive ? liveSimPage() : `${navigationTrail(currentRoute)}${page(currentRoute)}`}</main>${mobileBottomNav(currentRoute)}</div></div>${searchOverlay()}${clubModal()}${postseasonMatchModal()}<div id="toast-root" role="status" aria-live="polite"></div>`;
   const sidebarElement = document.getElementById('sidebar-nav');
   if (sidebarElement) sidebarElement.scrollTop = sidebarScroll;
   overlayEnter = false;
   bind();
+}
+
+// ─── Live screens while the season or offseason runs ─────────────────────────────
+const LIVE_LEAGUES = ['ENG1', 'ESP1', 'ITA1', 'GER1', 'FRA1'];
+const LIVE_CUPS = ['UCL', 'LIB', 'UEL'];
+
+function liveLeagueCard(leagueId) {
+  const rows = getLeagueTable(state, leagueId).slice(0, 5);
+  if (!rows.length) return '';
+  const scorers = Object.values(state.current.playerStats || {}).filter((row) => row.competitionId === leagueId && row.goals > 0)
+    .sort((a, b) => b.goals - a.goals).slice(0, 1);
+  return `<section class="panel live-card"><div class="panel-head"><h3>${competitionEmblem(leagueId, 'xs')} ${esc(competitionLabel(leagueId))}</h3></div><table class="data-table live-table"><thead><tr><th>#</th><th>Club</th><th class="num">P</th><th class="num">GF</th><th class="num">GA</th><th class="num">Pts</th></tr></thead><tbody>${rows.map((row, index) => `<tr><td>${index + 1}</td><td>${teamLink(row.teamId)}</td><td class="num">${row.played}</td><td class="num">${row.gf}</td><td class="num">${row.ga}</td><td class="num"><strong>${row.points}</strong></td></tr>`).join('')}</tbody></table>${scorers.length ? `<p class="live-note">Top scorer: ${playerLink(scorers[0].playerId)} · ${scorers[0].goals}</p>` : ''}</section>`;
+}
+
+// Knockout rounds played so far. Showcase-selected games (and anything after them) stay hidden.
+function liveKnockoutCard(competitionId) {
+  const matches = (state.current.matches || []).filter((match) => match.competitionId === competitionId && match.knockout);
+  if (!matches.length) return '';
+  const hidden = matches.filter((match) => isShowcaseSelectedMatch(state, match));
+  const shown = matches.filter((match) => !isShowcaseSelectedMatch(state, match));
+  const stages = [...new Set(shown.map((match) => match.stage || 'Knockout'))];
+  const latest = stages.slice(-2).reverse();
+  const groups = latest.map((stage) => `<div class="live-stage"><span class="block-label">${esc(stage)}</span>${shown.filter((match) => (match.stage || 'Knockout') === stage).map((match) => matchRow(match, true)).join('')}</div>`).join('');
+  return `<section class="panel live-card"><div class="panel-head"><h3>${competitionEmblem(competitionId, 'xs')} ${esc(competitionLabel(competitionId))}</h3>${hidden.length ? '<span class="panel-meta">Showcase games hidden</span>' : ''}</div>${groups || '<div class="empty-state compact">The knockout rounds are still to come.</div>'}</section>`;
+}
+
+// Honours decided so far: top-5 league titles (once every fixture is played), their
+// domestic cups and the continental trophies. Finals picked for the Showcase stay hidden.
+function liveHonoursCard() {
+  const winner = (id, championId, isInternational = false) => {
+    if (showcaseSelectionMode(state, id) !== 'none') return '<span class="muted">Showcase</span>';
+    return championId ? teamLink(championId, isInternational) : '<span class="muted">To be decided</span>';
+  };
+  const cups = Object.values(state.current.domesticCups || {});
+  const continental = Object.values(state.current.continentalCompetitions || {});
+  const rows = LIVE_LEAGUES.map((leagueId) => {
+    const league = state.current.leagues?.[leagueId];
+    if (!league) return '';
+    const size = league.table.length;
+    const finished = size > 1 && league.table.every((row) => row.played >= (size - 1) * 2);
+    const champion = finished ? getLeagueTable(state, leagueId)[0]?.teamId : null;
+    const cup = cups.find((item) => item.id === `CUP-${leagueId}`);
+    return `<tr><td>${competitionEmblem(leagueId, 'xs')} ${esc(competitionLabel(leagueId))}</td><td>${champion ? teamLink(champion) : '<span class="muted">To be decided</span>'}</td><td>${cup ? winner(cup.id, cup.championId) : '—'}</td></tr>`;
+  }).join('');
+  const europe = LIVE_CUPS.map((id) => continental.find((item) => item.id === id)).filter(Boolean)
+    .map((competition) => `<div class="archive-row"><strong>${competitionEmblem(competition.id, 'xs')} ${esc(competitionLabel(competition.id))}</strong><span>${winner(competition.id, competition.championId)}</span></div>`).join('');
+  return `<section class="panel live-card live-wide"><div class="panel-head"><h3>Honours so far</h3></div><div class="table-scroll"><table class="data-table"><thead><tr><th>League</th><th>Champions</th><th>Cup</th></tr></thead><tbody>${rows}</tbody></table></div>${europe ? `<div class="archive-list section-gap">${europe}</div>` : ''}</section>`;
+}
+
+function liveSeasonScreen() {
+  const week = state.current.week || 0;
+  const leagues = LIVE_LEAGUES.map(liveLeagueCard).join('');
+  const cups = LIVE_CUPS.map(liveKnockoutCard).join('');
+  return `<section class="live-hero"><div><span class="block-label">Season in progress</span><h2>Week ${week} of 52</h2></div><div class="live-meter"><i style="width:${Math.round(week / 52 * 100)}%"></i></div></section>
+    <div class="live-grid section-gap">${liveHonoursCard()}</div>
+    ${cups ? `<h2 class="section-title section-gap">Knockout football</h2><div class="live-grid">${cups}</div>` : ''}
+    <h2 class="section-title section-gap">League leaders</h2><div class="live-grid">${leagues}</div>`;
+}
+
+const OFFSEASON_STAGES = [['start', 'Season closed'], ['coaches', 'Coaching market'], ['contracts', 'Contracts and retirements'], ['squads', 'New season set up'], ['transfers', 'Transfer market'], ['done', 'Loans and academy']];
+
+function liveOffseasonScreen() {
+  const progress = getOffseasonProgress(state);
+  const stage = progress?.stage || 'start';
+  const reached = OFFSEASON_STAGES.findIndex(([id]) => id === stage);
+  const steps = OFFSEASON_STAGES.map(([id, label], index) => `<li class="${index < reached ? 'done' : index === reached ? 'active' : ''}">${esc(label)}</li>`).join('');
+  const coaches = (progress?.coachMoves || []).filter((move) => move.toClubId || move.toNationalTeamId).slice(0, 12).map((move) => {
+    const coach = coachById(move.coachId);
+    const destination = move.toClubId ? teamLink(move.toClubId) : teamLink(move.toNationalTeamId, true);
+    return `<div class="archive-row"><strong>${coach ? `<a href="#/coach/${esc(coach.id)}/overview">${esc(coach.name)}</a>` : '—'}</strong><span>${destination}</span></div>`;
+  }).join('');
+  const signings = (progress?.topTransfers || []).map((move) => `<div class="archive-row"><strong>${playerLink(move.playerId)}</strong><span>${teamLink(move.fromClubId)} → ${teamLink(move.toClubId)}</span><b>${move.fee ? money(move.fee) : 'Free'}</b></div>`).join('');
+  const retirements = (progress?.retirements || []).map((row) => `<div class="archive-row"><strong>${playerLink(row.playerId)}</strong><span>${row.formerClubId ? teamLink(row.formerClubId) : ''}</span></div>`).join('');
+  return `<section class="live-hero"><div><span class="block-label">Offseason in progress</span><h2>${esc(OFFSEASON_STAGES[Math.max(0, reached)]?.[1] || 'Offseason')}</h2></div><ol class="live-steps">${steps}</ol></section>
+    <div class="live-grid section-gap">
+      <section class="panel live-card"><div class="panel-head"><h3>Top signings</h3><span class="panel-meta">${progress?.transferCount || 0} transfers so far</span></div><div class="archive-list">${signings || '<div class="empty-state compact">The market opens after the coaching changes.</div>'}</div></section>
+      <section class="panel live-card"><div class="panel-head"><h3>Coaching changes</h3></div><div class="archive-list">${coaches || '<div class="empty-state compact">No appointments yet.</div>'}</div></section>
+      ${retirements ? `<section class="panel live-card"><div class="panel-head"><h3>Star retirements</h3></div><div class="archive-list">${retirements}</div></section>` : ''}
+    </div>`;
+}
+
+function liveSimPage() {
+  return simLive === 'offseason' ? liveOffseasonScreen() : liveSeasonScreen();
+}
+
+const nextPaint = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+// Plays weeks one at a time, repainting the live screen between them.
+async function runWeeksLive(count) {
+  simLive = 'season';
+  for (let index = 0; index < count && !state.current.completed; index += 1) {
+    simulateNextWeek(state);
+    render();
+    await nextPaint();
+  }
+  simLive = null;
+}
+
+// Plays the offseason stage by stage, repainting the live screen between stages.
+async function runOffseasonLive() {
+  simLive = 'offseason';
+  render();
+  await nextPaint();
+  for (const _ of startNextSeasonSteps(state)) {
+    render();
+    await nextPaint();
+  }
+  simLive = null;
 }
 
 function navigationTrail(currentRoute) {
@@ -3286,6 +3401,7 @@ async function simulate(action) {
   } catch (error) {
     console.error(error);
     simBusy = false;
+    simLive = null;
     render();
     toast(error.message || 'Simulation failed.', 'error');
   } finally {
@@ -3297,9 +3413,9 @@ async function simulate(action) {
 async function runSimulation(action) {
   const start = performance.now();
   if (action === 'simulate-week') simulateNextWeek(state);
-  if (action === 'simulate-month') simulateWeeks(state, 4);
-  if (action === 'simulate-season') simulateToSeasonEnd(state);
-  if (action === 'next-season') startNextSeason(state);
+  if (action === 'simulate-month') await runWeeksLive(4);
+  if (action === 'simulate-season') await runWeeksLive(60);
+  if (action === 'next-season') await runOffseasonLive();
   await saveState();
   hallCache = { signature: '', data: null };
   if (action === 'next-season') {
@@ -3533,7 +3649,15 @@ async function finishPostseason() {
   clearPostseasonMatchTimer();
   clearPostseasonAwardTimer();
   if (state.current.postseason) state.current.postseason.completed = true;
-  startNextSeason(state);
+  simBusy = true;
+  simBusyLabel = 'the offseason';
+  try {
+    await runOffseasonLive();
+  } finally {
+    simBusy = false;
+    simBusyLabel = '';
+    simLive = null;
+  }
   await saveState();
   hallCache = { signature: '', data: null };
   window.location.hash = '#/offseason';
