@@ -238,3 +238,50 @@ handful of players per summer.
 | 314159 | 2.28 s (+24 %) | 4.26 s (−47 %) | 5.71 s | 245 MB |
 
 Within budget (percentages against the Phase 0 baseline on this machine).
+
+## Phase 5 — derbies, home advantage, records, sackings, transfer drama and balance rules
+
+Three seeds × six seasons, all overall targets met: 2.73 goals, 45.5 / 25.1 / 29.4,
+12.3 shots, 4.3 on target, 5.1 corners, 2.13 yellows, 0.128 reds (straight-red base rate
+lowered from 0.017 to 0.015 to absorb derbies and hot-headed players), 29.4 % clean sheets.
+Condensed leagues: 2.68 goals, 27.3 % draws. Favourites by power gap unchanged (40 / 47 /
+55 / 64 / 76 %). Spread: 4.3 Ballon d'Or winners and 4.7 UCL winners per seed, 2.9
+champions per elite league. Ballon d'Or podiums 31 FW, 20 MF, 3 DF.
+
+Home edge: league home wins 45.3 % (full engine) and 45.4 % (light); cross-border
+continental games 46.7 %. Derbies: 6.0 cards a match against 4.3. Over eight seasons of
+league derbies (444 matches) the home side won 43.9 % against 44.1 % priced, versus 45.4 %
+in other league games. Altitude: La Paz against a lowland side 4.7 strength points of home
+edge against 2.8.
+
+Mid-season sackings: 32 a season across the world. League points per game in the six
+games before a sacking 0.66, in the six after 1.40 (mostly regression to the mean after
+a bad run, plus a new-coach bounce of up to 1 strength point fading over six weeks).
+
+Balance rules added at the user's request ("fun to watch, not pure"):
+
+- Title fatigue: two consecutive titles in a competition give a small handicap in it
+  (1.5 strength points), three a clear one (4), four or more a very large one (9); three
+  or four titles in the last six seasons count the same way. Leagues feel 40 %.
+- Star hoarding: in the elite market a club's existing stars (generational 3, legend
+  1.6, epic 0.5) divide its pull for another star, and stars are less willing to join a
+  squad full of them. Clubs with 3+ generational/legend players: 1.1 → 0.5–0.8 a season;
+  clubs with two generational players: 0.4 → 0 a season (two seeds, eight seasons).
+
+balance-v316 on four seeds (20 seasons each): 8–11 different UCL winners, at most 7
+titles for one club (Real Madrid, spread over 19 years) and at most 4 in one spell (one
+four-in-a-row; no fifth). balance-v20 now runs 6 / 6 / 8 seeds by default: two seeds no
+longer separated the effects it checks reliably.
+
+### Performance
+
+| Seed | Season | Offseason | Slowest offseason | Save after 20 seasons |
+|---:|---:|---:|---:|---:|
+| 271828 | 2.25 s (+6 %) | 3.64 s (−56 %) | 4.90 s | 247 MB |
+| 314159 | 2.32 s (+26 %) | 3.75 s (−55 %) | 4.58 s | 247 MB |
+
+A first Phase 5 build ran at 2.59–2.61 s a season (+42 % on 314159). Fixes: rivalry lookup
+indexed (it ran for every match), career counters created with each player so player
+objects keep one shape, records bookkeeping without per-match allocations, and the
+bidding-war rival found in one pass. The calibration script's own timing is unreliable
+for this run (the machine slept during it); the table above is from `npm run perf`.

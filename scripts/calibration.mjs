@@ -112,6 +112,16 @@ const ballonPositions = new Map();
 const subsPerTeam = { subs: 0, teams: 0 };
 const availability = { byAbsent: [[0, 0], [0, 0], [0, 0], [0, 0]], injuries: 0 };
 const scorerClubSpread = [];
+// v4 Phase 5: home results by venue type, and the effect of mid-season sackings.
+const venues = new Map();
+const sackings = { count: 0, before: [0, 0], after: [0, 0] };
+const venue = (name, match) => {
+  const row = venues.get(name) || { matches: 0, home: 0, draw: 0, away: 0, cards: 0, carded: 0 };
+  row.matches += 1;
+  if (match.homeGoals > match.awayGoals) row.home += 1; else if (match.homeGoals === match.awayGoals) row.draw += 1; else row.away += 1;
+  if (match.cardEvents) { row.cards += match.cardEvents.length; row.carded += 1; }
+  venues.set(name, row);
+};
 
 for (const seed of seeds) {
   const world = createWorld(seed);
@@ -182,6 +192,20 @@ for (const seed of seeds) {
       }
     }
 
+    const clubCountry = new Map(world.clubs.map((club) => [club.id, club.country]));
+    for (const match of matches) {
+      if (match.isInternational) continue;
+      if (match.derby) venue('derby', match);
+      else if (!match.knockout && LEAGUE_TIER.get(match.competitionId) === 'detailed') venue(match.light ? 'league (light)' : 'league', match);
+      else if (!LEAGUE_TIER.has(match.competitionId) && clubCountry.get(match.homeId) !== clubCountry.get(match.awayId) && !/^final$/i.test(match.stage || '')) venue('continental, cross-border', match);
+    }
+    for (const move of world.history.coachMoves.filter((row) => row.season === world.season && row.reason === 'sacked mid-season')) {
+      sackings.count += 1;
+      const games = matches.filter((match) => LEAGUE_TIER.get(match.competitionId) === 'detailed' && (match.homeId === move.fromClubId || match.awayId === move.fromClubId));
+      const points = (match) => { const own = match.homeId === move.fromClubId ? match.homeGoals : match.awayGoals; const other = match.homeId === move.fromClubId ? match.awayGoals : match.homeGoals; return own > other ? 3 : own === other ? 1 : 0; };
+      for (const match of games.filter((row) => row.week <= move.week).slice(-6)) { sackings.before[0] += points(match); sackings.before[1] += 1; }
+      for (const match of games.filter((row) => row.week > move.week).slice(0, 6)) { sackings.after[0] += points(match); sackings.after[1] += 1; }
+    }
     for (const player of world.players) availability.injuries += (player.injuries || []).filter(([season]) => season === world.season).length;
     const positionById = new Map(world.players.map((player) => [player.id, player.position]));
     for (const stat of world.current.archivedPlayerStats || []) {
@@ -285,6 +309,12 @@ const report = {
   availability: {
     injuriesPerSeason: Math.round(availability.injuries / (seeds.length * seasons)),
     pointsPerGameByMissingStarters: Object.fromEntries(availability.byAbsent.map(([points, games], index) => [index === 3 ? '3+' : String(index), { games, pointsPerGame: Number((points / Math.max(1, games)).toFixed(3)) }]))
+  },
+  homeResultsByVenue: Object.fromEntries([...venues].map(([name, row]) => [name, { matches: row.matches, home: Number((row.home / row.matches).toFixed(3)), draw: Number((row.draw / row.matches).toFixed(3)), away: Number((row.away / row.matches).toFixed(3)), cardsPerMatch: row.carded ? Number((row.cards / row.carded).toFixed(2)) : null }])),
+  midSeasonSackings: {
+    perSeason: Number((sackings.count / (seeds.length * seasons)).toFixed(1)),
+    pointsPerGameSixBefore: Number((sackings.before[0] / Math.max(1, sackings.before[1])).toFixed(2)),
+    pointsPerGameSixAfter: Number((sackings.after[0] / Math.max(1, sackings.after[1])).toFixed(2))
   },
   substitutionsPerTeam: subsPerTeam.teams ? Number((subsPerTeam.subs / subsPerTeam.teams).toFixed(2)) : null,
   timing: {

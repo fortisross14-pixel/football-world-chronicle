@@ -53,7 +53,9 @@ import {
   getPlayerInjuryHistory,
   isFullDetailLeague,
   getPlayerProfileDetails,
-  getClubLoans
+  getClubLoans,
+  getWorldRecords,
+  getDerbyRecord
 } from './engine.js';
 import { styleMatchup, styleMatchupSummary } from './match-engine.js';
 import { playerPortrait as visualPlayerPortrait, coachPortrait as visualCoachPortrait, clubLogoUrls, competitionEmblem } from './visuals.js';
@@ -2622,6 +2624,9 @@ function clubRivalries(clubId) {
   for(const match of state.history.landmarkMatches||[]){ if(isShowcaseMatchEmbargoed(state,match)||match.isInternational||match.stage!=='Final'||![match.homeId,match.awayId].includes(clubId)) continue; const opp=match.homeId===clubId?match.awayId:match.homeId; finalCounts.set(opp,(finalCounts.get(opp)||0)+1); }
   for(const [opponentId,count] of finalCounts) if(count>=2&&!staticRows.some((row)=>row.opponentId===opponentId)) staticRows.push({definition:{name:'emerging finals rivalry'},opponentId,static:false});
   return staticRows.map((row)=>{
+    // v4: the engine keeps an all-time derby ledger (held Showcase matches join it only once revealed).
+    const ledger=row.static?getDerbyRecord(state,clubId,row.opponentId):null;
+    if(ledger) return {...row,matches:ledger.meetings,wins:ledger.wins,draws:ledger.draws,losses:ledger.losses,gf:ledger.gf,ga:ledger.ga,recent:ledger.recent,last:ledger.recent[0]||null};
     const matches=[...(state.history.landmarkMatches||[]),...(state.current.matches||[])].filter((m)=>!isShowcaseMatchEmbargoed(state,m)&&!m.isInternational&&((m.homeId===clubId&&m.awayId===row.opponentId)||(m.awayId===clubId&&m.homeId===row.opponentId)));
     let wins=0,draws=0,losses=0,gf=0,ga=0;
     for(const m of matches){const home=m.homeId===clubId;const a=home?m.homeGoals:m.awayGoals,b=home?m.awayGoals:m.homeGoals;gf+=a;ga+=b;if(a>b)wins++;else if(a<b)losses++;else draws++;}
@@ -2817,7 +2822,7 @@ function clubPage(id, tabRaw = 'overview') {
     const rivals = clubRivalries(club.id);
     return `${head}<section><h2 class="section-title">Club records</h2>${clubRecordsPage(club)}</section>
     <section class="panel section-gap"><div class="panel-head"><h3>Club legends</h3><span class="panel-meta">Decided when a player retires</span></div>${legends.length ? `<div class="legend-grid">${legends.map((row, index) => { const player = playerById(row.playerId); return `<a class="legend-card" href="#/player/${row.playerId}/overview"><b>${index + 1}</b>${player ? playerPortrait(player, 'md') : ''}<div><strong>${esc(player?.name || row.playerId)}</strong><span>${row.seasons} seasons · ${row.games} games · ${row.goals} goals · ${row.titles} titles</span><small>Club legacy ${row.score} · Rating ${row.averageRating.toFixed(2)}</small></div></a>`; }).join('')}</div>` : '<div class="empty-state">No player has yet completed a career worthy of club-legend status.</div>'}</section>
-    <section class="panel section-gap"><div class="panel-head"><h3>Rivalries</h3><span class="panel-meta">Historic and emerging opponents</span></div>${rivals.length ? `<div class="rivalry-grid">${rivals.map((row) => `<article class="rivalry-card"><div><span class="status-pill ${row.static ? 'gold' : ''}">${row.static ? 'Historic rivalry' : 'Emerging rivalry'}</span><h3>${esc(row.definition.name)}</h3><p>${teamLink(row.opponentId)}</p></div><div class="rivalry-record"><strong>${row.wins}-${row.draws}-${row.losses}</strong><span>W-D-L · ${row.gf}-${row.ga} goals</span><small>${row.matches} stored meetings</small></div></article>`).join('')}</div>` : '<div class="empty-state">No established rivalry is stored yet.</div>'}</section>`;
+    <section class="panel section-gap"><div class="panel-head"><h3>Rivalries</h3><span class="panel-meta">Historic and emerging opponents</span></div>${rivals.length ? `<div class="rivalry-grid">${rivals.map((row) => `<article class="rivalry-card"><div><span class="status-pill ${row.static ? 'gold' : ''}">${row.static ? 'Historic rivalry' : 'Emerging rivalry'}</span><h3>${esc(row.definition.name)}</h3><p>${teamLink(row.opponentId)}</p></div><div class="rivalry-record"><strong>${row.wins}-${row.draws}-${row.losses}</strong><span>W-D-L · ${row.gf}-${row.ga} goals</span><small>${row.matches} stored meetings</small></div>${row.recent?.length ? `<div class="rivalry-recent">${row.recent.slice(0, 5).map((meeting) => `<span title="${esc(competitionLabel(meeting.competitionId))}"><small>${getSeasonLabel(meeting.season)}</small> ${esc(getEntityName(state, meeting.homeId, false))} ${meeting.homeGoals}-${meeting.awayGoals} ${esc(getEntityName(state, meeting.awayId, false))}</span>`).join('')}</div>` : ''}</article>`).join('')}</div>` : '<div class="empty-state">No established rivalry is stored yet.</div>'}</section>`;
   }
   const recent = (state.current.matches || []).filter((m) => !isShowcaseMatchEmbargoed(state, m) && !m.isInternational && [m.homeId, m.awayId].includes(club.id)).sort((a, b) => b.week - a.week).slice(0, 4);
   return `${head}<div class="two-column wide-left"><section class="panel"><div class="panel-head"><h3>Current core</h3><a href="#/club/${club.id}/squad">Full squad</a></div><div class="squad-list">${history.allCurrentPlayers.slice(0, 8).map((player) => squadRow(player)).join('')}</div></section>
@@ -2876,6 +2881,39 @@ function aggregateCoachAlmanac(scope = 'all') {
 }
 
 
+// Live records kept by the engine (streaks, scoring, transfers, invincibles, shootouts).
+function liveRecordsSection() {
+  const records = getWorldRecords(state);
+  const all = records.allTime || {};
+  const player = (id) => playerById(id)?.name || '—';
+  const club = (id) => clubById(id)?.name || '—';
+  const cards = [
+    all.longestUnbeaten ? statCard('Longest unbeaten run', all.longestUnbeaten.matches, `${club(all.longestUnbeaten.clubId)} · ${getSeasonLabel(all.longestUnbeaten.season)}`) : '',
+    all.longestWinning ? statCard('Longest winning run', all.longestWinning.matches, `${club(all.longestWinning.clubId)} · ${getSeasonLabel(all.longestWinning.season)}`) : '',
+    all.mostGoalsSeason ? statCard('Most goals in a season', all.mostGoalsSeason.goals, `${player(all.mostGoalsSeason.playerId)} · ${getSeasonLabel(all.mostGoalsSeason.season)}`) : '',
+    all.mostLeagueGoalsClub ? statCard('Most league goals by a club', all.mostLeagueGoalsClub.goals, `${club(all.mostLeagueGoalsClub.clubId)} · ${getSeasonLabel(all.mostLeagueGoalsClub.season)}`) : '',
+    all.recordTransfer ? statCard('Record transfer', money(all.recordTransfer.fee), `${player(all.recordTransfer.playerId)} · ${getSeasonLabel(all.recordTransfer.season)}`) : '',
+    all.mostCareerGoals ? statCard('Most career goals', all.mostCareerGoals.goals, player(all.mostCareerGoals.playerId)) : '',
+    all.mostCareerApps ? statCard('Most appearances', all.mostCareerApps.apps, player(all.mostCareerApps.playerId)) : '',
+    all.youngestScorer ? statCard('Youngest scorer', Math.floor(all.youngestScorer.age), `${player(all.youngestScorer.playerId)} · ${esc(competitionLabel(all.youngestScorer.competitionId))}`) : '',
+    all.oldestScorer ? statCard('Oldest scorer', Math.floor(all.oldestScorer.age), `${player(all.oldestScorer.playerId)} · ${esc(competitionLabel(all.oldestScorer.competitionId))}`) : '',
+    all.biggestWin ? statCard('Biggest win', all.biggestWin.score, `${esc(getEntityName(state, all.biggestWin.homeId, all.biggestWin.isInternational))} v ${esc(getEntityName(state, all.biggestWin.awayId, all.biggestWin.isInternational))}`) : ''
+  ].join('');
+  const invincibles = (records.invincibles || []).slice().reverse().map((row) => `<div class="archive-row"><strong>${getSeasonLabel(row.season)}</strong><span>${teamLink(row.clubId)} · ${esc(competitionLabel(row.leagueId))}</span><b>${row.wins}W ${row.draws}D</b></div>`).join('');
+  const competitionRows = Object.entries(records.competitions || {})
+    .filter(([id, row]) => row.mostGoalsSeason && (state.current.leagues?.[id] ? isFullDetailLeague(id) : true))
+    .slice(0, 40)
+    .map(([id, row]) => `<tr><td>${esc(competitionLabel(id))}</td><td>${row.mostGoalsSeason ? `${playerLink(row.mostGoalsSeason.playerId)} <small>${row.mostGoalsSeason.goals} · ${getSeasonLabel(row.mostGoalsSeason.season)}</small>` : '—'}</td><td>${row.biggestWin ? `${row.biggestWin.score} <small>${getSeasonLabel(row.biggestWin.season)}</small>` : '—'}</td><td>${row.youngestScorer ? `${playerLink(row.youngestScorer.playerId)} <small>${Math.floor(row.youngestScorer.age)}</small>` : '—'}</td><td>${row.mostPoints ? `${teamLink(row.mostPoints.clubId)} <small>${row.mostPoints.points}</small>` : '—'}</td></tr>`).join('');
+  const shootouts = records.shootouts || {};
+  const takers = (shootouts.takers || []).slice(0, 5).map((row) => `<div class="archive-row"><strong>${playerLink(row.id)}</strong><span>${row.scored}/${row.taken} in shootouts</span></div>`).join('');
+  const keepers = (shootouts.keepers || []).slice(0, 5).map((row) => `<div class="archive-row"><strong>${playerLink(row.id)}</strong><span>${row.saved} saves from ${row.faced}</span></div>`).join('');
+  const teams = (shootouts.teams || []).slice(0, 5).map((row) => `<div class="archive-row"><strong>${teamLink(row.id, row.isInternational)}</strong><span>${row.won}-${row.lost} in shootouts</span></div>`).join('');
+  return `<section class="section-gap"><h2 class="section-title">Live records</h2><div class="record-grid">${cards || '<div class="empty-state compact">Records build up as the world plays.</div>'}</div></section>
+    <div class="two-column section-gap"><section class="panel"><div class="panel-head"><h3>Invincibles</h3><span class="panel-meta">Unbeaten league seasons</span></div><div class="archive-list">${invincibles || '<div class="empty-state compact">No unbeaten league season yet.</div>'}</div></section>
+    <section class="panel"><div class="panel-head"><h3>Shootout records</h3><span class="panel-meta">${shootouts.total || 0} shootouts</span></div><span class="block-label">Takers</span><div class="archive-list">${takers || '<div class="empty-state compact">None yet.</div>'}</div><span class="block-label lineup-bench-label">Goalkeepers</span><div class="archive-list">${keepers || '<div class="empty-state compact">None yet.</div>'}</div><span class="block-label lineup-bench-label">Teams</span><div class="archive-list">${teams || '<div class="empty-state compact">None yet.</div>'}</div></section></div>
+    <section class="panel section-gap"><div class="panel-head"><h3>Records by competition</h3></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Competition</th><th>Most goals in a season</th><th>Biggest win</th><th>Youngest scorer</th><th>Most points</th></tr></thead><tbody>${competitionRows || '<tr><td colspan="5">No competition records yet.</td></tr>'}</tbody></table></div></section>`;
+}
+
 function globalRecordsPage() {
   // One-pass aggregates only. The old version called career reducers once per player/coach,
   // which became quadratic and could lock up long universes.
@@ -2918,7 +2956,7 @@ function almanacPage(sectionRaw = 'champions') {
   const section = allowed.includes(sectionRaw) ? sectionRaw : 'champions';
   const tabs = ''; // Archive sub-pages live in the section strip.
   const regionControl = `<label>Region<select id="almanac-region-filter">${regionOptions(almanacRegionFilter)}</select></label>`;
-  if (section === 'records') return `${pageHead('PERMANENT HISTORY','World Records','The biggest career, team, coaching and transfer marks in this universe.')}${tabs}<section class="panel">${globalRecordsPage()}</section>`;
+  if (section === 'records') return `${pageHead('PERMANENT HISTORY','World Records','The biggest career, team, coaching and transfer marks in this universe.')}${tabs}${liveRecordsSection()}<section class="panel section-gap">${globalRecordsPage()}</section>`;
   if (section === 'teams') {
     const sorters = { titles:(a,b)=>b.titles-a.titles||b.wins-a.wins, games:(a,b)=>b.games-a.games, wins:(a,b)=>b.wins-a.wins, winPct:(a,b)=>b.winPct-a.winPct||b.games-a.games, goals:(a,b)=>b.gf-a.gf, cleanSheets:(a,b)=>(b.cleanSheets||0)-(a.cleanSheets||0) };
     const rows = aggregateTeamAlmanac().filter((row)=>{ const country=row.international?nationalById(row.teamId)?.name:clubById(row.teamId)?.country; return almanacRegionFilter==='ALL'||COUNTRY_META[country]?.region===almanacRegionFilter; }).sort(sorters[almanacTeamSort]||sorters.titles).slice(0,150);

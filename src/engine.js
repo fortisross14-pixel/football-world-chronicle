@@ -2188,7 +2188,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 30,
+    dataRevision: 31,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -2264,6 +2264,7 @@ export function createWorld(seed = Date.now() % 2147483647) {
   invalidateRuntimeCache(state);
   refreshAllClubStrengths(state);
   assignAllCaptains(state);
+  ensureCareerCounters(state);
   return state;
 }
 
@@ -2429,6 +2430,46 @@ function coachContextBonus(state, teamId, isInternational, competitionId, stage,
   if (['possession', 'pressing'].includes(coach.profile) && context === 'league') bonus += 0.38 * qualityScale;
   if (coach.profile === 'adaptive') bonus += 0.22 * qualityScale;
   return bonus;
+}
+
+// Title fatigue (deliberate, for a world that stays fun to follow): a side that has won
+// the same competition in consecutive seasons plays it under growing pressure. Two in a
+// row is a small handicap, three a clear one, four or more makes another title very
+// unlikely; three or four titles in the last six seasons count the same way. Leagues feel it at 40 % strength because they run over a whole season.
+const TITLE_FATIGUE = [0, 0, 1.5, 4, 9];
+const TITLE_STREAK_CACHE = new WeakMap();
+function titleStreaks(state) {
+  const champions = state.history?.champions || [];
+  const cached = TITLE_STREAK_CACHE.get(state);
+  if (cached && cached.season === state.season && cached.count === champions.length) return cached.streaks;
+  const bySeason = new Map();
+  for (const row of champions) {
+    if (row.season >= state.season || !row.winnerId) continue;
+    bySeason.set(`${row.competitionId}:${row.season}`, row.winnerId);
+  }
+  // Streak = consecutive titles up to last season; titles in the last six seasons count
+  // too (three of six like three in a row), so alternate-year dynasties feel it as well.
+  const streaks = new Map();
+  for (const row of champions) {
+    if (row.season >= state.season || row.season < state.season - 6 || !row.winnerId) continue;
+    const key = `${row.competitionId}:${row.winnerId}`;
+    if (streaks.has(key)) continue;
+    let consecutive = 0;
+    while (bySeason.get(`${row.competitionId}:${state.season - 1 - consecutive}`) === row.winnerId) consecutive += 1;
+    let recent = 0;
+    for (let season = state.season - 6; season < state.season; season += 1) if (bySeason.get(`${row.competitionId}:${season}`) === row.winnerId) recent += 1;
+    streaks.set(key, Math.max(consecutive, recent >= 3 ? recent : 0));
+  }
+  TITLE_STREAK_CACHE.set(state, { season: state.season, count: champions.length, streaks });
+  return streaks;
+}
+
+function titleFatigue(state, teamId, competitionId) {
+  if (!competitionId) return 0;
+  const streak = titleStreaks(state).get(`${competitionId}:${teamId}`) || 0;
+  if (streak < 2) return 0;
+  const value = TITLE_FATIGUE[Math.min(streak, TITLE_FATIGUE.length - 1)];
+  return state.current?.leagues?.[competitionId] ? value * 0.4 : value;
 }
 
 function continentalDynastyPressure(state, teamId, competitionId) {
@@ -2716,7 +2757,8 @@ function staticTeamStrength(state, teamId, isInternational, squad) {
 
 function calculateTeamStrength(state, teamId, isInternational, squadOverride = null) {
   const squad = squadOverride || getTeamSquad(state, teamId, isInternational);
-  return staticTeamStrength(state, teamId, isInternational, squad) + (squad.xi.length ? teamForm(state, teamId, isInternational) : 0);
+  const bounce = isInternational ? 0 : newCoachBounce(state, getClub(state, teamId));
+  return staticTeamStrength(state, teamId, isInternational, squad) + (squad.xi.length ? teamForm(state, teamId, isInternational) : 0) + bounce;
 }
 
 function calculateUnitStrength(state, teamId, isInternational, unit, baseStrength = null, squadOverride = null) {
@@ -3020,6 +3062,7 @@ function rollInjury(state, player, competitionId, matchId) {
       importance: ['generational', 'legend'].includes(player.rarity) || type === 'career' ? 'major' : 'digest',
       category: 'Injuries',
       storyType: 'injury',
+      matchId: matchId || undefined,
       relevance: 60 + (STAR_RARITIES[player.rarity]?.rank || 1) * 5,
       headline: type === 'career' ? `${player.name} suffers a career-threatening injury` : `${player.name} out for ${weeks} weeks`,
       body: `${club ? `${club.name}'s ` : ''}${(STAR_RARITIES[player.rarity]?.label || '').toLowerCase()} ${player.roleLabel.toLowerCase()} was hurt in the ${getCompetitionName(state, competitionId) || 'match'} and is expected back ${returnSeason > state.season ? 'next season' : `around week ${returnWeek}`}.`,
@@ -3229,7 +3272,47 @@ function lineupSnapshot(squad) {
 
 // Kickoff expectations: squad quality, home edge, coach and competition context set
 // each side's expected goals. Everything after kickoff is played by the match engine.
-function matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational, neutral, homeSquad = null, awaySquad = null }) {
+// ─── Home advantage and derbies ──────────────────────────────────────────────────
+// Venues high enough to trouble visiting sides (metres above sea level).
+const ALTITUDE_VENUES = {
+  'bol-bolivar': 3640, 'bol-the-strongest': 3640, 'bol-always-ready': 4090, 'bol-jorge-wilstermann': 2560,
+  'ecu-ldu-quito': 2850, 'ecu-el-nacional': 2850, 'ecu-aucas': 2850, 'ecu-independiente-del-valle': 2500, 'ecu-deportivo-cuenca': 2560,
+  'col-millonarios': 2640, 'col-independiente-santa-fe': 2640, 'col-la-equidad': 2640, 'col-bogota-fc': 2640,
+  'per-cienciano': 3400, 'per-melgar': 2335,
+  america: 2240, 'cruz-azul': 2240, pumas: 2240, toluca: 2660, pachuca: 2400, 'mex-puebla': 2135,
+  bol: 3640, ecu: 2850, mex: 2240
+};
+const LONG_TRIP_CONFEDERATIONS = new Set(['Asia', 'Africa', 'North America', 'South America']);
+
+// The home edge varies a little: big crowds, long continental trips and altitude add
+// to it; derbies (familiar opponents, a short trip) shrink it; neutral finals have none.
+function homeAdvantage(state, { homeId, awayId, isInternational, competitionId, neutral, derby }) {
+  if (neutral) return 0;
+  let edge = MATCH_CALIBRATION.homeStrengthEdge;
+  if (!isInternational) {
+    const home = getClub(state, homeId);
+    const away = getClub(state, awayId);
+    // Fan bases run from ~12,000 to several million; a typical club sits near 800,000.
+    const crowd = clamp((Math.log10(Math.max(10000, home?.fans || 800000)) - 6.12) * 0.15, -0.12, 0.12);
+    edge *= 1 + crowd;
+    if (home && away && home.country !== away.country) edge += LONG_TRIP_CONFEDERATIONS.has(home.confederation) ? 0.55 : 0.3;
+  }
+  const altitudeGap = (ALTITUDE_VENUES[homeId] || 0) - (ALTITUDE_VENUES[awayId] || 0);
+  if (altitudeGap > 1500) edge += Math.min(2.2, (altitudeGap - 1500) / 900);
+  if (derby) edge *= 0.4;
+  return edge;
+}
+
+// Exposed for regression scripts and the match preview.
+export function getHomeAdvantage(state, options) {
+  return homeAdvantage(state, options);
+}
+
+function isDerby(homeId, awayId, isInternational) {
+  return !isInternational && Boolean(rivalryDefinitionForIds(homeId, awayId));
+}
+
+function matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational, neutral, homeSquad = null, awaySquad = null, derby = false }) {
   const homeFavoriteBonus = tournamentFavoriteBonus(state, competitionId, homeId, isInternational);
   const awayFavoriteBonus = tournamentFavoriteBonus(state, competitionId, awayId, isInternational);
   const homeCoachContext = coachContextBonus(state, homeId, isInternational, competitionId, stage, knockout);
@@ -3238,9 +3321,9 @@ function matchExpectations(state, { homeId, awayId, competitionId, stage, knocko
   const awayDynastyPressure = isInternational ? 0 : continentalDynastyPressure(state, awayId, competitionId);
   const homeBase = calculateTeamStrength(state, homeId, isInternational, homeSquad);
   const awayBase = calculateTeamStrength(state, awayId, isInternational, awaySquad);
-  const homeEdge = neutral ? 0 : MATCH_CALIBRATION.homeStrengthEdge;
-  const homeContext = homeFavoriteBonus + homeCoachContext - homeDynastyPressure;
-  const awayContext = awayFavoriteBonus + awayCoachContext - awayDynastyPressure;
+  const homeEdge = homeAdvantage(state, { homeId, awayId, isInternational, competitionId, neutral, derby });
+  const homeContext = homeFavoriteBonus + homeCoachContext - homeDynastyPressure - titleFatigue(state, homeId, competitionId);
+  const awayContext = awayFavoriteBonus + awayCoachContext - awayDynastyPressure - titleFatigue(state, awayId, competitionId);
   const homeStrength = homeBase + homeContext + homeEdge;
   const awayStrength = awayBase + awayContext;
   // Squad quality and the home edge go through the saturating curve below; coach
@@ -3283,6 +3366,7 @@ const LIGHT_EQUALISER_CHANCE = 0.08;
 
 function isLightMatch(state, { competitionId, homeId, awayId, stage, isInternational, aggregate }) {
   if (isInternational || aggregate) return false;
+  if (rivalryDefinitionForIds(homeId, awayId)) return false;
   const favourites = state.preferences?.favoriteClubIds || [];
   if (favourites.includes(homeId) || favourites.includes(awayId)) return false;
   if (state.current.leagues?.[competitionId]) return !FULL_DETAIL_LEAGUES.has(competitionId);
@@ -3325,7 +3409,7 @@ function pickLightAssister(state, sources, scorer) {
 function simulateLightMatch(state, { homeId, awayId, competitionId, competitionName, week, knockout, stage, table, neutral, record }) {
   const homeSquad = getClubSquad(state, homeId);
   const awaySquad = getClubSquad(state, awayId);
-  const expectations = matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational: false, neutral, homeSquad, awaySquad });
+  const expectations = matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational: false, neutral, homeSquad, awaySquad, derby: isDerby(homeId, awayId, false) });
   let homeGoals = poissonSample(state, expectations.homeLambda * LIGHT_SCORE_FACTOR);
   let awayGoals = poissonSample(state, expectations.awayLambda * LIGHT_SCORE_FACTOR);
   if (Math.abs(homeGoals - awayGoals) === 1 && random(state) < LIGHT_EQUALISER_CHANCE) {
@@ -3399,6 +3483,7 @@ function simulateLightMatch(state, { homeId, awayId, competitionId, competitionN
   };
   state.current.matches.push(match);
   if (table) updateTable(table, homeId, awayId, homeGoals, awayGoals);
+  updateRecordsFromMatch(state, match);
   const homeOutcome = winnerId === homeId ? 'W' : winnerId === awayId ? 'L' : 'D';
   const awayOutcome = homeOutcome === 'W' ? 'L' : homeOutcome === 'L' ? 'W' : 'D';
   recordCoachResult(state, getCoach(state, homeId, false), competitionId, homeId, false, homeGoals, awayGoals, homeOutcome);
@@ -3484,6 +3569,7 @@ function assignPotential(player, { fresh = false } = {}) {
     // Elite prospects arrive closer to their ceiling.
     const eliteTalent = (STAR_RARITIES[player.rarity]?.rank || 1) >= 4 ? 0.45 : 1;
     const gap = Math.round(stableStringRoll(`${player.id}:gap`) * Math.max(0, 7 - (player.careerYear || 0) * 1.5) * eliteTalent);
+    // Prospects stay inside their rarity band; the gap closes as they develop.
     player.baseQuality = Math.max(band.min, player.baseQuality - gap);
     player.rating = clamp(Math.round(player.baseQuality * (player.careerMultipliers?.[player.careerYear] ?? 1)), 51, 100);
   }
@@ -3493,6 +3579,9 @@ function assignPotential(player, { fresh = false } = {}) {
 function initialisePlayerProfile(player, fresh = false) {
   assignPlayerTraits(player);
   assignPotential(player, { fresh });
+  // Career counters (Phase 5) exist from creation so every player keeps one object shape.
+  player.careerGoals ??= 0;
+  player.careerApps ??= 0;
   return player;
 }
 
@@ -3727,6 +3816,352 @@ function runLoanMarket(state) {
   return loans;
 }
 
+
+// ─── Mid-season sackings ─────────────────────────────────────────────────────────
+// Every three weeks boards review coaches whose side sits well below expectations
+// and is in poor form. Patience, coach reputation and recent trophies protect the
+// coach; an interim takes over and the squad usually responds for a few weeks.
+function reviewCoachesMidSeason(state, week) {
+  if (week < 10 || week > 44 || week % 3 !== 0) return;
+  // At most two sackings per league and fifty across the world in a season.
+  const tally = state.current.midSeasonSackings ||= { total: 0, leagues: {} };
+  for (const [leagueId, league] of Object.entries(state.current.leagues || {})) {
+    if (league.tier !== 'detailed') continue;
+    const rows = sortTable(league.table);
+    const size = rows.length;
+    const byReputation = rows.map((row) => getClub(state, row.teamId)).filter(Boolean).sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
+    rows.forEach((row, index) => {
+      if (tally.total >= 50 || (tally.leagues[leagueId] || 0) >= 2 || row.played < 8) return;
+      const club = getClub(state, row.teamId);
+      const coach = club ? getCoach(state, club.id, false) : null;
+      if (!club || !coach || club.lastSackingSeason === state.season) return;
+      const expected = byReputation.indexOf(club) + 1;
+      const actual = index + 1;
+      const gap = actual - expected;
+      const recent = row.form || [];
+      const recentPoints = recent.reduce((sum, result) => sum + (result === 'W' ? 3 : result === 'D' ? 1 : 0), 0) / Math.max(1, recent.length);
+      if (gap < Math.max(3, Math.round(size * 0.2)) || recentPoints >= 1.2) return;
+      const protection = coach.rarity === 'generational' ? 0.25 : coach.rarity === 'legend' ? 0.45 : coach.rarity === 'epic' ? 0.7 : 1;
+      const recentTitles = (state.history.champions || []).some((title) => title.coachId === coach.id && title.season >= state.season - 2) ? 0.5 : 1;
+      const ambition = (club.reputation || 60) >= 86 && actual > 4 ? 0.1 : 0;
+      const chance = clamp((0.025 + gap * 0.008 + (1.2 - recentPoints) * 0.08 + ambition) / (club.ownerPatience || 1) * protection * recentTitles, 0, 0.6);
+      if (random(state) >= chance) return;
+      tally.total += 1;
+      tally.leagues[leagueId] = (tally.leagues[leagueId] || 0) + 1;
+      sackCoachMidSeason(state, club, coach, week, actual);
+    });
+  }
+}
+
+function sackCoachMidSeason(state, club, coach, week, position) {
+  coach.clubId = null;
+  coach.interim = false;
+  coach.performanceScore = -3;
+  club.lastSackingSeason = state.season;
+  state.history.coachMoves.push({ season: state.season, week, coachId: coach.id, fromClubId: club.id, toClubId: null, reason: 'sacked mid-season' });
+  // Interim: the best available domestic coach without a job, or a caretaker.
+  const nationality = COUNTRY_TO_CODE[club.country] || null;
+  let interim = state.coaches.filter((candidate) => candidate.status !== 'retired' && !candidate.clubId && !candidate.nationalTeamId
+    && candidate.nationality === nationality && !['legend', 'generational'].includes(candidate.rarity))
+    .sort((a, b) => b.quality - a.quality)[0];
+  if (!interim) {
+    interim = createStaffMember(state, 'coach', nationality || 'eng', { rarity: random(state) < 0.3 ? 'uncommon' : 'common', careerYear: randomInt(state, 0, 3), debutSeason: state.season, appointmentSeason: state.season, status: 'active' });
+    state.coaches.push(interim);
+    getRuntimeCache(state).coachById.set(interim.id, interim);
+  }
+  assignCoachToClub(state, interim, club);
+  interim.interim = true;
+  club.newCoachBounce = { season: state.season, week, value: 1.0 };
+  state.history.coachMoves.push({ season: state.season, week, coachId: interim.id, fromClubId: null, toClubId: club.id, reason: 'interim appointment' });
+  state.current.news.unshift({
+    id: `news-${state.season}-${week}-sacked-${club.id}`,
+    week,
+    importance: (club.reputation || 60) >= 84 ? 'major' : 'digest',
+    category: 'Coaching Market',
+    storyType: 'sacking',
+    relevance: 55 + Math.max(0, (club.reputation || 60) - 70),
+    headline: `${club.name} sack ${coach.name}`,
+    body: `${coach.name} leaves with the club ${position}${position === 1 ? 'st' : position === 2 ? 'nd' : position === 3 ? 'rd' : 'th'} in the league. ${interim.name} takes charge on an interim basis.`,
+    entityType: 'club',
+    entityId: club.id
+  });
+}
+
+// The new-coach bounce fades over six weeks.
+function newCoachBounce(state, club) {
+  const bounce = club?.newCoachBounce;
+  if (!bounce || bounce.season !== state.season) return 0;
+  const weeks = state.current.week - bounce.week;
+  return weeks >= 0 && weeks < 6 ? bounce.value * (1 - weeks / 6) : 0;
+}
+
+// ─── Records and milestones ──────────────────────────────────────────────────────
+// state.records = { streaks: {clubId: {unbeaten, wins, since}}, allTime: {...},
+//   competitions: {competitionId: {...}}, invincibles: [] }
+// Updated live from every recorded result. Matches selected for the Showcase are
+// held back until the next season starts so nothing reveals an unplayed result.
+const CAREER_GOAL_MILESTONES = [100, 200, 300, 400, 500, 600];
+const CAREER_APP_MILESTONES = [500, 600, 700, 800];
+
+function ensureRecords(state) {
+  state.records ||= { streaks: {}, allTime: {}, competitions: {}, invincibles: [] };
+  state.records.streaks ||= {};
+  state.records.allTime ||= {};
+  state.records.competitions ||= {};
+  state.records.invincibles ||= [];
+  state.records.derbies ||= {};
+  return state.records;
+}
+
+// All-time derby ledger, keyed by the two club ids in alphabetical order.
+function noteDerbyMeeting(state, match) {
+  if (!match.derby || match.isInternational) return;
+  const [a, b] = [match.homeId, match.awayId].sort();
+  const row = ensureRecords(state).derbies[`${a}|${b}`] ||= { a, b, name: match.derby, meetings: 0, aWins: 0, bWins: 0, draws: 0, aGoals: 0, bGoals: 0, recent: [] };
+  const aGoals = match.homeId === a ? match.homeGoals : match.awayGoals;
+  const bGoals = match.homeId === a ? match.awayGoals : match.homeGoals;
+  row.meetings += 1;
+  row.aGoals += aGoals;
+  row.bGoals += bGoals;
+  if (aGoals > bGoals) row.aWins += 1; else if (bGoals > aGoals) row.bWins += 1; else row.draws += 1;
+  row.recent.push({ matchId: match.id, season: match.season ?? state.season, homeId: match.homeId, awayId: match.awayId, homeGoals: match.homeGoals, awayGoals: match.awayGoals, competitionId: match.competitionId, stage: match.stage || null });
+  if (row.recent.length > 6) row.recent.shift();
+}
+
+// Head-to-head from one club's side: wins, draws, losses, goals and recent meetings.
+export function getDerbyRecord(state, clubId, opponentId) {
+  const [a, b] = [clubId, opponentId].sort();
+  const row = state.records?.derbies?.[`${a}|${b}`];
+  if (!row) return null;
+  const mine = clubId === a;
+  return { name: row.name, meetings: row.meetings, wins: mine ? row.aWins : row.bWins, losses: mine ? row.bWins : row.aWins, draws: row.draws, gf: mine ? row.aGoals : row.bGoals, ga: mine ? row.bGoals : row.aGoals, recent: row.recent.slice().reverse() };
+}
+
+function recordStory(state, { id, headline, body, entityType = null, entityId = null, matchId = null, importance = 'major', competitionId = null }) {
+  state.current.news.unshift({
+    id: `news-${state.season}-${state.current.week}-record-${id}`,
+    week: state.current.week,
+    importance,
+    category: 'Records',
+    storyType: 'record',
+    relevance: 72,
+    headline,
+    body,
+    ...(entityType ? { entityType, entityId } : {}),
+    ...(matchId ? { matchId } : {}),
+    ...(competitionId ? { competitionLabel: competitionId } : {})
+  });
+}
+
+function playerAgeYears(state, player) {
+  return state.season - (player.birthYear || state.season - 25) + (state.current.week || 0) / 52;
+}
+
+// Career goal and appearance counters, filled once from history on first use.
+function ensureCareerCounters(state) {
+  if (state.records?.countersReady) return;
+  const goals = new Map();
+  const apps = new Map();
+  for (const row of state.history.playerSeasons || []) {
+    goals.set(row.playerId, (goals.get(row.playerId) || 0) + (row.goals || 0));
+    apps.set(row.playerId, (apps.get(row.playerId) || 0) + (row.apps || 0));
+  }
+  for (const row of Object.values(state.current?.playerStats || {})) {
+    goals.set(row.playerId, (goals.get(row.playerId) || 0) + (row.goals || 0));
+    apps.set(row.playerId, (apps.get(row.playerId) || 0) + (row.apps || 0));
+  }
+  for (const player of state.players) {
+    player.careerGoals = goals.get(player.id) || 0;
+    player.careerApps = apps.get(player.id) || 0;
+  }
+  ensureRecords(state).countersReady = true;
+}
+
+function noteCareerGoal(state, player, match) {
+  const before = player.careerGoals || 0;
+  player.careerGoals = before + 1;
+  const milestone = CAREER_GOAL_MILESTONES.find((value) => before < value && player.careerGoals >= value);
+  if (milestone) {
+    recordStory(state, {
+      id: `goals-${milestone}-${player.id}`,
+      headline: `${player.name} scores career goal number ${milestone}`,
+      body: `${player.name} reaches ${milestone} career goals in the ${match.competitionName || 'match'}.`,
+      entityType: 'player', entityId: player.id, matchId: match.id, importance: milestone >= 300 ? 'feature' : 'major'
+    });
+  }
+  const best = state.records.allTime.mostCareerGoals;
+  if (!best || player.careerGoals > best.goals) {
+    if (best && best.playerId !== player.id && player.careerGoals === best.goals + 1) {
+      recordStory(state, { id: `career-goals-${player.id}`, headline: `${player.name} becomes the all-time leading scorer`, body: `${player.name} passes ${getPlayer(state, best.playerId)?.name || 'the previous record holder'} with ${player.careerGoals} career goals.`, entityType: 'player', entityId: player.id, matchId: match.id, importance: 'feature' });
+    }
+    state.records.allTime.mostCareerGoals = { playerId: player.id, goals: player.careerGoals, season: state.season };
+  }
+}
+
+function noteCareerApps(state, player, count, match = null) {
+  const before = player.careerApps || 0;
+  player.careerApps = before + count;
+  const milestone = CAREER_APP_MILESTONES.find((value) => before < value && player.careerApps >= value);
+  if (milestone && (STAR_RARITIES[player.rarity]?.rank || 1) >= 3) {
+    recordStory(state, { id: `apps-${milestone}-${player.id}`, headline: `${player.name} reaches ${milestone} career appearances`, body: `A landmark for the ${player.roleLabel.toLowerCase()}.`, entityType: 'player', entityId: player.id, matchId: match?.id || null, importance: 'digest' });
+  }
+  const best = state.records.allTime.mostCareerApps;
+  if (!best || player.careerApps > best.apps) state.records.allTime.mostCareerApps = { playerId: player.id, apps: player.careerApps, season: state.season };
+}
+
+function noteStreakRecord(state, records, match, teamId, key, value, label) {
+  if (value < 10) return;
+  const best = records.allTime[key];
+  if (best && value <= best.matches) return;
+  if (value >= 20 && (!best || best.clubId !== teamId)) {
+    recordStory(state, { id: `${key}-${teamId}-${value}`, headline: `${getClub(state, teamId)?.name} set a new record ${label}`, body: `${value} league matches${label === 'unbeaten run' ? ' without defeat' : ' won in a row'}, the longest in history.`, entityType: 'club', entityId: teamId, matchId: match.id });
+  }
+  records.allTime[key] = { clubId: teamId, matches: value, season: state.season, leagueId: match.competitionId };
+}
+
+function noteStreak(state, records, match, teamId, goalsFor, goalsAgainst) {
+  let streak = records.streaks[teamId];
+  if (!streak) streak = records.streaks[teamId] = { unbeaten: 0, wins: 0, since: state.season };
+  if (goalsFor < goalsAgainst) { streak.unbeaten = 0; streak.since = state.season; } else streak.unbeaten += 1;
+  streak.wins = goalsFor > goalsAgainst ? streak.wins + 1 : 0;
+  noteStreakRecord(state, records, match, teamId, 'longestUnbeaten', streak.unbeaten, 'unbeaten run');
+  noteStreakRecord(state, records, match, teamId, 'longestWinning', streak.wins, 'winning run');
+}
+
+// One completed match updates streaks, scoring records and milestones.
+function updateRecordsFromMatch(state, match, players = null) {
+  if (isShowcaseSelectedMatch(state, match)) {
+    (state.current.heldRecordMatches ||= []).push(match.id);
+    return;
+  }
+  const records = ensureRecords(state);
+  ensureCareerCounters(state);
+  noteDerbyMeeting(state, match);
+  const competition = records.competitions[match.competitionId] ||= {};
+  const league = state.current.leagues?.[match.competitionId];
+  // Biggest win in this competition and overall.
+  const margin = Math.abs(match.homeGoals - match.awayGoals);
+  if (margin >= 4) {
+    const entry = { matchId: match.id, season: state.season, homeId: match.homeId, awayId: match.awayId, score: `${match.homeGoals}-${match.awayGoals}`, margin, isInternational: Boolean(match.isInternational), competitionId: match.competitionId };
+    if (!competition.biggestWin || margin > competition.biggestWin.margin) competition.biggestWin = entry;
+    if (!records.allTime.biggestWin || margin > records.allTime.biggestWin.margin) {
+      if (records.allTime.biggestWin && !match.light) recordStory(state, { id: `biggest-win-${match.id}`, headline: `${getTeamName(state, match.winnerId || (match.homeGoals > match.awayGoals ? match.homeId : match.awayId), match.isInternational)} record the biggest win in history`, body: `${getTeamName(state, match.homeId, match.isInternational)} ${match.homeGoals}-${match.awayGoals} ${getTeamName(state, match.awayId, match.isInternational)}.`, matchId: match.id });
+      records.allTime.biggestWin = entry;
+    }
+  }
+  // League streaks: unbeaten and winning runs carry across seasons.
+  if (league && !match.isInternational) {
+    noteStreak(state, records, match, match.homeId, match.homeGoals, match.awayGoals);
+    noteStreak(state, records, match, match.awayId, match.awayGoals, match.homeGoals);
+  }
+  // Goals: milestones, season scoring records, youngest and oldest scorers.
+  for (const goal of match.goalEvents || []) {
+    const player = goal.scorerId ? getPlayer(state, goal.scorerId) : null;
+    if (!player) continue;
+    noteCareerGoal(state, player, match);
+    const age = playerAgeYears(state, player);
+    const young = !competition.youngestScorer || age < competition.youngestScorer.age;
+    const old = !competition.oldestScorer || age > competition.oldestScorer.age;
+    const overallYoung = !match.light && (!records.allTime.youngestScorer || age < records.allTime.youngestScorer.age);
+    const overallOld = !match.light && (!records.allTime.oldestScorer || age > records.allTime.oldestScorer.age);
+    if (young || old || overallYoung || overallOld) {
+      const scorer = { playerId: player.id, age: Number(age.toFixed(2)), season: state.season, competitionId: match.competitionId, matchId: match.id };
+      if (young) competition.youngestScorer = scorer;
+      if (old) competition.oldestScorer = scorer;
+      if (overallYoung) {
+        if (records.allTime.youngestScorer) recordStory(state, { id: `youngest-${player.id}`, headline: `${player.name} becomes the youngest scorer on record`, body: `Scoring at ${Math.floor(age)} in the ${match.competitionName}.`, entityType: 'player', entityId: player.id, matchId: match.id, importance: 'digest' });
+        records.allTime.youngestScorer = scorer;
+      }
+      if (overallOld) records.allTime.oldestScorer = scorer;
+    }
+    const stat = league ? state.current.playerStats[`${player.id}::${match.competitionId}`] : null;
+    if (stat) {
+      const best = competition.mostGoalsSeason;
+      if (!best || stat.goals > best.goals) {
+        if (best && best.season !== state.season && stat.goals === best.goals + 1) {
+          recordStory(state, { id: `league-goals-${match.competitionId}-${player.id}`, headline: `${player.name} breaks the ${match.competitionName} scoring record`, body: `${stat.goals} league goals in a season, one more than ${getPlayer(state, best.playerId)?.name || 'the previous best'}.`, entityType: 'player', entityId: player.id, matchId: match.id, importance: 'feature' });
+        }
+        competition.mostGoalsSeason = { playerId: player.id, goals: stat.goals, season: state.season, teamId: stat.teamId };
+      }
+    }
+  }
+  // Appearances (full-engine matches; light appearances arrive at season close).
+  if (players) for (const row of players) {
+    if (!row.id) continue;
+    const player = getPlayer(state, row.id);
+    if (player) noteCareerApps(state, player, 1, match);
+  }
+}
+
+// Season close: invincibles and season goal tallies; Showcase-held matches wait.
+function updateSeasonRecords(state) {
+  const records = ensureRecords(state);
+  for (const league of Object.values(state.current.leagues || {})) {
+    if (league.tier !== 'detailed') continue;
+    const table = league.table || [];
+    for (const row of table) {
+      const club = getClub(state, row.teamId);
+      if (club?.division !== 1) continue;
+      if (row.played >= 30 && row.losses === 0) {
+        records.invincibles.push({ clubId: row.teamId, season: state.season, leagueId: league.id, played: row.played, wins: row.wins, draws: row.draws, points: row.points });
+        recordStory(state, { id: `invincible-${row.teamId}`, headline: `${club.name} go a whole ${league.name} season unbeaten`, body: `${row.wins} wins and ${row.draws} draws from ${row.played} matches: invincibles.`, entityType: 'club', entityId: row.teamId, importance: 'feature' });
+      }
+      const clubRecord = records.allTime.mostLeagueGoalsClub;
+      if (!clubRecord || row.gf > clubRecord.goals) records.allTime.mostLeagueGoalsClub = { clubId: row.teamId, goals: row.gf, season: state.season, leagueId: league.id };
+      const competition = records.competitions[league.id] ||= {};
+      if (!competition.mostPoints || row.points > competition.mostPoints.points) competition.mostPoints = { clubId: row.teamId, points: row.points, season: state.season };
+    }
+  }
+  // Season goals across all competitions; light-league appearances counted now.
+  const totals = new Map();
+  for (const row of Object.values(state.current.playerStats || {})) totals.set(row.playerId, (totals.get(row.playerId) || 0) + (row.goals || 0));
+  for (const [playerId, goals] of totals) {
+    const best = records.allTime.mostGoalsSeason;
+    if (!best || goals > best.goals) records.allTime.mostGoalsSeason = { playerId, goals, season: state.season, held: true };
+  }
+}
+
+// Matches held back for the Showcase count once the postseason is over.
+function releaseHeldRecords(state) {
+  const held = state.current.heldRecordMatches || [];
+  if (!held.length) return;
+  const ids = new Set(held);
+  state.current.heldRecordMatches = [];
+  for (const match of state.current.archivedKnockoutMatches || []) {
+    if (!ids.has(match.id)) continue;
+    const records = ensureRecords(state);
+    ensureCareerCounters(state);
+    noteDerbyMeeting(state, match);
+    for (const goal of match.goalEvents || []) {
+      const player = goal.scorerId ? getPlayer(state, goal.scorerId) : null;
+      if (player) player.careerGoals = (player.careerGoals || 0) + 1;
+    }
+    const margin = Math.abs(match.homeGoals - match.awayGoals);
+    const competition = records.competitions[match.competitionId] ||= {};
+    if (margin >= 4 && (!competition.biggestWin || margin > competition.biggestWin.margin)) {
+      competition.biggestWin = { matchId: match.id, season: match.season, homeId: match.homeId, awayId: match.awayId, score: `${match.homeGoals}-${match.awayGoals}`, margin, isInternational: Boolean(match.isInternational), competitionId: match.competitionId };
+    }
+  }
+  if (state.records?.allTime?.mostGoalsSeason) state.records.allTime.mostGoalsSeason.held = false;
+}
+
+function noteTransferFeeRecord(state, player, buyer, seller, fee) {
+  const records = ensureRecords(state);
+  const best = records.allTime.recordTransfer;
+  if (fee > 0 && (!best || fee > best.fee)) {
+    if (best) recordStory(state, { id: `fee-${player.id}`, headline: `${player.name} breaks the world transfer record`, body: `${buyer.name} pay ${fee.toFixed(1)}m${seller ? ` to ${seller.name}` : ''}, beating the ${best.fee.toFixed(1)}m paid for ${getPlayer(state, best.playerId)?.name || 'the previous record signing'}.`, entityType: 'player', entityId: player.id, importance: 'feature' });
+    records.allTime.recordTransfer = { playerId: player.id, fee, season: state.season, fromClubId: seller?.id || null, toClubId: buyer.id };
+  }
+}
+
+export function getWorldRecords(state) {
+  const records = ensureRecords(state);
+  const seasonHeld = state.current?.completed && !state.current?.postseason?.completed;
+  const allTime = { ...records.allTime };
+  if (seasonHeld && allTime.mostGoalsSeason?.held && allTime.mostGoalsSeason.season === state.season) delete allTime.mostGoalsSeason;
+  return { allTime, competitions: records.competitions, invincibles: records.invincibles, streaks: records.streaks, shootouts: getShootoutLeaders(state, 5) };
+}
+
 // Season close: light-match appearances become player statistics (starters play
 // every game, substitutes about a third), with ratings from team results and ability.
 function flushLightAppearances(state) {
@@ -3749,6 +4184,7 @@ function flushLightAppearances(state) {
         + ({ GK: -0.04, DF: 0.04, MF: 0.05, FW: 0 }[player.position] || 0), 5.6, 8.6);
       stat.apps += apps;
       stat.starts += starts;
+      noteCareerApps(state, player, apps);
       stat.ratingSum += rating * apps;
       stat.averageRating = stat.ratingSum / stat.apps;
       stat.minutes = (stat.minutes || 0) + apps * (started ? 84 : 25);
@@ -3782,7 +4218,8 @@ function simulateMatch(state, {
   const homeSquad = record ? matchdaySquad(state, homeId, isInternational, competitionId, stakes) : getTeamSquad(state, homeId, isInternational);
   const awaySquad = record ? matchdaySquad(state, awayId, isInternational, competitionId, stakes) : getTeamSquad(state, awayId, isInternational);
   const servedBans = record ? bansBeforeKickoff(state, competitionId, [homeId, awayId]) : null;
-  const expectations = matchExpectations(state, { homeId, awayId, competitionId, stage, knockout: knockout || Boolean(aggregate), isInternational, neutral, homeSquad, awaySquad });
+  const derby = isDerby(homeId, awayId, isInternational);
+  const expectations = matchExpectations(state, { homeId, awayId, competitionId, stage, knockout: knockout || Boolean(aggregate), isInternational, neutral, homeSquad, awaySquad, derby });
   const homeSources = squadMatchSources(homeSquad);
   const awaySources = squadMatchSources(awaySquad);
   const homeFitness = record ? squadFitness(homeSquad) : null;
@@ -3800,7 +4237,10 @@ function simulateMatch(state, {
     aggregate,
     detail,
     legStakes: firstLeg ? 0.5 : 1,
-    bigGameStakes: stakes === 'big' ? 1 : 0
+    bigGameStakes: stakes === 'big' ? 1 : 0,
+    // Derbies are fierce: more fouls and bookings, a little more chaos.
+    cardIntensity: derby ? 1.35 : 1,
+    intensity: derby ? 1.04 : 1
   }, () => random(state));
 
   const homeGoals = result.homeGoals;
@@ -3922,7 +4362,8 @@ function simulateMatch(state, {
     knockout,
     landmark: knockout && /Final|Semi-final/i.test(stage || ''),
     engine: 2,
-    odds: matchOdds(expectations)
+    odds: matchOdds(expectations),
+    ...(derby ? { derby: rivalryDefinitionForIds(homeId, awayId).name } : {})
   };
   if (aggregate) {
     match.aggregate = { home: aggregate.home + homeGoals, away: aggregate.away + awayGoals };
@@ -3937,6 +4378,7 @@ function simulateMatch(state, {
   }
   state.current.matches.push(match);
   if (match.shootout) recordShootout(state, match);
+  updateRecordsFromMatch(state, match, result.players);
   if (servedBans?.size) serveBans(state, competitionId, servedBans);
   applyDiscipline(state, match, competitionId, teamIdFor);
   if (homeSquad.rotated || awaySquad.rotated) {
@@ -4016,6 +4458,14 @@ function generateMatchNews(state, match, homeStrength, awayStrength) {
       headline: `${player?.name || 'A star'} scores ${topScorer[1]} in ${match.competitionName}`,
       body: `${player?.name || 'The scorer'} struck ${topScorer[1]} goals for ${getTeamName(state, match.goalEvents.find((goal) => goal.scorerId === topScorer[0])?.teamId, match.isInternational)} against ${match.goalEvents.find((goal) => goal.scorerId === topScorer[0])?.teamId === match.homeId ? awayName : homeName} in the ${match.stage || 'competition'}, ${advancing ? 'helping the team progress to the next round' : `in a ${match.homeGoals}-${match.awayGoals} result`}.`,
       entityType: 'player', entityId: player?.id, matchId: match.id
+    });
+  }
+  if (match.derby) {
+    const winner = match.winnerId ? getTeamName(state, match.winnerId, false) : null;
+    state.current.news.unshift({
+      id: `news-${match.id}-derby`, week: match.week, importance: relevance >= 50 ? 'major' : 'digest', category: 'Derby', storyType: 'result', relevance: relevance + 10,
+      headline: winner ? `${winner} win the ${match.derby}` : `${match.derby} ends level`,
+      body: `${homeName} ${match.homeGoals}-${match.awayGoals} ${awayName} in the ${match.competitionName}${(match.cardEvents || []).filter((card) => card.type === 'red').length ? ', with a red card in a heated contest' : ''}.`, matchId: match.id
     });
   }
   const favorite = homeStrength - awayStrength >= 10 ? match.homeId : awayStrength - homeStrength >= 10 ? match.awayId : null;
@@ -4619,6 +5069,7 @@ export function simulateNextWeek(state) {
   simulateInternationalCalendar(state, week);
   simulateGlobalClubCalendar(state, week);
   addWeeklyDigest(state, week, before);
+  reviewCoachesMidSeason(state, week);
   if (week >= 52) closeSeason(state);
   return state;
 }
@@ -5001,10 +5452,19 @@ function legacyCompetitionWeight(state, competitionId, isInternational = false) 
   return isInternational ? 1.25 : 1.0;
 }
 
+// Rivalries are looked up for every match, so they are indexed by both orderings.
+let RIVALRY_INDEX = null;
 function rivalryDefinitionForIds(a, b) {
-  return RIVALRY_DEFINITIONS.find((item) =>
-    (item.clubAId === a && item.clubBId === b) || (item.clubAId === b && item.clubBId === a)
-  ) || null;
+  if (!RIVALRY_INDEX) {
+    RIVALRY_INDEX = new Map();
+    for (const item of RIVALRY_DEFINITIONS) {
+      const forward = `${item.clubAId}|${item.clubBId}`;
+      const reverse = `${item.clubBId}|${item.clubAId}`;
+      if (!RIVALRY_INDEX.has(forward)) RIVALRY_INDEX.set(forward, item);
+      if (!RIVALRY_INDEX.has(reverse)) RIVALRY_INDEX.set(reverse, item);
+    }
+  }
+  return RIVALRY_INDEX.get(`${a}|${b}`) || null;
 }
 
 function legacyAwardValue(state, awardRow) {
@@ -5933,8 +6393,11 @@ function runCoachMarket(state) {
     const majorDrought = club.reputation >= 88 && majorTitles.length === 0 && actual > 2 && random(state) < clamp(0.48 / patience, 0.22, 0.82);
     const eliteUpgrade = club.reputation >= 84 && (club.coachQuality || 65) < 78 && random(state) < 0.18;
     const randomDismissal = random(state) < 0.012 / patience;
-    const dismissReason = eliteNoTitleDismissal ? 'dismissed after a trophyless season' : ambitiousNoTitleDismissal ? 'dismissed after failing club expectations' : failure ? 'dismissed for league underperformance' : majorDrought ? 'dismissed after missing major objectives' : eliteUpgrade ? 'elite upgrade' : 'board change';
-    if ((eliteNoTitleDismissal || ambitiousNoTitleDismissal || failure || majorDrought || eliteUpgrade || randomDismissal) && club.coachId) {
+    const dismissReason = getCoach(state, club.id, false)?.interim && (actual > expected) ? 'interim spell ends' : eliteNoTitleDismissal ? 'dismissed after a trophyless season' : ambitiousNoTitleDismissal ? 'dismissed after failing club expectations' : failure ? 'dismissed for league underperformance' : majorDrought ? 'dismissed after missing major objectives' : eliteUpgrade ? 'elite upgrade' : 'board change';
+    const interimCoach = getCoach(state, club.id, false);
+    const interimEnds = Boolean(interimCoach?.interim) && (actual > expected || random(state) < 0.5);
+    if (interimCoach?.interim && !interimEnds) interimCoach.interim = false;
+    if ((interimEnds || eliteNoTitleDismissal || ambitiousNoTitleDismissal || failure || majorDrought || eliteUpgrade || randomDismissal) && club.coachId) {
       const coach = getCoach(state, club.id, false);
       if (coach) {
         coach.clubId = null;
@@ -6678,6 +7141,7 @@ function transferPlayer(state, player, buyer, seller, fee, freeTransfer = false)
   buyer.transferBudget = Math.max(0, buyer.transferBudget - fee);
   player.clubId = buyer.id;
   noteRosterChange(state, player, oldClubId, buyer.id);
+  if (!freeTransfer && fee > 0) noteTransferFeeRecord(state, player, buyer, seller, fee);
   markPlayerArrival(player, state.season);
   player.contractYears = randomInt(state, ['generational', 'legend'].includes(player.rarity) ? 3 : 2, 5);
   player.salary = salaryOfferFor(state, player, buyer, freeTransfer ? 'free' : 'transfer');
@@ -6847,7 +7311,32 @@ export function editorCancelTransfer(state, transferRef) {
   return record;
 }
 
+// Star load of a squad: a generational player counts 3, a legend 1.6, an epic 0.5.
+const STAR_LOAD_WEIGHTS = { generational: 3, legend: 1.6, epic: 0.5 };
+const STAR_LOAD_PENALTY = { generational: 0.9, legend: 0.6, epic: 0.25 };
+function clubStarLoad(roster) {
+  let load = 0;
+  for (const item of roster) load += STAR_LOAD_WEIGHTS[item.rarity] || 0;
+  return load;
+}
+
+function transferDramaStory(state, key, headline, body, playerId, importance = 'major') {
+  state.current.news.unshift({
+    id: `news-${state.season}-drama-${key}`,
+    week: 0,
+    importance,
+    category: 'Transfer Drama',
+    storyType: 'transfer',
+    relevance: 70,
+    headline,
+    body,
+    entityType: 'player',
+    entityId: playerId
+  });
+}
+
 function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = false) {
+  const drama = { refusals: 0 };
   const caps = { generational: initial ? 1 : 3, legend: initial ? 4 : 8, epic: initial ? 7 : 12 };
   const moved = { generational: 0, legend: 0, epic: 0 };
   const movedByPosition = { GK: 0, DF: 0, MF: 0, FW: 0 };
@@ -6932,7 +7421,10 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       const positionFit = (positionNeedFromRoster(state, club, clubRoster) === player.position ? 12 : 3)
         + (systemNeed && systemNeed.line === player.position && slotFit(player, systemNeed.slotType) >= 0.94 ? 5 : 0);
       const eliteAtClub = (rosters.get(club.id) || []).filter((item) => item.rarity === player.rarity).length;
-      const hoardingPenalty = player.rarity === 'generational' ? 1 / (1 + eliteAtClub * 3.2) : player.rarity === 'legend' ? 1 / (1 + eliteAtClub * 0.8) : 1;
+      const sameRarity = player.rarity === 'generational' ? 1 / (1 + eliteAtClub * 3.2) : player.rarity === 'legend' ? 1 / (1 + eliteAtClub * 0.8) : 1;
+      // Balance rule: clubs already loaded with stars are much less likely to land another.
+      const loadWeight = STAR_LOAD_PENALTY[player.rarity] || 0;
+      const hoardingPenalty = sameRarity / (1 + clubStarLoad(rosters.get(club.id) || []) * loadWeight);
       const europePull = migrationPressure >= 45 && club.confederation === 'Europe' ? 1.8 : 1;
       const goalkeeperDemand = player.position === 'GK' ? 0.55 : 1;
       const achievement = playerAchievementScore(state, player, 3);
@@ -6946,26 +7438,66 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       const financePull = Math.max(0.65, Math.min(1.35, countryPool(state, club.country) / 650));
       return Math.max(1, (club.reputation - 63 + positionFit + (club.ownerNegotiationBonus || 0) * 30) * hoardingPenalty * europePull * goalkeeperDemand * developmentFit * leaguePull * destinationPull * institutionalPull * financePull);
     });
-    const fee = seller ? askingPrice(state, player, buyer) : 0;
+    let fee = seller ? askingPrice(state, player, buyer) : 0;
+    // Bidding war: a second big club drives the fee up before the winner is decided.
+    let rival = null;
+    if (seller && random(state) < 0.55) {
+      let rivalScore = -Infinity;
+      for (const club of possibleBuyers) {
+        if (club === buyer || (club.reputation || 0) < 80) continue;
+        const score = clubDestinationScore(state, club);
+        if (score > rivalScore) { rival = club; rivalScore = score; }
+      }
+      if (rival) {
+        const raised = Number((fee * (1.08 + random(state) * 0.14)).toFixed(1));
+        if (raised <= Math.max(buyer.transferBudget, buyer.finances * 0.6)) fee = raised; else rival = null;
+      }
+    }
     const europeStepUp = seller?.confederation !== 'Europe' && buyer.confederation === 'Europe' ? 0.16 : 0;
     const destinationGain = clubDestinationScore(state, buyer) - (seller ? clubDestinationScore(state, seller) : 58);
+    const personality = hasTrait(player, 'loyal') && seller ? -0.18 : hasTrait(player, 'mercenary') ? 0.1 : 0;
+    // Stars hesitate to join a dressing room already full of stars (minutes, status).
+    const crowdedStage = (STAR_LOAD_PENALTY[player.rarity] || 0) ? -Math.min(0.3, clubStarLoad(rosters.get(buyer.id) || []) * 0.045) : 0;
     const acceptance = clamp(
       0.44 + desire / 160 + migrationPressure / 125
       + destinationGain / 65
       + Math.max(0, 2 - (player.contractYears || 0)) * 0.10
       + (buyer.ownerNegotiationBonus || 0) * 0.35
-      + europeStepUp,
+      + europeStepUp + personality + crowdedStage,
       0.32,
       0.998
     );
-    if (random(state) > acceptance) continue;
+    if (random(state) > acceptance) {
+      if (['legend', 'generational'].includes(player.rarity) && drama.refusals < 4) {
+        drama.refusals += 1;
+        transferDramaStory(state, `refuses-${player.id}-${buyer.id}`, `${player.name} turns down ${buyer.name}`, `${player.name} rejects the move${seller ? ` and stays at ${seller.name}` : ''} for now.`, player.id);
+      }
+      continue;
+    }
+    // A late collapse: medical, personal terms or a last-minute change of heart.
+    if (seller && random(state) < 0.05) {
+      transferDramaStory(state, `collapse-${player.id}-${buyer.id}`, `${player.name}'s move to ${buyer.name} collapses`, `The deal falls through at the last moment; ${player.name} remains at ${seller.name}.`, player.id);
+      continue;
+    }
     const oldClubId = player.clubId;
     transferPlayer(state, player, buyer, seller, fee, !seller);
+    if (rival) transferDramaStory(state, `race-${player.id}`, `${buyer.name} win the race for ${player.name}`, `${buyer.name} beat ${rival.name} to the signing after a bidding war that pushed the fee to ${fee.toFixed(1)}m.`, player.id, 'feature');
     if (oldClubId && rosters.has(oldClubId)) rosters.set(oldClubId, rosters.get(oldClubId).filter((item) => item.id !== player.id));
     rosters.get(buyer.id).push(player);
     moved[player.rarity] += 1;
     movedByPosition[player.position] += 1;
     moves += 1;
+  }
+  // Summer standoffs: restless stars who wanted out but are still there.
+  if (!initial) {
+    let holdouts = 0;
+    for (const { player, seller } of candidates) {
+      if (holdouts >= 4 || !seller || player.clubId !== seller.id) continue;
+      if (!['legend', 'generational'].includes(player.rarity) || (player.happiness ?? 60) >= 35) continue;
+      holdouts += 1;
+      player.happiness = Math.max(5, (player.happiness ?? 40) - 4);
+      transferDramaStory(state, `holdout-${player.id}`, `${player.name} stays at ${seller.name} after a summer standoff`, `No acceptable offer arrived; the ${STAR_RARITIES[player.rarity].label.toLowerCase()} star begins the season unhappy.`, player.id, 'digest');
+    }
   }
   return moves;
 }
@@ -8061,7 +8593,15 @@ function preparePostseasonExperience(state) {
 }
 
 function closeSeason(state) {
+  ensureCareerCounters(state);
+  // Condensed leagues play without match records: their goals join careers here.
+  for (const row of Object.values(state.current.playerStats || {})) {
+    if (state.current.leagues?.[row.competitionId]?.tier !== 'summary' || !row.goals) continue;
+    const player = getPlayer(state, row.playerId);
+    if (player) player.careerGoals = (player.careerGoals || 0) + row.goals;
+  }
   flushLightAppearances(state);
+  updateSeasonRecords(state);
   calculateAwards(state);
   archiveSeason(state);
   preparePostseasonExperience(state);
@@ -8131,6 +8671,7 @@ export function startNextSeason(state) {
       ...structuredClone(state.current.postseason)
     });
   }
+  releaseHeldRecords(state);
   returnLoanedPlayers(state);
   invalidateRuntimeCache(state);
   evolveWorld(state);
@@ -8947,6 +9488,14 @@ export function upgradeWorld(state) {
     invalidateRuntimeCache(state);
     assignAllCaptains(state);
     state.dataRevision = 30;
+  }
+  if (state.dataRevision < 31) {
+    // v4 Phase 5: live records start from the history already played; career goal
+    // and appearance counters are rebuilt from archived seasons.
+    ensureRecords(state);
+    if (state.records) state.records.countersReady = false;
+    ensureCareerCounters(state);
+    state.dataRevision = 31;
   }
   return state;
 }

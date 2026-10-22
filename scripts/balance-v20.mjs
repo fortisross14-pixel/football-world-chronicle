@@ -6,9 +6,12 @@ import {
 } from '../src/engine.js';
 
 const majorLeagues = ['ESP1', 'ENG1', 'ITA1', 'GER1', 'FRA1'];
-const leagueSeedCount = Number(process.env.V20_LEAGUE_SEEDS || 2);
-const superstarSeedCount = Number(process.env.V20_SUPERSTAR_SEEDS || 2);
-const coachSeedCount = Number(process.env.V20_COACH_SEEDS || 2);
+// v4 Phase 5: the minute-by-minute engine, injuries and mid-season sackings make single
+// seasons noisier, so two seeds no longer separate the effects reliably (one seed's
+// result flips with any change to the random sequence). Defaults raised to 6 / 6 / 8.
+const leagueSeedCount = Number(process.env.V20_LEAGUE_SEEDS || 6);
+const superstarSeedCount = Number(process.env.V20_SUPERSTAR_SEEDS || 6);
+const coachSeedCount = Number(process.env.V20_COACH_SEEDS || 8);
 
 const leagueSeeds = Array.from({ length: leagueSeedCount }, (_, index) => 42000 + index * 911);
 let favoriteWins = 0;

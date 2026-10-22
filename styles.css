@@ -760,11 +760,13 @@ input::placeholder { color: var(--text-3); }
 .legend-card div { display: grid; gap: 2px; min-width: 0; }
 .legend-card span, .legend-card small { color: var(--text-3); font-size: var(--fs-12); }
 .rivalry-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 10px; }
-.rivalry-card { display: flex; justify-content: space-between; gap: 12px; padding: 14px; border-radius: var(--r-md); background: var(--bg-1); border: 1px solid var(--line); }
+.rivalry-card { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 14px; border-radius: var(--r-md); background: var(--bg-1); border: 1px solid var(--line); }
 .rivalry-card h3 { margin: 8px 0 6px; font-size: var(--fs-16); }
 .rivalry-record { display: grid; justify-items: end; align-content: center; gap: 2px; }
 .rivalry-record strong { font-size: var(--fs-23); font-weight: 900; font-stretch: 72%; font-variant-numeric: tabular-nums; }
 .rivalry-record span, .rivalry-record small { color: var(--text-3); font-size: var(--fs-12); }
+.rivalry-recent { flex-basis: 100%; display: grid; gap: 4px; padding-top: 10px; border-top: 1px solid var(--line); font-size: var(--fs-13); font-variant-numeric: tabular-nums; }
+.rivalry-recent small { color: var(--text-3); margin-right: 6px; }
 .comp-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .comp-chip { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 14px 6px 8px; border-radius: var(--r-md); background: var(--bg-1); border: 1px solid var(--line); transition: border-color var(--t-fast); }
 .comp-chip:hover { border-color: var(--cyan); }

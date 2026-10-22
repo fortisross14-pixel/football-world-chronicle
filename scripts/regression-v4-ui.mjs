@@ -86,4 +86,10 @@ expect('player personality panel', visit(`#/player/${youngster.id}/overview`), [
 expect('club captain chip', visit(`#/club/${club.id}/squad`), ['captain-chip']);
 expect('loans tab', visit('#/transfers/loans'), ['Loan moves', 'Loans this season']);
 
+// Phase 5: live records and the derby ledger on the Rivalries tab.
+expect('live records', visit('#/almanac/records'), ['Live records', 'Invincibles', 'Shootout records', 'Records by competition']);
+const derbyKey = Object.keys(world.records?.derbies || {})[0];
+assert(derbyKey, 'derby ledger has entries');
+expect('club rivalries ledger', visit(`#/club/${derbyKey.split('|')[0]}/rivalries`), ['Historic rivalry', 'rivalry-recent']);
+
 console.log(JSON.stringify({ checks, passed: true }, null, 2));

@@ -562,9 +562,9 @@ function resolveDiscipline(match, team, opponent, slice, rng) {
   const own = team.goals + (match.aggregate ? match.aggregate[team.side] : 0);
   const other = opponent.goals + (match.aggregate ? match.aggregate[opponent.side] : 0);
   const frustration = own < other ? 1.15 : 1;
-  const base = team.style.cards * match.strictness * match.intensity * frustration * profile * team.temper * (info.length / 90);
+  const base = team.style.cards * match.strictness * match.cardIntensity * frustration * profile * team.temper * (info.length / 90);
   const yellowChance = 1.95 * base;
-  const redChance = 0.017 * base;
+  const redChance = 0.015 * base;
   const roll = rng();
   if (roll < yellowChance) {
     const player = weightedBy(rng, team.onPitch, (entry) => (CARD_WEIGHT[entry.line] || 1) * entry.cardProne * (entry.yellow ? 0.2 : 1));
@@ -749,6 +749,7 @@ export function playMatch(input, rng) {
     aggregate: input.aggregate || null,
     detail: Boolean(input.detail),
     intensity: input.intensity || 1,
+    cardIntensity: input.cardIntensity || 1,
     bigGameStakes: input.bigGameStakes || 0,
     legStakes: input.legStakes ?? 1,
     strictness: 0.82 + rng() * 0.36,
