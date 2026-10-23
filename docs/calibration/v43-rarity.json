@@ -1,0 +1,123 @@
+{
+  "seeds": [
+    11,
+    22,
+    33
+  ],
+  "seasons": 20,
+  "targets": {
+    "ballonWinnerEpicPlus": 0.95,
+    "ballonPodiumEpicPlus": 0.85,
+    "goldenBootEpicPlus": 0.8,
+    "uclWcLegendPlus": 0.75,
+    "uclWcNoEpicPlus": 0.05
+  },
+  "ballonDorWinners": {
+    "counts": {
+      "generational": 11,
+      "legend": 43,
+      "epic": 6,
+      "rare": 0,
+      "uncommon": 0,
+      "common": 0
+    },
+    "epicPlus": 1,
+    "legendPlus": 0.9
+  },
+  "ballonDorPodium": {
+    "counts": {
+      "generational": 34,
+      "legend": 112,
+      "epic": 31,
+      "rare": 3,
+      "uncommon": 0,
+      "common": 0
+    },
+    "epicPlus": 0.983,
+    "legendPlus": 0.811
+  },
+  "worldGoldenBoot": {
+    "counts": {
+      "generational": 7,
+      "legend": 34,
+      "epic": 17,
+      "rare": 2,
+      "uncommon": 0,
+      "common": 0
+    },
+    "epicPlus": 0.967,
+    "legendPlus": 0.683
+  },
+  "big5TopFiveScorers": {
+    "counts": {
+      "generational": 38,
+      "legend": 209,
+      "epic": 248,
+      "rare": 632,
+      "uncommon": 320,
+      "common": 53
+    },
+    "epicPlus": 0.33,
+    "legendPlus": 0.165
+  },
+  "leagueTopScorerIsEpicPlusForward": 0.697,
+  "winners": {
+    "UCL": {
+      "editions": 60,
+      "withLegendPlus": 0.9,
+      "epicOnly4Plus": 1,
+      "epicOnlyUnder4": 4,
+      "noEpicPlus": 1,
+      "noEpicPlusRate": 0.017,
+      "examplesNoEpicPlus": [
+        "22:2017:napoli"
+      ]
+    },
+    "WC": {
+      "editions": 15,
+      "withLegendPlus": 0.867,
+      "epicOnly4Plus": 1,
+      "epicOnlyUnder4": 1,
+      "noEpicPlus": 0,
+      "noEpicPlusRate": 0,
+      "examplesNoEpicPlus": []
+    },
+    "EURO": {
+      "editions": 15,
+      "withLegendPlus": 0.933,
+      "epicOnly4Plus": 1,
+      "epicOnlyUnder4": 0,
+      "noEpicPlus": 0,
+      "noEpicPlusRate": 0,
+      "examplesNoEpicPlus": []
+    },
+    "COPA": {
+      "editions": 15,
+      "withLegendPlus": 0.467,
+      "epicOnly4Plus": 0,
+      "epicOnlyUnder4": 5,
+      "noEpicPlus": 3,
+      "noEpicPlusRate": 0.2,
+      "examplesNoEpicPlus": [
+        "11:2003:chi",
+        "22:2003:arg",
+        "22:2007:col"
+      ]
+    },
+    "CWC": {
+      "editions": 15,
+      "withLegendPlus": 0.933,
+      "epicOnly4Plus": 1,
+      "epicOnlyUnder4": 0,
+      "noEpicPlus": 0,
+      "noEpicPlusRate": 0,
+      "examplesNoEpicPlus": []
+    }
+  },
+  "development": {
+    "belowEpicPlayersAt85PlusPerSeason": 0,
+    "rareAt85PlusPerSeason": 0,
+    "highestRatingBelowEpic": 84
+  },
+  "seconds": 363.5
+}

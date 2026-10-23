@@ -370,3 +370,50 @@ between identical runs (other programs were busy), so CPU time is the comparison
 20-season `npm run perf` output is kept in docs/calibration for reference only. The quick
 model's low-stakes rotation is skipped (rebuilding a line-up for every early cup tie cost
 more than the game itself); quick games rotate for fatigue through team fitness instead.
+
+## v4.3 — elite players drive results, goals and awards
+
+### Rarity (`npm run calibration-rarity`, 3 seeds × 20 seasons = 60 seasons)
+
+| | Before (main) | After | Target |
+|---|---:|---:|---:|
+| Ballon d'Or winners Epic+ | 63 % (21 Rare, 1 Uncommon) | 100 % (90 % Legend/Generational) | ≥ 95 % |
+| Ballon d'Or podium Epic+ | 63 % | 98 % (no Uncommon/Common) | ≥ 85 % |
+| World Golden Boot Epic+ | 45 % | 97 % | ≥ 80 % |
+| Big-5 league top scorer is an Epic+ forward | 35 % | 70 % | usually |
+| UCL winners with a Legend/Generational | 67 % | 90 % | about 75 % |
+| UCL winners with no Epic+ | 3 % | 2 % | ≤ 5 % |
+| World Cup winners with a Legend/Generational | 60 % | 87 % | about 75 % |
+| World Cup winners with no Epic+ | 27 % | 0 % | ≤ 5 % |
+| Euros / Club World Cup winners with no Epic+ | 13 % / 13 % | 0 % / 0 % | |
+| Copa América winners with no Epic+ | 40 % | 20 % | |
+| Players below Epic rated 85+ per season | 140 | 0 | |
+
+Two targets are only partly met. UCL winners with a Legend or Generational run above
+75 % (90 %), and of the few UCL winners with only Epics most had fewer than four. Both
+come from the same lever (the handicap for sides without a Legend in the biggest
+competitions): easing it lets more 1–3-Epic sides win, tightening it pushes the Legend
+share higher. Copa América winners often have no Epic+ because several South American
+nations have none at all; someone has to win.
+
+The root cause of the old numbers was development, not awards: Rare ratings could reach
+88, inside the Epic band, so about 140 "Rare" players a season played at Epic level and
+won awards as Rares. Ratings below Epic now stop one point under the next band; a
+breakout season can promote a young Rare to Epic while there are fewer than 50 Epics.
+
+### Matches (final run, 2 seeds × 10 seasons)
+
+2.74 goals, 45.5 / 25.2 / 29.3, 12.4 shots and 4.4 on target per team, 2.13 yellows,
+0.126 reds, 29.0 % clean sheets: all targets met, unchanged from v4.2. International:
+11.5 % top-four group exits, 33 % favourite wins (2 seeds × 6 cycles; the 360-tournament
+run in v4.2 gave 28 %).
+
+### Performance (seed 314159, five seasons, CPU time, run alongside the other final checks)
+
+| | Season | Offseason |
+|---|---:|---:|
+| v4.2 (main) | 4.58 s | 6.22 s |
+| v4.3 | 5.25 s (+15 %) | 7.24 s (+16 %) |
+
+Within the +20 % budget. The extra offseason time is the move bookkeeping and the
+season power ranks; the extra season time is the elite terms in every shot.
