@@ -39,7 +39,9 @@
     "regression-phase3": "node scripts/regression-phase3.mjs",
     "regression-phase4": "node scripts/regression-phase4.mjs",
     "regression-phase5": "node scripts/regression-phase5.mjs",
-    "regression-phase6": "node scripts/regression-phase6.mjs"
+    "regression-phase6": "node scripts/regression-phase6.mjs",
+    "regression-v42": "node scripts/regression-v42.mjs",
+    "calibration-intl": "node scripts/calibration-international.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.0",

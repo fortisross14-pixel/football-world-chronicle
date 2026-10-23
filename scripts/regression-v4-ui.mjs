@@ -65,10 +65,12 @@ const showcase = world.current.postseason.showcaseMatches;
 assert(showcase.length > 0, 'the reference world prepared a showcase');
 visit('#/postseason/games');
 const opened = await click({ action: 'open-postseason-match', matchId: showcase[0].id });
-expect('showcase line-ups', opened, ['showcase-lineups', 'formation-pitch', 'showcase-tactics']);
+// v4.2: Showcase games open on the pre-game screen; its tactical line is .sc-tactics.
+expect('showcase line-ups', opened, ['showcase-lineups', 'formation-pitch', 'sc-tactics']);
 const resolved = await click({ action: 'quick-postseason-match' });
 const original = world.current.archivedKnockoutMatches.find((match) => match.id === showcase[0].matchId);
-expect('showcase final events', resolved, original.subs?.length ? ['Sub: '] : ['live-event']);
+// v4.2: a finished Showcase game shows the full-time screen (goal timeline, stats, ratings).
+expect('showcase final events', resolved, ['Full time', 'sc-feed', 'sc-ratings']);
 const scorer = original.goalEvents.find((goal) => goal.scorerId);
 if (scorer) {
   const name = world.players.find((player) => player.id === scorer.scorerId)?.name;

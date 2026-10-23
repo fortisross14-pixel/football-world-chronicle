@@ -3505,13 +3505,13 @@ function pickLightAssister(state, sources, scorer) {
 }
 
 // ─── Team fitness (quick model) ──────────────────────────────────────────────────
-// One fitness value per club for the season. Every match costs 12, every week gives 20
+// One fitness value per club for the season. Every match costs 12, every week gives 22
 // back, so one game a week stays fresh and congested months wear a team down. Before a
 // quick game the coach rotates up to three players from a bench that is close enough
 // to the XI: each change takes away a share of the fatigue (70 % becomes 80, 88, 94).
 // Below 80 % a team is weaker; 80–95 % is fine; above 95 % gives a small edge.
 const TEAM_FITNESS_MATCH_COST = 12;
-const TEAM_FITNESS_WEEKLY_RECOVERY = 20;
+const TEAM_FITNESS_WEEKLY_RECOVERY = 22;
 const ROTATION_FATIGUE_LEFT = [1, 0.667, 0.4, 0.2];
 
 function teamFitness(state, teamId) {
@@ -3542,13 +3542,13 @@ function teamFitnessEffect(state, teamId, squad) {
     const xiAverage = squad.xi.reduce((sum, row) => sum + (row.player.rating || 60), 0) / Math.max(1, squad.xi.length);
     for (const player of squad.bench) {
       if (subs >= wanted) break;
-      if (player.position === 'GK' || (player.rating || 60) < xiAverage - 8) continue;
+      if (player.position === 'GK' || (player.rating || 60) < xiAverage - 10) continue;
       rotationCost += Math.max(0, xiAverage - (player.rating || 60)) * 0.04;
       subs += 1;
     }
   }
   const effective = 100 - (100 - fitness) * ROTATION_FATIGUE_LEFT[subs];
-  const condition = effective < 80 ? -(80 - effective) * 0.12 : effective >= 95 ? 0.5 : 0;
+  const condition = effective < 80 ? -(80 - effective) * 0.08 : effective >= 95 ? 0.3 : 0;
   return { fitness, effective, subs, delta: condition - rotationCost };
 }
 
@@ -4641,6 +4641,8 @@ function simulateMatch(state, {
     match.possessionSlices = result.possessionSlices;
     match.lineups = { home: lineupSnapshot(homeSquad), away: lineupSnapshot(awaySquad) };
     match.styles = { home: homeCoach?.profile || null, away: awayCoach?.profile || null };
+    // Final ratings for the full-time screen of watched (Showcase) matches.
+    match.playerRatings = result.players.filter((row) => row.id).map((row) => [row.id, Number(row.rating.toFixed(1)), row.injured ? 1 : 0]);
   }
   state.current.matches.push(match);
   if (match.shootout) recordShootout(state, match);
@@ -6108,7 +6110,7 @@ function archiveCoachSummaries(state) {
 // Archived matches keep the result, events and statistics but drop the replay detail
 // (every shot, per-slice possession, full line-ups); the Showcase keeps its own copy.
 function compactArchivedMatch(match) {
-  const { timeline, possessionSlices, lineups, keyChances, ...rest } = match;
+  const { timeline, possessionSlices, lineups, keyChances, playerRatings, ...rest } = match;
   if (lineups) rest.formations = { home: lineups.home?.formationId || null, away: lineups.away?.formationId || null };
   return rest;
 }
@@ -6667,7 +6669,8 @@ function runSquadReshape(state) {
     for (const position of RESHAPE_POSITIONS) {
       let over = count[position] - target[position];
       if (over <= 0) continue;
-      const candidates = roster.filter((player) => player.position === position && !player.loan)
+      // Players signed in this window are kept (no second move in one window).
+      const candidates = roster.filter((player) => player.position === position && !player.loan && player.clubJoinedSeason !== signingSeason)
         .sort((a, b) => (STAR_RARITIES[a.rarity]?.rank || 1) - (STAR_RARITIES[b.rarity]?.rank || 1) || a.rating - b.rating);
       for (const player of candidates) {
         if (over <= 0) break;
@@ -8945,6 +8948,8 @@ function captureRealShowcaseMatch(state, match) {
     penaltySequence: showcaseRealPenaltySequence(match),
     liveProgress: { timelineIndex: 0, pauseReason: null, penaltyIndex: 0 },
     manOfMatchId: match.manOfMatchId || null,
+    motmRating: match.motmRating ?? null,
+    playerRatings: match.playerRatings || null,
     odds: match.odds || null,
     styles: match.styles || null,
     lineups: match.lineups || {

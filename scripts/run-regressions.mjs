@@ -9,7 +9,7 @@ const quick = [
   'smoke-test', 'regression-simulation', 'tactics-test', 'regression-v06', 'regression-v08', 'regression-v10',
   'regression-v21', 'regression-v23', 'regression-v300-final', 'regression-v313-ui', 'regression-v315',
   'runtime-ui-smoke', 'editor-v316', 'award-balance-v15', 'regression-phase0', 'regression-phase1',
-  'regression-phase2', 'regression-phase3', 'regression-phase4', 'regression-phase5', 'regression-phase6', 'regression-v4-ui', 'regression-v41-live'
+  'regression-phase2', 'regression-phase3', 'regression-phase4', 'regression-phase5', 'regression-phase6', 'regression-v4-ui', 'regression-v41-live', 'regression-v42'
 ];
 const full = ['balance-test', 'balance-v20', 'favorite-balance-v17', 'market-career-balance', 'regression-market-geography', 'balance-v316'];
 const list = process.argv.includes('--full') ? [...quick, ...full] : quick;

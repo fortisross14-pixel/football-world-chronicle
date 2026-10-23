@@ -1,5 +1,43 @@
 # v4 match engine and player model (in progress)
 
+## v4.2 — Squads by formation, matchday screens and fairer international tournaments
+
+### Squads set by the coach's formation
+- Every formation has a squad of 15 with two goalkeepers (4-4-2: 2/5/5/3, 4-3-3: 2/5/4/4, 4-2-3-1: 2/5/5/3, 4-1-4-1: 2/5/6/2, 3-5-2: 2/4/6/3, 3-4-3: 2/4/5/4, 5-3-2: 2/6/4/3). The 4-2-3-1 wide players and the 3-5-2 / 3-4-3 wing-backs are midfield slots (filled naturally by wide midfielders); 5-3-2 wing-backs are defenders.
+- Playing the backup formation costs 0.8 strength (0.3 for Adaptive coaches). A coach with the wrong players chooses whichever costs less: players out of position in his system, or the system he likes less. The club page says which he chose.
+- New offseason event, Squad Reshape (after the market, loans and new players): clubs release surplus players by position (lowest rarity first, then lowest rating); released players and free agents form one pool; clubs short of their shape sign the best affordable player for each gap, top-league first divisions first and the most disappointing seasons first, then the other first divisions; any gap left gets a new squad player. Releases and signings appear in Offseason → Squad Reshape, Transfer market → Released ("Released" / "Signed after release") and in the Magazine for notable players.
+- A coach change changes the shape from the next reshape on. Smaller leagues and second divisions keep their named core; their unnamed fillers follow the coach's shape and are listed as reserve players.
+- Club Overview shows the formation, starting XI, the four substitutes, the fit and whether it is the preferred or backup system (instead of the top-8 "Current core").
+
+### Team fitness in the quick model
+- Each club has one fitness value for the season: a match costs 12, a week gives 22 back, so one game a week stays fresh and congested months wear a team down. Before a quick game the coach rotates up to three players from a bench close enough to the XI, removing about a third, 60 % and 80 % of the fatigue (70 % → 80, 88, 94); bench players within ten rating points of the XI can be used. Below 80 % a team is weaker, 80–95 % is neutral, above 95 % gives a small edge. Full-engine club games tire the team too.
+- Quick games now use the matchday squad (injured and suspended players are out) and a bench factor on second-half scoring, so deep squads finish games and seasons stronger.
+
+### Showcase: pre-game, live and full time
+- Every Showcase game opens on a pre-game screen: competition, stage, both teams, then Kick off / Quick simulate, then coaches with formation, fit and system, a plain-language tactical matchup, the stakes, a win/draw/win probability bar, league position and form, the road to the match, head to head, each side's top three with season goals and assists, missing players and the predicted line-ups. Every team, player and coach is a link; coming back returns to the same unstarted screen.
+- Live: a momentum bar in five-minute stretches and live xG, line-ups next to the events with live ratings, substitutes taking their place and sent-off players marked. Every event shows its team (home on the left, away on the right, crest and team-colour edge), including the shootout. Commentary credits saves to the named keeper and adds near misses, woodwork, teams chasing the game and late pressure.
+- Goal moment: a full-width takeover in the scorer's colours with crest, portrait, flipping score, assist and context ("his 9th UCL goal", EQUALISER, HAT-TRICK, COMEBACK COMPLETE, LATE LEAD; the full-time screen marks the LATE WINNER, which cannot be known while the game is still running). Smaller moments for penalties, red cards and big saves. Reduced motion is respected. Crests no longer disappear during live updates.
+- Full time: score, goal timeline, key stats and the whole-match momentum, Man of the Match, ratings for both teams, what it means (into the final, eliminated, champions for the first time since…, record final wins), a trophy celebration with the winning crest and captain for finals, then back to the Showcase.
+- xG, momentum and live ratings exist only for Showcase games.
+
+### Live simulation screen stays open
+- After +4 weeks, Season end and the offseason, the live screen shows "Simulation complete" with the outcomes and stays until closed, with a button to continue to the Showcase, Awards Night or the offseason summary.
+
+### Stats filters
+- The Stats desk and the player and coach statistics use three linked filters: Region, Country (All, International, or a country with a domestic system) and Competition, with "All" totals summed across the matching competitions. Global competitions appear under Region All → International. Changing a filter resets the ones after it; the last selection is remembered per screen. Showcase-embargoed results stay excluded.
+
+### Fairer international tournaments
+- Seeded draws with pots for every tournament and qualifier (strongest by a national-team ranking of squad strength plus recent major results, one per group); the World Cup allows one team per confederation in a group, two for Europe.
+- Euros, AFCON and Asian Cup: 24 teams, six groups of four, top two plus the four best third-placed teams to the Round of 16. Gold Cup: 12 teams, three groups, top two plus two best thirds to the quarter-finals. Copa América: two groups of five (South America has ten nations, so no guests are needed), top four of each to the quarter-finals over five matchdays (groups of five previously played only three of their five matchdays). World Cup: 32 teams, eight groups, seeded draw. Seeded knockout brackets: group winners meet runners-up or third-placed teams. Qualifying slots follow the new sizes.
+- National-team gaps are compressed per tournament so favourites win about a quarter of major tournaments and top-four teams still go out in the groups now and then (see docs/CALIBRATION.md).
+- Tournament pages show the pots, the best third-placed table and the seeding ranking.
+
+### Awards
+- Nationality flags next to names on Awards Night podiums and winner details (history lists already carried them).
+
+### Saves
+- Data revision 33. Tournaments already under way keep their old format and draw; new formats and seeded draws start with the next edition. Team fitness and the Squad Reshape report start empty. No Neon schema changes.
+
 ## v4.1 — Lighter leagues and live screens
 
 - Every league game is now a quick result (scoreline and scorers, week by week): tables with points, GF and GA, top scorers, best players and goalkeepers all remain, with league appearances and ratings credited every four weeks. The full minute-by-minute engine plays continental and international football, domestic cups from the quarter-finals, two-legged ties, Showcase games and any club you follow. Detailed match logs (cards, substitutions, chances) are no longer kept for league games.

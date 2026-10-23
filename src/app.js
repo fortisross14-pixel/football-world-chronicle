@@ -109,6 +109,9 @@ let leagueRegionFilter = 'ALL';
 let offseasonTab = 'summary';
 let hallCache = { signature: '', data: null };
 let postseasonMatchModalId = null;
+// A Showcase match left through a link on its pre-game or full-time screen reopens
+// there when the player comes back to the Showcase.
+let showcaseReturnId = null;
 let postseasonTickIndex = 0;
 let postseasonTimer = null;
 let postseasonAnimating = false;
@@ -2422,40 +2425,522 @@ function showcaseLineups(match, homeName, awayName) {
   return `<div class="showcase-lineups">${side(lineups.home, homeName)}${side(lineups.away, awayName)}</div>`;
 }
 
+// ─── Showcase match screens (v4.2): pre-game, live and full-time ─────────────────
+// Only Showcase games have these screens; everything is read from the match's stored
+// timeline, so nothing here can reveal more than the minute being shown.
+
+const ORDINAL = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th'}`;
+
+function showcaseTimeline(match) {
+  return (match.liveTimeline && match.liveTimeline.length) ? match.liveTimeline : (match.ticks || []);
+}
+
+function teamAccent(id, isInternational) {
+  if (isInternational) {
+    const hue = Math.abs(String(id || 'nation').split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0) * 17) % 360;
+    return `hsl(${hue} 68% 55%)`;
+  }
+  const club = clubById(id);
+  const visual = CLUB_VISUALS[club?.name] || null;
+  if (!visual) return `hsl(${club?.crestHue ?? 215} 70% 55%)`;
+  const pick = [visual[0], visual[2], visual[1]].find((colour) => colour && !/^#(?:fff|ffffff|000|000000)$/i.test(String(colour).trim()));
+  return pick || visual[0];
+}
+
+function teamCoach(id, isInternational) {
+  return (state.coaches || []).find((coach) => coach.status !== 'retired' && (isInternational ? coach.nationalTeamId === id : coach.clubId === id)) || null;
+}
+
+const sideTeam = (match, side) => (side === 'home' ? match.homeId : match.awayId);
+const otherSide = (side) => (side === 'home' ? 'away' : 'home');
+
+// Every timeline event with the tick index it belongs to (cached per match).
+const SHOWCASE_EVENT_CACHE = new Map();
+function showcaseAllEvents(match) {
+  const timeline = showcaseTimeline(match);
+  const key = `${match.id}:${timeline.length}`;
+  if (SHOWCASE_EVENT_CACHE.has(key)) return SHOWCASE_EVENT_CACHE.get(key);
+  const events = [];
+  timeline.forEach((tick, index) => (tick.minuteEvents || []).forEach((event) => events.push({ ...event, tick: index })));
+  SHOWCASE_EVENT_CACHE.set(key, events);
+  return events;
+}
+
+function keeperOf(match, side, minute = 200) {
+  const view = match.lineups?.[side];
+  let keeper = view?.xi?.find((row) => row.slotType === 'GK')?.playerId || null;
+  for (const sub of match.subs || []) if (sub.side === side && sub.minute <= minute && sub.outId === keeper) keeper = sub.inId;
+  return keeper;
+}
+
+// Live expected goals: a simple value per shot type (big chances and penalties count more).
+function eventXg(event) {
+  if (event.type === 'goal') return event.penalty ? 0.76 : 0.32;
+  if (event.type === 'shotOnTarget') return 0.12;
+  if (event.type === 'shotOffTarget') return 0.05;
+  if (event.type === 'chance') return /penalty/.test(event.outcome || '') ? 0.76 : 0.3;
+  return 0;
+}
+
+function showcaseXg(events) {
+  const xg = { home: 0, away: 0 };
+  for (const event of events) if (xg[event.side] !== undefined) xg[event.side] += eventXg(event);
+  return { home: xg.home.toFixed(2), away: xg.away.toFixed(2) };
+}
+
+// Momentum in five-minute stretches from the engine's own events (shots, chances,
+// corners, goals) and possession.
+function showcaseMomentum(match, uptoMinute) {
+  const timeline = showcaseTimeline(match);
+  const finalMinute = Math.max(90, timeline[timeline.length - 1]?.minute || 90);
+  const windows = [];
+  const events = showcaseAllEvents(match);
+  for (let start = 0; start < Math.min(uptoMinute, finalMinute); start += 5) {
+    const end = start + 5;
+    const weight = { home: 1, away: 1 };
+    for (const event of events) {
+      if (event.minute <= start || event.minute > end || weight[event.side] === undefined) continue;
+      weight[event.side] += event.type === 'goal' ? 2.5 : event.type === 'chance' ? 1.5 : event.type === 'shotOnTarget' ? 1.6 : event.type === 'shotOffTarget' ? 1 : event.type === 'corner' ? 0.4 : 0;
+    }
+    const possession = timeline[Math.min(end, timeline.length - 1)]?.home?.possession ?? 50;
+    weight.home += Math.max(0, possession - 50) / 12;
+    weight.away += Math.max(0, 50 - possession) / 12;
+    windows.push({ start, end, value: (weight.home - weight.away) / (weight.home + weight.away), current: uptoMinute > start && uptoMinute <= end });
+  }
+  return windows;
+}
+
+function momentumBar(match, uptoMinute, { full = false } = {}) {
+  const windows = showcaseMomentum(match, uptoMinute);
+  const total = Math.ceil(Math.max(90, showcaseTimeline(match).at(-1)?.minute || 90) / 5);
+  const homeAccent = teamAccent(match.homeId, match.isInternational);
+  const awayAccent = teamAccent(match.awayId, match.isInternational);
+  const bars = Array.from({ length: total }, (_, index) => {
+    const row = windows[index];
+    if (!row) return '<span class="sc-mo-bar empty"></span>';
+    const size = Math.round(Math.abs(row.value) * 100);
+    return `<span class="sc-mo-bar${row.current && !full ? ' current' : ''}" title="${row.start}–${row.end}'"><i class="${row.value >= 0 ? 'home' : 'away'}" style="height:${Math.max(6, size)}%;background:${row.value >= 0 ? homeAccent : awayAccent}"></i></span>`;
+  }).join('');
+  return `<div class="sc-momentum" role="img" aria-label="Momentum by five-minute stretch"><span class="block-label">Momentum</span><div class="sc-mo-track">${bars}</div></div>`;
+}
+
+// Live match ratings from events so far; the engine's final ratings at full time.
+function showcaseRatings(match, events, minute, final = false) {
+  const ratings = new Map();
+  if (final && Array.isArray(match.playerRatings)) {
+    for (const [id, rating] of match.playerRatings) ratings.set(id, rating);
+    return ratings;
+  }
+  const base = (id) => { if (!ratings.has(id)) ratings.set(id, 6.4); };
+  for (const side of ['home', 'away']) for (const row of match.lineups?.[side]?.xi || []) if (row.playerId) base(row.playerId);
+  const add = (id, value) => { if (!id) return; base(id); ratings.set(id, Math.max(3, Math.min(10, ratings.get(id) + value))); };
+  for (const event of events) {
+    if (event.type === 'sub' && event.inId) { if (!ratings.has(event.inId)) ratings.set(event.inId, 6.3); }
+    if (event.type === 'goal') {
+      add(event.scorerId, event.penalty ? 0.7 : 1.1);
+      add(event.assistId, 0.6);
+      const keeper = keeperOf(match, otherSide(event.side), event.minute);
+      add(keeper, -0.35);
+      for (const row of match.lineups?.[otherSide(event.side)]?.xi || []) if (row.playerId && ['CB', 'FB', 'WB'].includes(row.slotType)) add(row.playerId, -0.12);
+    }
+    if (event.type === 'shotOnTarget') { add(event.playerId, 0.12); add(keeperOf(match, otherSide(event.side), event.minute), 0.22); }
+    if (event.type === 'shotOffTarget') add(event.playerId, -0.03);
+    if (event.type === 'chance') {
+      if (event.outcome === 'saved' || event.outcome === 'penalty-saved') add(keeperOf(match, otherSide(event.side), event.minute), 0.5);
+      add(event.playerId, event.outcome === 'woodwork' ? 0.05 : -0.2);
+    }
+    if (event.type === 'yellow') add(event.playerId, -0.3);
+    if (event.type === 'red') add(event.playerId, -1.5);
+  }
+  return ratings;
+}
+
+// Line-up on the pitch at this minute: substitutes take their slot, sent-off players are marked.
+function liveLineup(match, side, events) {
+  const view = match.lineups?.[side];
+  if (!view?.xi?.length) return null;
+  const xi = view.xi.map((row) => ({ ...row }));
+  const sentOff = new Set();
+  const injured = new Set();
+  for (const event of events) {
+    if (event.side !== side) continue;
+    if (event.type === 'red' && event.playerId) sentOff.add(event.playerId);
+    if (event.type === 'sub') {
+      if (event.reason === 'injury' && event.outId) injured.add(event.outId);
+      const slot = xi.find((row) => row.playerId === event.outId);
+      if (slot && event.inId) { slot.playerId = event.inId; slot.subbedOn = true; slot.rating = playerById(event.inId)?.rating ?? slot.rating; }
+    }
+  }
+  return { ...view, xi, sentOff, injured };
+}
+
+function livePitch(view, ratings) {
+  if (!view?.xi?.length) return '<div class="empty-state compact">Line-up not available.</div>';
+  const names = pitchNames([...view.xi, ...(view.bench || [])].map((row) => (row.playerId ? playerById(row.playerId) : null)));
+  const tokens = view.xi.map((row) => {
+    const player = row.playerId ? playerById(row.playerId) : null;
+    const line = slotLineCode(row.slotType);
+    const style = `left:${row.x}%;top:${100 - row.y}%`;
+    const rating = player && ratings.has(player.id) ? ratings.get(player.id).toFixed(1) : '—';
+    const flags = `${view.sentOff?.has(row.playerId) ? ' sent-off' : ''}${row.subbedOn ? ' subbed-on' : ''}`;
+    const label = player ? esc(names.get(player.id) || shortPlayerName(player.name)) : 'Reserve';
+    return `<span class="pitch-player pos-ring-${line}${flags}" style="${style}" title="${esc(player?.name || 'Reserve player')}${view.sentOff?.has(row.playerId) ? ' · sent off' : ''}"><b>${rating}</b><span>${label}</span></span>`;
+  }).join('');
+  return `<div class="formation-pitch compact" role="img" aria-label="Line-up in a ${esc(view.formationId)}"><span class="pitch-lines" aria-hidden="true"><i class="pitch-half"></i><i class="pitch-circle"></i><i class="pitch-box top"></i><i class="pitch-box bottom"></i></span>${tokens}</div>`;
+}
+
+// Commentary feed rows: each tied to its team (crest, side alignment, team colour).
+function showcaseFeed(match, events, uptoMinute, { newestFirst = true, limit = 16 } = {}) {
+  const name = (id) => (id ? playerById(id)?.name : null) || 'A squad player';
+  const score = { home: 0, away: 0 };
+  const rows = [];
+  const lateShots = { home: [], away: [] };
+  const latePressureShown = new Set();
+  for (const event of events) {
+    const side = event.side;
+    if (side !== 'home' && side !== 'away') continue;
+    const opponentKeeper = keeperOf(match, otherSide(side), event.minute);
+    let kind = event.type;
+    let text = '';
+    if (event.type === 'goal') {
+      score[side] += 1;
+      text = `GOAL · ${name(event.scorerId)}${event.penalty ? ' (pen)' : ''}${event.assistId ? ` · assist ${name(event.assistId)}` : ''}`;
+    } else if (event.type === 'yellow') text = `Yellow card · ${name(event.playerId)}`;
+    else if (event.type === 'red') text = `Red card · ${name(event.playerId)}`;
+    else if (event.type === 'sub') {
+      const trailing = score[side] < score[otherSide(side)];
+      text = event.reason === 'injury' ? `Injury · ${name(event.outId)} off, ${name(event.inId)} on`
+        : trailing && event.minute >= 55 ? `Chasing the game · ${name(event.inId)} on for ${name(event.outId)}`
+          : `Substitution · ${name(event.inId)} on for ${name(event.outId)}`;
+      if (event.reason === 'injury') kind = 'injury';
+    } else if (event.type === 'chance') {
+      text = event.outcome === 'saved' ? `Big save · ${name(opponentKeeper)} denies ${name(event.playerId)}`
+        : event.outcome === 'woodwork' ? `Off the woodwork · ${name(event.playerId)}`
+          : event.outcome === 'penalty-saved' ? `Penalty saved · ${name(opponentKeeper)} stops ${name(event.playerId)}`
+            : event.outcome === 'penalty-missed' ? `Penalty missed · ${name(event.playerId)}`
+              : `Big chance missed · ${name(event.playerId)}`;
+      kind = event.outcome === 'saved' || event.outcome === 'penalty-saved' ? 'save' : 'chance';
+    } else if (event.type === 'shotOnTarget' && event.playerId) { text = `Save · ${name(opponentKeeper)} holds ${name(event.playerId)}'s shot`; kind = 'save'; }
+    else if (event.type === 'shotOffTarget' && event.playerId) { text = `Near miss · ${name(event.playerId)} drags it wide`; kind = 'miss'; }
+    else continue;
+    if ((event.type === 'shotOnTarget' || event.type === 'shotOffTarget') && event.minute >= 75) {
+      lateShots[side].push(event.minute);
+      const recent = lateShots[side].filter((minute) => minute > event.minute - 10).length;
+      if (recent >= 3 && score[side] <= score[otherSide(side)] && !latePressureShown.has(side)) {
+        latePressureShown.add(side);
+        rows.push({ event: { ...event }, side, kind: 'pressure', text: `Late pressure · ${getEntityName(state, sideTeam(match, side), match.isInternational)} pile forward` });
+      }
+    }
+    rows.push({ event, side, kind, text });
+  }
+  const shown = (newestFirst ? rows.reverse() : rows).slice(0, limit);
+  if (!shown.length) return '<div class="live-event-empty">Kick-off. No major events yet.</div>';
+  return shown.map((row) => {
+    const teamId = sideTeam(match, row.side);
+    return `<div class="sc-event ${row.side} ${row.kind}" style="--team-accent:${teamAccent(teamId, match.isInternational)}"><span class="sc-event-team">${postseasonTeamMark(teamId, match.isInternational, 'xs')}</span><b>${minuteText(row.event)}</b><span class="sc-event-text">${esc(row.text)}</span></div>`;
+  }).join('');
+}
+
+function shootoutFeed(match, kicks) {
+  return `<div class="sc-shootout">${kicks.map((kick) => {
+    const teamId = sideTeam(match, kick.side);
+    const taker = kick.playerId ? playerById(kick.playerId)?.name : 'A squad player';
+    const detail = kick.scored ? 'scores' : kick.outcome === 'saved' ? `saved by ${kick.keeperId ? playerById(kick.keeperId)?.name || 'the keeper' : 'the keeper'}` : kick.outcome === 'woodwork' ? 'hits the post' : 'misses';
+    return `<div class="sc-event ${kick.side} ${kick.scored ? 'goal' : 'save'}" style="--team-accent:${teamAccent(teamId, match.isInternational)}"><span class="sc-event-team">${postseasonTeamMark(teamId, match.isInternational, 'xs')}</span><b>R${kick.round}</b><span class="sc-event-text">${esc(`${taker} ${detail}`)}</span></div>`;
+  }).join('')}</div>`;
+}
+
+// How many goals the scorer had in this competition before this moment.
+function competitionGoalsBefore(match, playerId, eventsSoFar) {
+  let goals = 0;
+  for (const row of state.history.playerSeasons || []) if (row.playerId === playerId && row.competitionId === match.competitionId && row.season < state.season) goals += row.goals || 0;
+  for (const other of rawCompetitionMatchesAll()) {
+    if (other.showcaseFallback || other.id === match.matchId || other.competitionId !== match.competitionId || (other.week || 0) >= (match.week || 0) || isShowcaseMatchEmbargoed(state, other)) continue;
+    for (const goal of other.goalEvents || []) if (goal.scorerId === playerId) goals += 1;
+  }
+  for (const event of eventsSoFar) if (event.type === 'goal' && event.scorerId === playerId) goals += 1;
+  return goals;
+}
+
+// The moment for the current minute: goal takeover, or a smaller penalty / red card / save moment.
+function showcaseMoment(match, tick, eventsBefore) {
+  const now = tick.minuteEvents || [];
+  const goal = now.find((event) => event.type === 'goal');
+  if (goal) {
+    const teamId = sideTeam(match, goal.side);
+    const scorer = goal.scorerId ? playerById(goal.scorerId) : null;
+    const assist = goal.assistId ? playerById(goal.assistId) : null;
+    const before = { home: 0, away: 0 };
+    let behindAtSomePoint = false;
+    for (const event of eventsBefore) {
+      if (event.type !== 'goal') continue;
+      before[event.side] += 1;
+      if (before[goal.side] < before[otherSide(goal.side)]) behindAtSomePoint = true;
+    }
+    const after = { ...before, [goal.side]: before[goal.side] + 1 };
+    const lines = [];
+    const inMatch = eventsBefore.filter((event) => event.type === 'goal' && event.scorerId === goal.scorerId).length + 1;
+    if (inMatch === 3) lines.push('HAT-TRICK');
+    if (after.home === after.away) lines.push('EQUALISER');
+    else if (behindAtSomePoint && after[goal.side] > after[otherSide(goal.side)] && before[goal.side] <= before[otherSide(goal.side)]) lines.push('COMEBACK COMPLETE');
+    else if (goal.minute >= 85 && after[goal.side] > after[otherSide(goal.side)] && before[goal.side] <= before[otherSide(goal.side)]) lines.push('LATE LEAD');
+    if (goal.penalty) lines.push('PENALTY');
+    const career = scorer ? competitionGoalsBefore(match, scorer.id, eventsBefore) + 1 : 0;
+    const context = scorer && career > 1 ? `his ${ORDINAL(career)} ${competitionLabel(match.competitionId)} goal` : scorer ? `his first ${competitionLabel(match.competitionId)} goal` : '';
+    return `<div class="sc-goal-moment" style="${postseasonGoalTheme(teamId, match.isInternational)}" role="status"><div class="sc-goal-crest">${postseasonTeamMark(teamId, match.isInternational, 'lg')}</div>${scorer ? `<div class="sc-goal-portrait">${playerPortrait(scorer, 'lg')}</div>` : ''}<div class="sc-goal-copy"><span class="sc-goal-word">GOAL</span><strong>${esc(scorer?.name || 'A squad player')}</strong>${assist ? `<small>Assist ${esc(assist.name)}</small>` : ''}${context ? `<small>${esc(context)}</small>` : ''}${lines.length ? `<div class="sc-goal-tags">${lines.map((line) => `<em>${esc(line)}</em>`).join('')}</div>` : ''}</div><div class="sc-goal-score"><b class="${goal.side === 'home' ? 'flip' : ''}">${after.home}</b><i>–</i><b class="${goal.side === 'away' ? 'flip' : ''}">${after.away}</b></div></div>`;
+  }
+  const red = now.find((event) => event.type === 'red');
+  const save = now.find((event) => event.type === 'chance' && (event.outcome === 'saved' || event.outcome === 'penalty-saved'));
+  const penaltyMiss = now.find((event) => event.type === 'chance' && event.outcome === 'penalty-missed');
+  const small = red ? ['red', 'RED CARD', playerById(red.playerId)?.name, red.side]
+    : save ? ['save', save.outcome === 'penalty-saved' ? 'PENALTY SAVED' : 'BIG SAVE', playerById(keeperOf(match, otherSide(save.side), save.minute))?.name, otherSide(save.side)]
+      : penaltyMiss ? ['penalty', 'PENALTY MISSED', playerById(penaltyMiss.playerId)?.name, penaltyMiss.side] : null;
+  if (!small) return '';
+  const teamId = sideTeam(match, small[3]);
+  return `<div class="sc-small-moment ${small[0]}" style="--team-accent:${teamAccent(teamId, match.isInternational)}" role="status">${postseasonTeamMark(teamId, match.isInternational, 'sm')}<strong>${esc(small[1])}</strong><span>${esc(small[2] || '')}</span></div>`;
+}
+
+// Plain-language tactical matchup.
+const STYLE_PHRASES = {
+  possession: 'possession game', pressing: 'press', counter_attack: 'counter-attacks', defensive_rock: 'low block',
+  direct: 'direct football', pragmatist: 'pragmatic set-up', tournament_expert: 'tournament know-how', adaptive: 'adaptable approach',
+  youth_developer: 'young, high-energy side', motivator: 'fired-up side'
+};
+function tacticalMatchupLine(match) {
+  const styles = match.styles;
+  if (!styles?.home || !styles?.away) return '';
+  const home = getEntityName(state, match.homeId, match.isInternational);
+  const away = getEntityName(state, match.awayId, match.isInternational);
+  const homePhrase = STYLE_PHRASES[styles.home] || styleLabel(styles.home).toLowerCase();
+  const awayPhrase = STYLE_PHRASES[styles.away] || styleLabel(styles.away).toLowerCase();
+  const homeEdge = styleMatchup(styles.home, styles.away);
+  const awayEdge = styleMatchup(styles.away, styles.home);
+  if (homeEdge > awayEdge + 0.005) return `${home}'s ${homePhrase} should trouble ${away}'s ${awayPhrase}.`;
+  if (awayEdge > homeEdge + 0.005) return `${home}'s ${homePhrase} struggles against ${away}'s ${awayPhrase}.`;
+  return `${home}'s ${homePhrase} and ${away}'s ${awayPhrase} should cancel each other out.`;
+}
+
+function oddsProbabilityBar(match) {
+  if (!match.odds) return '';
+  const [home, draw, away] = match.odds.map((value) => Math.round(value * 100));
+  const homeName = getEntityName(state, match.homeId, match.isInternational);
+  const awayName = getEntityName(state, match.awayId, match.isInternational);
+  return `<div class="sc-odds"><div class="sc-odds-bar" role="img" aria-label="Win probability: ${esc(homeName)} ${home}%, draw ${draw}%, ${esc(awayName)} ${away}%"><i style="width:${home}%;background:${teamAccent(match.homeId, match.isInternational)}"></i><i class="draw" style="width:${draw}%"></i><i style="width:${away}%;background:${teamAccent(match.awayId, match.isInternational)}"></i></div><div class="sc-odds-labels"><span>${esc(homeName)} ${home}%</span><span>Draw ${draw}%</span><span>${esc(awayName)} ${away}%</span></div>${oddsLine(match.odds)}</div>`;
+}
+
+// Matches before this one (never anything still under embargo).
+function priorMatches(match, teamId) {
+  return rawCompetitionMatchesAll().filter((other) => !other.showcaseFallback && other.id !== match.matchId && (other.homeId === teamId || other.awayId === teamId)
+    && (other.week || 0) <= (match.week || 0) && !isShowcaseMatchEmbargoed(state, other))
+    .sort((a, b) => (a.week || 0) - (b.week || 0));
+}
+
+function resultLetter(match, teamId) {
+  const own = match.homeId === teamId ? match.homeGoals : match.awayGoals;
+  const other = match.homeId === teamId ? match.awayGoals : match.homeGoals;
+  if (match.winnerId) return match.winnerId === teamId ? 'W' : 'L';
+  return own > other ? 'W' : own < other ? 'L' : 'D';
+}
+
+function preGameTeamColumn(match, side) {
+  const teamId = sideTeam(match, side);
+  const intl = match.isInternational;
+  const view = match.lineups?.[side];
+  const coach = teamCoach(teamId, intl);
+  const club = intl ? null : clubById(teamId);
+  const table = club ? getLeagueTable(state, club.leagueId) : [];
+  const position = club ? table.findIndex((row) => row.teamId === teamId) + 1 : 0;
+  const tableRow = position ? table[position - 1] : null;
+  const prior = priorMatches(match, teamId);
+  const form = tableRow?.form?.length ? tableRow.form.slice(-5) : prior.slice(-5).map((other) => resultLetter(other, teamId));
+  const road = prior.filter((other) => other.competitionId === match.competitionId && other.knockout).map((other) => `<div class="sc-road-row"><span>${esc(other.stage || 'Round')}</span>${teamLink(other.homeId === teamId ? other.awayId : other.homeId, intl)}<b>${other.homeId === teamId ? `${other.homeGoals}–${other.awayGoals}` : `${other.awayGoals}–${other.homeGoals}`}${other.penalties ? ' (pens)' : ''}</b></div>`).join('');
+  const squadIds = new Set([...(view?.xi || []), ...(view?.bench || [])].map((row) => row.playerId).filter(Boolean));
+  const stars = [...squadIds].map(playerById).filter(Boolean).sort((a, b) => b.rating - a.rating).slice(0, 3);
+  const seasonTotals = (id) => {
+    const totals = { goals: 0, assists: 0 };
+    for (const row of Object.values(state.current.playerStats || {})) if (row.playerId === id && !statRowHidden(row)) { totals.goals += row.goals || 0; totals.assists += row.assists || 0; }
+    for (const row of state.history.playerSeasons || []) if (row.playerId === id && row.season === state.season && !statRowHidden(row)) { totals.goals += row.goals || 0; totals.assists += row.assists || 0; }
+    return totals;
+  };
+  const roster = intl ? [] : (state.players || []).filter((player) => player.status === 'active' && player.clubId === teamId);
+  const absentees = roster.filter((player) => !squadIds.has(player.id)).map((player) => ({ player, status: getPlayerAvailability(state, player.id) }))
+    .filter((row) => row.status?.injured || row.status?.suspensions?.length).sort((a, b) => b.player.rating - a.player.rating).slice(0, 4);
+  return `<div class="sc-pre-team ${side}" style="--team-accent:${teamAccent(teamId, intl)}">
+    <div class="sc-pre-coach">${coach ? coachPortrait(coach, 'sm') : ''}<div><span class="block-label">Coach</span><strong>${coach ? coachLink(coach.id) : 'Caretaker'}</strong><small>${view ? `${esc(view.formationId)} · fit ${view.fit} · ${esc(view.fallback && view.preferredFormation !== view.formationId ? `backup system (prefers ${view.preferredFormation})` : 'preferred system')}` : ''}</small></div></div>
+    <div class="sc-pre-facts">${club && position ? `<div><span>League</span><strong>${ORDINAL(position)} · ${tableRow.points} pts</strong></div>` : ''}<div><span>Form</span><strong class="form-strip">${form.map((letter) => `<span class="form-${String(letter).toLowerCase()}">${letter}</span>`).join('') || '—'}</strong></div></div>
+    <span class="block-label">Road to this match</span><div class="sc-road">${road || '<div class="empty-state compact">First knockout game.</div>'}</div>
+    <span class="block-label">Stars</span><div class="sc-stars">${stars.map((player) => { const totals = seasonTotals(player.id); return `<a class="sc-star" href="#/player/${esc(player.id)}/overview">${playerPortrait(player, 'sm')}<div><strong>${esc(player.name)}</strong><small>${player.rating} · ${totals.goals} G · ${totals.assists} A this season</small></div></a>`; }).join('')}</div>
+    ${absentees.length ? `<span class="block-label">Missing</span><div class="sc-absent">${absentees.map((row) => `<div>${playerLink(row.player.id)} <small>${row.status.injured ? esc(row.status.injury?.label || 'Injured') : 'Suspended'}</small></div>`).join('')}</div>` : ''}
+  </div>`;
+}
+
+function headToHead(match) {
+  const pair = (other) => (other.homeId === match.homeId && other.awayId === match.awayId) || (other.homeId === match.awayId && other.awayId === match.homeId);
+  const seen = new Set();
+  const meetings = [...(state.history.landmarkMatches || []), ...rawCompetitionMatchesAll()]
+    .filter((other) => !other.showcaseFallback && other.id !== match.matchId && pair(other) && !isShowcaseMatchEmbargoed(state, other) && !seen.has(other.id) && seen.add(other.id))
+    .sort((a, b) => (b.season || 0) - (a.season || 0) || (b.week || 0) - (a.week || 0));
+  const ledger = match.isInternational ? null : getDerbyRecord(state, match.homeId, match.awayId);
+  const record = { w: 0, d: 0, l: 0 };
+  for (const other of meetings) { const letter = resultLetter(other, match.homeId); if (letter === 'W') record.w += 1; else if (letter === 'L') record.l += 1; else record.d += 1; }
+  const summary = ledger ? `${ledger.wins}–${ledger.draws}–${ledger.losses} in ${ledger.meetings} ${esc(ledger.name)} meetings` : meetings.length ? `${record.w}–${record.d}–${record.l} in ${meetings.length} recorded meetings` : 'No recorded meetings';
+  const rows = meetings.slice(0, 4).map((other) => `<div class="sc-road-row"><span>${esc(getSeasonLabel(other.season || state.season))} · ${esc(competitionLabel(other.competitionId))}</span><strong>${esc(getEntityName(state, other.homeId, match.isInternational))} ${other.homeGoals}–${other.awayGoals} ${esc(getEntityName(state, other.awayId, match.isInternational))}</strong></div>`).join('');
+  return `<section class="panel sc-panel"><div class="panel-head"><h3>Head to head</h3><span class="panel-meta">${summary} (from ${esc(getEntityName(state, match.homeId, match.isInternational))}'s side)</span></div>${rows || '<div class="empty-state compact">They have not met in a recorded match.</div>'}</section>`;
+}
+
+function titlesBefore(competitionId, teamId) {
+  return (state.history.champions || []).filter((row) => row.competitionId === competitionId && row.winnerId === teamId && row.season < state.season);
+}
+
+function lastFinalSeason(competitionId, teamId) {
+  const rows = (state.history.champions || []).filter((row) => row.competitionId === competitionId && row.season < state.season && (row.winnerId === teamId || row.runnerUpId === teamId));
+  return rows.length ? Math.max(...rows.map((row) => row.season)) : null;
+}
+
+function stakesLine(match) {
+  const name = (id) => getEntityName(state, id, match.isInternational);
+  const comp = competitionLabel(match.competitionId);
+  if (/^final$/i.test(String(match.stage || ''))) {
+    const part = (id) => {
+      const titles = titlesBefore(match.competitionId, id).length;
+      const last = lastFinalSeason(match.competitionId, id);
+      if (titles) return `${name(id)} seek their ${ORDINAL(titles + 1)} ${comp} title`;
+      return last ? `${name(id)}'s first final since ${getSeasonLabel(last)}` : `${name(id)} chase a first ${comp} title`;
+    };
+    return `${part(match.homeId)}; ${part(match.awayId)}.`;
+  }
+  if (/semi/i.test(String(match.stage || ''))) return match.aggregate?.leg === 1 ? 'First leg of the semi-final: a place in the final at stake.' : 'A place in the final at stake.';
+  return `${comp} ${match.stage || 'knockout'} tie.`;
+}
+
+function preGameScreen(match) {
+  const intl = match.isInternational;
+  const team = (id) => `<div class="sc-pre-side">${postseasonTeamMark(id, intl, 'lg')}<strong>${teamLink(id, intl)}</strong></div>`;
+  const pitches = match.lineups?.home?.xi?.length ? `<section class="panel sc-panel"><div class="panel-head"><h3>Predicted line-ups</h3></div><div class="showcase-lineups"><div class="showcase-lineup"><span class="block-label">${esc(getEntityName(state, match.homeId, intl))} · ${esc(match.lineups.home.formationId)}</span>${formationPitch(match.lineups.home, { compact: true })}</div><div class="showcase-lineup"><span class="block-label">${esc(getEntityName(state, match.awayId, intl))} · ${esc(match.lineups.away.formationId)}</span>${formationPitch(match.lineups.away, { compact: true })}</div></div></section>` : '';
+  return `<div class="sc-pre">
+    <div class="sc-pre-head"><span class="showcase-comp">${competitionEmblem(match.competitionId, 'sm')} ${esc(match.competitionName)}</span><h3>${esc(match.stage || 'Knockout')}${match.aggregate?.leg ? ` · leg ${match.aggregate.leg}` : ''}</h3>
+      <div class="sc-pre-teams">${team(match.homeId)}<span class="sc-pre-vs">v</span>${team(match.awayId)}</div>
+      <div class="showcase-modal-actions sc-pre-actions"><button class="primary-button" data-action="watch-postseason-match">Kick off</button><button class="control-button" data-action="quick-postseason-match">Quick simulate</button></div>
+    </div>
+    <section class="panel sc-panel"><div class="panel-head"><h3>The matchup</h3></div><p class="sc-stakes">${esc(stakesLine(match))}</p>${match.styles ? `<p class="sc-tactics">${esc(tacticalMatchupLine(match))}</p>` : ''}${oddsProbabilityBar(match)}</section>
+    <div class="sc-pre-grid">${preGameTeamColumn(match, 'home')}${preGameTeamColumn(match, 'away')}</div>
+    ${headToHead(match)}
+    ${pitches}
+  </div>`;
+}
+
+function scoreboard(match, tick, clockLabel, extra = '') {
+  const intl = match.isInternational;
+  const flipHome = (tick.minuteEvents || []).some((event) => event.type === 'goal' && event.side === 'home');
+  const flipAway = (tick.minuteEvents || []).some((event) => event.type === 'goal' && event.side === 'away');
+  return `<div class="showcase-scoreboard"><div>${postseasonTeamMark(match.homeId, intl, 'lg')}<strong>${esc(getEntityName(state, match.homeId, intl))}</strong></div><div class="showcase-score"><span>${esc(clockLabel)}</span><b class="${flipHome ? 'flip' : ''}">${tick.homeGoals}</b><i>–</i><b class="${flipAway ? 'flip' : ''}">${tick.awayGoals}</b>${extra}</div><div>${postseasonTeamMark(match.awayId, intl, 'lg')}<strong>${esc(getEntityName(state, match.awayId, intl))}</strong></div></div>`;
+}
+
+function liveStats(match, tick, events) {
+  const xg = showcaseXg(events);
+  const rows = [['xG', xg.home, xg.away], ['Shots', tick.home?.shots ?? 0, tick.away?.shots ?? 0], ['On target', tick.home?.onTarget ?? 0, tick.away?.onTarget ?? 0], ['Possession', `${tick.home?.possession ?? 50}%`, `${tick.away?.possession ?? 50}%`], ['Corners', tick.home?.corners ?? 0, tick.away?.corners ?? 0], ['Yellow cards', tick.home?.yellow ?? 0, tick.away?.yellow ?? 0], ['Red cards', tick.home?.red ?? 0, tick.away?.red ?? 0]];
+  return `<div class="showcase-stats">${rows.map(([label, home, away]) => `<div class="showcase-stat-row"><strong>${home}</strong><span>${label}</span><strong>${away}</strong></div>`).join('')}</div>`;
+}
+
+function liveScreen(match, context) {
+  const { tick, index, events, clockLabel, extra, actions, penaltyKicks } = context;
+  const before = events.filter((event) => event.tick < index);
+  const ratings = showcaseRatings(match, events, tick.minute);
+  const homeView = liveLineup(match, 'home', events);
+  const awayView = liveLineup(match, 'away', events);
+  const intl = match.isInternational;
+  return `<div class="sc-live">
+    <div class="showcase-modal-head"><span class="showcase-comp">${esc(match.competitionName)}</span><h3>${esc(match.stage || 'Knockout')}</h3></div>
+    ${scoreboard(match, tick, clockLabel, extra)}
+    ${showcaseMoment(match, tick, before)}
+    ${momentumBar(match, tick.minute)}
+    <div class="sc-live-grid">
+      <div class="sc-feed"><span class="block-label">Match events</span>${penaltyKicks?.length ? shootoutFeed(match, penaltyKicks.slice().reverse()) : ''}${showcaseFeed(match, events, tick.minute)}</div>
+      <div class="sc-side"><div class="sc-lineups"><div><span class="block-label">${esc(getEntityName(state, match.homeId, intl))}</span>${livePitch(homeView, ratings)}</div><div><span class="block-label">${esc(getEntityName(state, match.awayId, intl))}</span>${livePitch(awayView, ratings)}</div></div>${liveStats(match, tick, events)}</div>
+    </div>
+    <div class="showcase-modal-actions">${actions}</div>
+  </div>`;
+}
+
+function fullTimeMeaning(match) {
+  const name = (id) => getEntityName(state, id, match.isInternational);
+  const winnerId = match.winnerId;
+  if (!winnerId || match.aggregate?.leg === 1) return [`First leg finished ${match.finalScore.home}–${match.finalScore.away}. Everything to play for in the second leg.`];
+  const loserId = winnerId === match.homeId ? match.awayId : match.homeId;
+  const comp = competitionLabel(match.competitionId);
+  if (/^final$/i.test(String(match.stage || ''))) {
+    const titles = titlesBefore(match.competitionId, winnerId);
+    const lines = [titles.length ? `${name(winnerId)} win their ${ORDINAL(titles.length + 1)} ${comp} title${titles.length ? `, the first since ${getSeasonLabel(Math.max(...titles.map((row) => row.season)))}` : ''}.` : `${name(winnerId)} are ${comp} champions for the first time.`];
+    const margin = Math.abs(match.finalScore.home - match.finalScore.away);
+    const priorFinals = (state.history.landmarkMatches || []).filter((other) => other.competitionId === match.competitionId && /^final$/i.test(String(other.stage || '')) && other.id !== match.matchId && other.season < state.season);
+    if (margin >= 3 && priorFinals.length && priorFinals.every((other) => Math.abs(other.homeGoals - other.awayGoals) < margin)) lines.push(`The biggest winning margin in a ${comp} final on record.`);
+    lines.push(`Heartbreak for ${name(loserId)}.`);
+    return lines;
+  }
+  return [`${name(winnerId)} are into the final.`, `${name(loserId)} are eliminated.`];
+}
+
+function trophyCelebration(match) {
+  if (!/^final$/i.test(String(match.stage || '')) || !match.winnerId) return '';
+  const intl = match.isInternational;
+  const side = match.winnerId === match.homeId ? 'home' : 'away';
+  const club = intl ? null : clubById(match.winnerId);
+  const squad = [...(match.lineups?.[side]?.xi || []), ...(match.lineups?.[side]?.bench || [])].map((row) => row.playerId).filter(Boolean);
+  const captain = club?.captainId && squad.includes(club.captainId) ? playerById(club.captainId) : squad.map(playerById).filter(Boolean).sort((a, b) => b.rating - a.rating)[0];
+  return `<section class="sc-trophy" style="${postseasonGoalTheme(match.winnerId, intl)}"><div class="sc-trophy-crest">${postseasonTeamMark(match.winnerId, intl, 'lg')}</div><div><span class="sc-goal-word">CHAMPIONS</span><strong>${teamLink(match.winnerId, intl)}</strong><small>${esc(match.competitionName)}</small></div>${captain ? `<a class="sc-trophy-captain" href="#/player/${esc(captain.id)}/overview">${playerPortrait(captain, 'md')}<span>Captain ${esc(captain.name)} lifts the trophy</span></a>` : ''}</section>`;
+}
+
+function ratingsTable(match, side, ratings) {
+  const view = match.lineups?.[side];
+  const ids = [...(view?.xi || []).map((row) => row.playerId), ...(match.subs || []).filter((sub) => sub.side === side).map((sub) => sub.inId)].filter(Boolean);
+  const rows = [...new Set(ids)].map((id) => ({ id, rating: ratings.get(id) })).filter((row) => row.rating != null).sort((a, b) => b.rating - a.rating);
+  return `<div class="sc-ratings"><span class="block-label">${esc(getEntityName(state, sideTeam(match, side), match.isInternational))}</span>${rows.map((row) => `<div class="sc-rating-row">${playerLink(row.id)}<b class="rating-chip ${row.rating >= 8 ? 'high' : row.rating < 6.3 ? 'low' : ''}">${Number(row.rating).toFixed(1)}</b></div>`).join('') || '<div class="empty-state compact">No ratings recorded.</div>'}</div>`;
+}
+
+function fullTimeScreen(match, context) {
+  const { tick, events, extra } = context;
+  const intl = match.isInternational;
+  const ratings = showcaseRatings(match, events, 200, true);
+  const motm = match.manOfMatchId ? playerById(match.manOfMatchId) : null;
+  const motmRating = match.motmRating ?? ratings.get(match.manOfMatchId);
+  const goals = events.filter((event) => event.type === 'goal');
+  const winnerSide = match.winnerId ? (match.winnerId === match.homeId ? 'home' : 'away') : null;
+  const lastWinning = (() => {
+    if (!winnerSide || match.penalties) return null;
+    const score = { home: 0, away: 0 };
+    let decisive = null;
+    for (const goal of goals) {
+      const levelBefore = score.home === score.away;
+      score[goal.side] += 1;
+      if (goal.side === winnerSide && levelBefore) decisive = goal;
+    }
+    return decisive && decisive.minute >= 85 ? decisive : null;
+  })();
+  const timeline = goals.map((goal) => `<div class="sc-event ${goal.side} goal" style="--team-accent:${teamAccent(sideTeam(match, goal.side), intl)}"><span class="sc-event-team">${postseasonTeamMark(sideTeam(match, goal.side), intl, 'xs')}</span><b>${minuteText(goal)}</b><span class="sc-event-text">${goal.scorerId ? playerLink(goal.scorerId) : 'A squad player'}${goal.penalty ? ' (pen)' : ''}${goal.assistId ? ` <small>assist ${esc(playerById(goal.assistId)?.name || '')}</small>` : ''}${lastWinning === goal ? ' <em class="sc-tag">LATE WINNER</em>' : ''}</span></div>`).join('') || '<div class="empty-state compact">No goals.</div>';
+  const penalties = match.penalties ? `<p class="sc-stakes">${esc(getEntityName(state, match.winnerId, intl))} win ${Math.max(match.penalties.home, match.penalties.away)}–${Math.min(match.penalties.home, match.penalties.away)} on penalties.</p>` : '';
+  return `<div class="sc-post">
+    <div class="showcase-modal-head"><span class="showcase-comp">${esc(match.competitionName)}</span><h3>${esc(match.stage || 'Knockout')} · Full time</h3></div>
+    <div class="showcase-scoreboard"><div>${postseasonTeamMark(match.homeId, intl, 'lg')}<strong>${teamLink(match.homeId, intl)}</strong></div><div class="showcase-score"><span>FT</span><b>${match.finalScore.home}</b><i>–</i><b>${match.finalScore.away}</b>${extra}</div><div>${postseasonTeamMark(match.awayId, intl, 'lg')}<strong>${teamLink(match.awayId, intl)}</strong></div></div>
+    ${trophyCelebration(match)}
+    <section class="panel sc-panel"><div class="panel-head"><h3>What it means</h3></div>${fullTimeMeaning(match).map((line) => `<p class="sc-stakes">${esc(line)}</p>`).join('')}${penalties}</section>
+    <div class="sc-post-grid">
+      <section class="panel sc-panel"><div class="panel-head"><h3>Goals</h3></div><div class="sc-feed">${timeline}</div>${momentumBar(match, 200, { full: true })}${liveStats(match, tick, events)}</section>
+      <section class="panel sc-panel">${motm ? `<a class="sc-motm" href="#/player/${esc(motm.id)}/overview">${playerPortrait(motm, 'lg')}<div><span class="block-label">Man of the Match</span><strong>${esc(motm.name)}</strong><b>${motmRating != null ? Number(motmRating).toFixed(1) : ''}</b></div></a>` : ''}<div class="sc-ratings-grid">${ratingsTable(match, 'home', ratings)}${ratingsTable(match, 'away', ratings)}</div></section>
+    </div>
+    <div class="sc-post-coaches">${['home', 'away'].map((side) => { const coach = teamCoach(sideTeam(match, side), intl); return coach ? `<div>${coachPortrait(coach, 'sm')}<span>${coachLink(coach.id)}</span></div>` : ''; }).join('')}</div>
+    <div class="showcase-modal-actions"><button class="primary-button" data-action="close-postseason-match">Back to the Showcase</button></div>
+  </div>`;
+}
+
 function postseasonMatchModal() {
   if (!postseasonMatchModalId || !state?.current?.postseason?.prepared) return '';
   const match = (state.current.postseason.showcaseMatches || []).find((row) => row.id === postseasonMatchModalId);
   if (!match) return '';
-  const timeline = (match.liveTimeline && match.liveTimeline.length) ? match.liveTimeline : (match.ticks || []);
+  const timeline = showcaseTimeline(match);
   const finalIndex = Math.max(0, timeline.length - 1);
   const index = match.resolved ? finalIndex : Math.min(postseasonTickIndex, finalIndex);
   const tick = timeline[index] || { label: "0'", minute: 0, homeGoals: 0, awayGoals: 0, home: {}, away: {}, events: [], minuteEvents: [] };
-  const homeName = getEntityName(state, match.homeId, match.isInternational);
-  const awayName = getEntityName(state, match.awayId, match.isInternational);
-  const statRows = [
-    ['Shots','shots'],['On target','onTarget'],['Corners','corners'],['Possession','possession'],['Yellow cards','yellow'],['Red cards','red']
-  ];
-  const currentMinuteEvents = tick.minuteEvents || [];
-  const goalNow = currentMinuteEvents.filter((event) => event.type === 'goal');
-  const currentGoalBanner = goalNow.length ? goalNow.map((event) => {
-    const teamName = event.side === 'home' ? homeName : awayName;
-    const scorer = event.scorerId ? playerById(event.scorerId)?.name : 'Squad player';
-    const teamId = event.side === 'home' ? match.homeId : match.awayId;
-    return `<div class="showcase-goal-flash" style="${postseasonGoalTheme(teamId, match.isInternational)}"><span>GOAL ${esc(teamName).toUpperCase()}!</span><strong>${esc(scorer || 'Squad player')}${event.penalty ? ' (pen)' : ''}</strong><small>${minuteText(event)}</small></div>`;
-  }).join('') : '';
-  const nameOf = (id) => (id ? playerById(id)?.name : null) || 'Squad player';
-  const chanceCopy = { saved: 'big chance saved', missed: 'big chance missed', woodwork: 'hits the woodwork', 'penalty-saved': 'penalty saved', 'penalty-missed': 'penalty missed' };
-  const formatEvent = (event) => {
-    const assist = event.assistId ? ` · assist ${nameOf(event.assistId)}` : '';
-    const icon = event.type === 'goal' ? '⚽' : event.type === 'yellow' ? '🟨' : event.type === 'red' ? '🟥' : '•';
-    const copy = event.type === 'goal' ? `${nameOf(event.scorerId)}${event.penalty ? ' (pen)' : ''}${assist}`
-      : event.type === 'yellow' ? `Yellow card${event.playerId ? ` · ${nameOf(event.playerId)}` : ''}`
-        : event.type === 'red' ? `Red card${event.playerId ? ` · ${nameOf(event.playerId)}` : ''}`
-          : event.type === 'sub' ? `Sub: ${nameOf(event.inId)} on for ${nameOf(event.outId)}${event.reason === 'injury' ? ' (injury)' : ''}`
-            : event.type === 'chance' ? `${nameOf(event.playerId)}: ${chanceCopy[event.outcome] || 'chance'}` : 'Match event';
-    return `<div class="live-event ${event.side} ${event.type || ''}"><b>${minuteText(event)}</b><span>${icon} ${esc(copy)}</span></div>`;
-  };
-  const events = (tick.events || []).slice().sort((a,b)=>a.minute-b.minute).slice(-10).map(formatEvent).join('') || '<div class="live-event-empty">Match underway. No major events yet.</div>';
+  const events = showcaseAllEvents(match).filter((event) => event.tick <= index);
   const aggregateHome = match.aggregate?.leg === 2 ? Number(match.aggregate.homeBefore || 0) + Number(tick.homeGoals || 0) : null;
   const aggregateAway = match.aggregate?.leg === 2 ? Number(match.aggregate.awayBefore || 0) + Number(tick.awayGoals || 0) : null;
   const agg = match.aggregate?.leg === 2 ? `<div class="showcase-aggregate">Aggregate ${aggregateHome}–${aggregateAway}</div>` : match.aggregate?.leg === 1 ? '<div class="showcase-aggregate">First leg</div>' : '';
@@ -2466,30 +2951,26 @@ function postseasonMatchModal() {
   const penaltyScore = currentPenalty ? { home: currentPenalty.home, away: currentPenalty.away } : { home: 0, away: 0 };
   const penaltyStage = Boolean(match.penalties && (postseasonPauseReason === 'penalties' || postseasonPauseReason === 'penalty-live' || match.resolved || visiblePenaltyCount));
   const pen = penaltyStage ? `<div class="showcase-penalties">Penalties <strong>${penaltyScore.home}–${penaltyScore.away}</strong></div>` : '';
-  const penaltyFeed = penaltyStage && visiblePenalties.length ? `<div class="showcase-penalty-feed">${visiblePenalties.slice(-8).map((kick) => {
-    const taker = kick.playerId ? playerById(kick.playerId)?.name : 'Squad player';
-    const detail = !kick.scored && kick.outcome ? ` · ${kick.outcome === 'saved' ? `saved${kick.keeperId ? ` by ${playerById(kick.keeperId)?.name || 'the keeper'}` : ''}` : kick.outcome === 'woodwork' ? 'hits the post' : 'wide'}` : '';
-    return `<div class="penalty-kick ${kick.side} ${kick.scored ? 'scored' : 'missed'}"><span>R${kick.round}</span><b>${kick.scored ? '●' : '×'}</b><strong>${esc(taker || 'Squad player')}${esc(detail)}</strong></div>`;
-  }).join('')}</div>` : '';
   const clockLabel = penaltyStage && postseasonPauseReason === 'penalty-live' ? 'PENS' : tick.minute === 45 && postseasonPauseReason === 'half' ? 'HT' : tick.minute === 120 && !match.penalties && match.extraTime ? 'AET' : tick.label;
   const pauseReason = postseasonPauseReason || match.liveProgress?.pauseReason || null;
-  let actionMarkup = '';
-  if (match.resolved) {
-    actionMarkup = '<span class="season-complete-chip">Match complete</span>';
-  } else if (postseasonAnimating) {
-    actionMarkup = `<span class="showcase-live-chip">● LIVE · ${penaltyStage ? 'shootout' : `minute ${tick.minute}`}</span><div class="showcase-speed-control"><button class="${postseasonPlaybackSpeed === 1 ? 'active' : ''}" data-action="postseason-speed" data-speed="1">1×</button><button class="${postseasonPlaybackSpeed === 2 ? 'active' : ''}" data-action="postseason-speed" data-speed="2">2×</button></div>`;
+  const phase = match.resolved ? 'post' : (!postseasonAnimating && !pauseReason && index === 0 && !visiblePenaltyCount) ? 'pre' : 'live';
+  let actions = '';
+  if (postseasonAnimating) {
+    actions = `<span class="showcase-live-chip">● LIVE · ${penaltyStage ? 'shootout' : `minute ${tick.minute}`}</span><div class="showcase-speed-control"><button class="${postseasonPlaybackSpeed === 1 ? 'active' : ''}" data-action="postseason-speed" data-speed="1">1×</button><button class="${postseasonPlaybackSpeed === 2 ? 'active' : ''}" data-action="postseason-speed" data-speed="2">2×</button></div>`;
   } else if (pauseReason === 'half') {
-    actionMarkup = '<span class="showcase-break-chip">HALF TIME</span><button class="primary-button" data-action="continue-postseason-match">Continue Second Half</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
+    actions = '<span class="showcase-break-chip">HALF TIME</span><button class="primary-button" data-action="continue-postseason-match">Continue Second Half</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
   } else if (pauseReason === 'regulation') {
-    actionMarkup = '<span class="showcase-break-chip">END OF REGULATION</span><button class="primary-button" data-action="continue-postseason-match">Continue to Extra Time</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
+    actions = '<span class="showcase-break-chip">END OF REGULATION</span><button class="primary-button" data-action="continue-postseason-match">Continue to Extra Time</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
   } else if (pauseReason === 'extra-half') {
-    actionMarkup = '<span class="showcase-break-chip">EXTRA-TIME HALF</span><button class="primary-button" data-action="continue-postseason-match">Continue Extra Time</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
+    actions = '<span class="showcase-break-chip">EXTRA-TIME HALF</span><button class="primary-button" data-action="continue-postseason-match">Continue Extra Time</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
   } else if (pauseReason === 'penalties') {
-    actionMarkup = '<span class="showcase-break-chip">END OF EXTRA TIME</span><button class="primary-button" data-action="continue-postseason-penalties">Continue to Penalties</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
+    actions = '<span class="showcase-break-chip">END OF EXTRA TIME</span><button class="primary-button" data-action="continue-postseason-penalties">Continue to Penalties</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
   } else {
-    actionMarkup = '<button class="primary-button" data-action="watch-postseason-match">Simulate Game</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
+    actions = '<button class="primary-button" data-action="watch-postseason-match">Resume</button><button class="control-button" data-action="quick-postseason-match">Quick Simulate</button>';
   }
-  return `<div class="showcase-modal-backdrop${overlayEnter ? ' overlay-enter' : ''}"><section class="showcase-match-modal"><button class="close-button showcase-close" data-action="close-postseason-match" ${postseasonAnimating ? 'disabled' : ''}>${icon('close')}</button><div class="showcase-modal-head"><span class="showcase-comp">${esc(match.competitionName)}</span><h3>${esc(match.stage || 'Knockout')}</h3>${match.odds ? oddsLine(match.odds) : ''}${match.styles ? `<small class="showcase-tactics">${esc(tacticalEdgeText(match.styles.home, match.styles.away, homeName, awayName))}</small>` : ''}</div>${currentGoalBanner}<div class="showcase-scoreboard"><div>${postseasonTeamMark(match.homeId,match.isInternational,'lg')}<strong>${esc(homeName)}</strong></div><div class="showcase-score"><span>${esc(clockLabel)}</span><b>${tick.homeGoals}</b><i>–</i><b>${tick.awayGoals}</b>${agg}${pen}</div><div>${postseasonTeamMark(match.awayId,match.isInternational,'lg')}<strong>${esc(awayName)}</strong></div></div><div class="showcase-live-grid"><div class="showcase-events"><span class="block-label">Match events</span>${events}${penaltyFeed}</div><div class="showcase-stats"><span class="block-label">Live stats</span>${statRows.map(([label,key]) => `<div class="showcase-stat-row"><strong>${key === 'possession' ? `${tick.home?.[key] ?? 50}%` : tick.home?.[key] ?? 0}</strong><span>${label}</span><strong>${key === 'possession' ? `${tick.away?.[key] ?? 50}%` : tick.away?.[key] ?? 0}</strong></div>`).join('')}</div></div>${showcaseLineups(match, homeName, awayName)}<div class="showcase-modal-actions">${actionMarkup}</div></section></div>`;
+  const context = { tick, index, events, clockLabel, extra: `${agg}${pen}`, actions, penaltyKicks: penaltyStage ? visiblePenalties : null };
+  const body = phase === 'pre' ? preGameScreen(match) : phase === 'post' ? fullTimeScreen(match, context) : liveScreen(match, context);
+  return `<div class="showcase-modal-backdrop${overlayEnter ? ' overlay-enter' : ''}"><section class="showcase-match-modal sc-${phase}-modal"><button class="close-button showcase-close" data-action="close-postseason-match" ${postseasonAnimating ? 'disabled' : ''} aria-label="Close">${icon('close')}</button>${body}</section></div>`;
 }
 
 function transferList(transfers, compact = false) {
@@ -3721,6 +4202,17 @@ function clearPostseasonMatchTimer() {
   postseasonAnimating = false;
 }
 
+function reopenShowcaseMatch(matchId) {
+  clearPostseasonMatchTimer();
+  postseasonMatchModalId = matchId;
+  const match = activePostseasonMatch();
+  const timeline = (match?.liveTimeline && match.liveTimeline.length) ? match.liveTimeline : (match?.ticks || []);
+  const progress = match?.liveProgress || {};
+  postseasonTickIndex = match?.resolved ? Math.max(0, timeline.length - 1) : Math.max(0, Number(progress.timelineIndex || 0));
+  postseasonPauseReason = match?.resolved ? 'complete' : (progress.pauseReason || null);
+  postseasonPenaltyIndex = match?.resolved ? (match?.penaltySequence || []).length : Math.max(0, Number(progress.penaltyIndex || 0));
+}
+
 function activePostseasonMatch() {
   return (state.current.postseason?.showcaseMatches || []).find((row) => row.id === postseasonMatchModalId) || null;
 }
@@ -4262,14 +4754,7 @@ document.addEventListener('click', async (event) => {
     render();
   }
   if (action === 'open-postseason-match') {
-    clearPostseasonMatchTimer();
-    postseasonMatchModalId = target.dataset.matchId;
-    const match = activePostseasonMatch();
-    const timeline = (match?.liveTimeline && match.liveTimeline.length) ? match.liveTimeline : (match?.ticks || []);
-    const progress = match?.liveProgress || {};
-    postseasonTickIndex = match?.resolved ? Math.max(0, timeline.length - 1) : Math.max(0, Number(progress.timelineIndex || 0));
-    postseasonPauseReason = match?.resolved ? 'complete' : (progress.pauseReason || null);
-    postseasonPenaltyIndex = match?.resolved ? (match?.penaltySequence || []).length : Math.max(0, Number(progress.penaltyIndex || 0));
+    reopenShowcaseMatch(target.dataset.matchId);
     overlayEnter = true;
     render();
   }
@@ -4379,12 +4864,20 @@ window.addEventListener('hashchange', () => {
   searchOpen = false;
   clubModalId = null;
   if (!String(location.hash).includes('/postseason/')) {
+    if (postseasonMatchModalId && !postseasonAnimating) {
+      showcaseReturnId = postseasonMatchModalId;
+      syncPostseasonLiveProgress(activePostseasonMatch());
+    }
     clearPostseasonMatchTimer();
     postseasonMatchModalId = null;
     postseasonTickIndex = 0;
     postseasonPauseReason = null;
     postseasonPenaltyIndex = 0;
     clearPostseasonAwardTimer();
+  }
+  if (showcaseReturnId && String(location.hash).includes('/postseason/games')) {
+    reopenShowcaseMatch(showcaseReturnId);
+    showcaseReturnId = null;
   }
   render();
   window.scrollTo(0, 0);

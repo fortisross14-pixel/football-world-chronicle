@@ -331,5 +331,10 @@ for (const [key, [min, max]] of Object.entries(TARGETS)) {
 }
 report.outsideTargets = outside;
 
+// International tournaments (v4.2): how the pre-tournament top 4 fare. CAL_INTL=0 skips it.
+if (process.env.CAL_INTL !== '0') {
+  const { runInternationalCalibration } = await import('./calibration-international.mjs');
+  report.international = await runInternationalCalibration({ seeds: String(process.env.INTL_SEEDS || '101,202,303').split(',').map(Number), cycles: Number(process.env.INTL_CYCLES || 8), engineUrl });
+}
 if (process.env.CAL_JSON) writeFileSync(process.env.CAL_JSON, `${JSON.stringify(report, null, 2)}\n`);
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

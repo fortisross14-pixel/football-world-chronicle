@@ -7,13 +7,17 @@ A browser-first football universe simulator with 137 domestic systems, continent
 - **Squads:** top-flight clubs name 15 players (11 + 4). Coaches have preferred and fallback formations, and formation fit shapes lineups, strength, transfers and coach appointments. Condensed and second-division clubs keep four named players plus unnamed depth ratings.
 - **Matches:** a minute-by-minute engine with substitutions, game-state tactics, red-card effects, real extra time and kick-by-kick shootouts. Coaching styles counter each other rock-paper-scissors style. The Showcase replays the real match timeline.
 - **Light leagues, live screens:** league games are quick results (tables, scorers, season ratings); the full engine is kept for knockouts, continental and international football. Season end and the offseason play out behind live screens.
-- **Fitness and availability:** fitness, rotation in low-stakes games, injuries (from knocks to career-threatening) and suspensions; thin squads suffer over long seasons.
+- **Squads by formation:** each coach's formation sets a squad of 15; a Squad Reshape after the market releases surplus players and refills the gaps. Playing the backup system costs strength.
+- **Fitness and availability:** team fitness with rotation in quick games, player fitness in the full engine, injuries (from knocks to career-threatening) and suspensions; thin squads fade in congested months.
+- **Showcase matchday:** pre-game, live (momentum, xG, live ratings, goal moments) and full-time screens for the season-finale games.
+- **International tournaments:** seeded pot draws, 24-team Euros, AFCON and Asian Cup with best third-placed teams, a 12-team Gold Cup and a two-group Copa América.
+- **Stats filters:** Region, Country and Competition on the stats desk and the player and coach statistics.
 - **Players who change:** hidden potential with scouting ranges, development driven by minutes, coaching and league, in-season form, personality traits, captains, academy graduates and loans.
 - **A living world:** derbies with their own heat and head-to-head ledger, a home edge that varies with crowds, travel and altitude, live records and milestones, mid-season sackings with interim coaches, and transfer-window drama.
 - **For the reader:** a personal Following feed, a pre-season predictions game scored at Awards Night, bookmaker odds on featured and Showcase matches, and upsets against the odds in the Magazine.
 - `npm run calibration` reports match realism and award spread; `npm run perf` times 20 seasons. Results are in docs/CALIBRATION.md.
 - `node scripts/run-regressions.mjs` runs the regression suite, including the v4 phase scripts.
-- Existing saves upgrade automatically (data revisions 26–32). No Neon schema changes.
+- Existing saves upgrade automatically (data revisions 26–33). No Neon schema changes.
 
 ## v3.16.1 offseason editor
 
