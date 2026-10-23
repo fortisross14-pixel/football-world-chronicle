@@ -68,7 +68,9 @@ import {
   isShowcaseSelectedMatch,
   showcaseSelectionMode,
   getClubSquadTarget,
-  getSquadReshape
+  getSquadReshape,
+  getSeasonMoves,
+  getClubChanges
 } from './engine.js';
 import { styleMatchup, styleMatchupSummary } from './match-engine.js';
 import { playerPortrait as visualPlayerPortrait, coachPortrait as visualCoachPortrait, clubLogoUrls, competitionEmblem } from './visuals.js';
@@ -524,7 +526,7 @@ function sectionLinks(section, currentRoute) {
   if (section === 'season') return [[
     [postseasonRouteTarget(), 'Showcase', page === 'postseason'],
     ['#/awards/current', 'Awards', page === 'awards'],
-    ['#/transfers/players', 'Transfer market', page === 'transfers'],
+    ['#/transfers/moves', 'Transfer market', page === 'transfers'],
     ['#/offseason/summary', 'Offseason', page === 'offseason'],
     ...(isOffseasonEditorAvailable(state) || page === 'editor' ? [['#/editor', 'Editor', page === 'editor']] : [])
   ]];
@@ -835,7 +837,7 @@ function worldPage() {
         ${seasonTimeline()}
         ${homeWeekReadout()}
       </div>
-      <div class="stage-results"><div class="stage-results-head"><h2>${current.week ? 'Latest results' : 'Biggest signings'}</h2>${current.week ? `<span>Weeks ${Math.max(1, current.week - 1)}–${current.week}</span>` : '<a href="#/transfers/players">Transfer market</a>'}</div>${current.week ? `<div class="matches-list">${results.map((match) => matchRow(match, true)).join('') || '<p class="quiet-note">No results yet this week.</p>'}</div>` : transferList([...(current.transfers || [])].sort((x, y) => (y.fee || 0) - (x.fee || 0)).slice(0, 6), false)}</div>
+      <div class="stage-results"><div class="stage-results-head"><h2>${current.week ? 'Latest results' : 'Elite moves'}</h2>${current.week ? `<span>Weeks ${Math.max(1, current.week - 1)}–${current.week}</span>` : '<a href="#/transfers/moves">All moves</a>'}</div>${current.week ? `<div class="matches-list">${results.map((match) => matchRow(match, true)).join('') || '<p class="quiet-note">No results yet this week.</p>'}</div>` : eliteMovesList(6)}</div>
     </section>
     ${latestSeasonSummary()}
     ${homeFollowing()}
@@ -3008,8 +3010,43 @@ function reshapePanel() {
     <section class="panel section-gap"><div class="panel-head"><h3>Squad Reshape</h3><span class="panel-meta">Each club matches its coach's formation: surplus positions release the lowest rarity first, then the lowest rating</span></div>${reshapeList(rows)}</section>`;
 }
 
+// ─── Moves (v4.3): every player and coach who changed team, rarity first ──────────
+const ELITE_RARITIES = new Set(['generational', 'legend', 'epic']);
+let movesShowAll = (() => { try { return localStorage.getItem('fwc-moves-all') === '1'; } catch (_) { return false; } })();
+
+function moveTeam(clubId, nationalTeamId = null) {
+  if (clubId) return teamLink(clubId);
+  if (nationalTeamId) return teamLink(nationalTeamId, true);
+  return '<span class="muted">Unattached</span>';
+}
+
+function playerMovesTable(rows) {
+  if (!rows.length) return '<div class="empty-state compact">No player moves match this filter yet.</div>';
+  return `<div class="table-scroll"><table class="data-table moves-table"><thead><tr><th>Player</th><th>Rarity</th><th>Pos</th><th class="num">Age</th><th class="num">Rating</th><th>From → To</th><th>How</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${playerLink(row.playerId)}</td><td>${rarityBadge(row.rarity)}</td><td><span class="position-pill pos-${row.position.toLowerCase()}">${row.position}</span></td><td class="num">${row.age}</td><td class="num"><strong>${row.rating}</strong></td><td class="move-route">${moveTeam(row.fromClubId)} <span aria-hidden="true">→</span> ${moveTeam(row.toClubId)}</td><td>${esc(row.how)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function coachMovesTable(rows) {
+  if (!rows.length) return '<div class="empty-state compact">No coaching changes match this filter yet.</div>';
+  return `<div class="table-scroll"><table class="data-table moves-table"><thead><tr><th>Coach</th><th>Rarity</th><th class="num">Quality</th><th>From → To</th><th>How</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${coachLink(row.coachId)}</td><td>${staffRarityBadge(row.rarity)}</td><td class="num"><strong>${row.rating}</strong></td><td class="move-route">${moveTeam(row.fromClubId, row.fromNationalTeamId)} <span aria-hidden="true">→</span> ${moveTeam(row.toClubId, row.toNationalTeamId)}</td><td>${esc(row.how)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+// Compact "Elite moves" list (Epic+, any reason, sorted by rarity then rating).
+function eliteMovesList(limit = 12) {
+  const rows = getSeasonMoves(state, { eliteOnly: true }).players.slice(0, limit);
+  if (!rows.length) return '<div class="empty-state compact">No Epic, Legend or Generational player has moved yet.</div>';
+  return `<div class="archive-list">${rows.map((row) => `<div class="archive-row elite-move"><strong>${rarityBadge(row.rarity)} ${playerLink(row.playerId)} <small>${row.rating}</small></strong><span>${moveTeam(row.fromClubId)} → ${moveTeam(row.toClubId)}</span><small class="move-how">${esc(row.how)}</small></div>`).join('')}</div>`;
+}
+
+function movesPage() {
+  const moves = getSeasonMoves(state, { eliteOnly: !movesShowAll });
+  const toggle = `<button class="control-button" data-action="moves-toggle-rarity" aria-pressed="${movesShowAll}">${movesShowAll ? 'Show Epic and above only' : 'Show all rarities'}</button>`;
+  return `${pageHead('TRANSFER MARKET', `${state.current.seasonLabel} moves`, 'Everyone who changed team this offseason and season, whatever the reason: transfers, expired contracts, releases, loans and coaching changes. Sorted by rarity, then rating.')}${transferMarketTabs('moves')}
+    <section class="panel"><div class="panel-head"><h3>Players</h3><span class="panel-meta">${movesShowAll ? 'All rarities' : 'Generational, Legend and Epic'} · ${moves.players.length} moves</span>${toggle}</div>${playerMovesTable(moves.players)}</section>
+    <section class="panel section-gap"><div class="panel-head"><h3>Coaches</h3><span class="panel-meta">${moves.coaches.length} changes</span></div>${coachMovesTable(moves.coaches)}</section>`;
+}
+
 function transferMarketTabs(active) {
-  return `<nav class="tab-bar"><a href="#/transfers/players" class="${active === 'players' ? 'active' : ''}">Players</a><a href="#/transfers/loans" class="${active === 'loans' ? 'active' : ''}">Loans</a><a href="#/transfers/released" class="${active === 'released' ? 'active' : ''}">Released</a><a href="#/transfers/coaches" class="${active === 'coaches' ? 'active' : ''}">Coaches</a></nav>`;
+  return `<nav class="tab-bar"><a href="#/transfers/moves" class="${active === 'moves' ? 'active' : ''}">Moves</a><a href="#/transfers/players" class="${active === 'players' ? 'active' : ''}">Players</a><a href="#/transfers/loans" class="${active === 'loans' ? 'active' : ''}">Loans</a><a href="#/transfers/released" class="${active === 'released' ? 'active' : ''}">Released</a><a href="#/transfers/coaches" class="${active === 'coaches' ? 'active' : ''}">Coaches</a></nav>`;
 }
 
 function coachMoveList(moves) {
@@ -3023,8 +3060,9 @@ function coachMoveList(moves) {
   }).join('')}</div>`;
 }
 
-function transfersPage(tabRaw = 'players') {
-  const tab = tabRaw === 'coaches' ? 'coaches' : tabRaw === 'loans' ? 'loans' : tabRaw === 'released' ? 'released' : 'players';
+function transfersPage(tabRaw = 'moves') {
+  const tab = tabRaw === 'coaches' ? 'coaches' : tabRaw === 'loans' ? 'loans' : tabRaw === 'released' ? 'released' : tabRaw === 'players' ? 'players' : 'moves';
+  if (tab === 'moves') return movesPage();
   if (tab === 'released') {
     return `${pageHead('TRANSFER MARKET', `${state.current.seasonLabel} releases`, 'After the market, every club matches its coach\'s squad of 15. Surplus players are released and the clubs that are short sign from the same pool.')}${transferMarketTabs(tab)}${reshapePanel()}`;
   }
@@ -3633,6 +3671,50 @@ function trophyCabinet(honours) {
   return `<div class="trophy-cabinet">${groups.map((group) => `<div class="trophy-shelf"><span class="trophy-count">${group.years.length}</span><div><strong>${esc(group.name)}</strong><small>${group.years.sort((a, b) => a - b).map((year) => getSeasonLabel(year)).join(' · ')}</small></div></div>`).join('')}</div>`;
 }
 
+// "Since last season": power rank then and now, arrivals and departures, the biggest
+// rating changes (aging or growth) and coach changes.
+function clubChangesPanel(club) {
+  const changes = getClubChanges(state, club.id);
+  if (!changes) return '';
+  const last = changes.lastSeason;
+  const rankText = last?.powerRank && changes.powerRankNow ? `#${last.powerRank} → #${changes.powerRankNow}` : changes.powerRankNow ? `#${changes.powerRankNow}` : '—';
+  const delta = last?.powerRank && changes.powerRankNow ? last.powerRank - changes.powerRankNow : 0;
+  const moveRow = (row, incoming) => `<div class="archive-row"><strong>${rarityBadge(row.rarity)} ${playerLink(row.playerId)} <small>${row.rating}</small></strong><span>${incoming ? `from ${moveTeam(row.fromClubId)}` : `to ${moveTeam(row.toClubId)}`}</span><small class="move-how">${esc(row.how)}</small></div>`;
+  const coachRows = [...changes.coachArrivals.map((row) => ({ row, incoming: true })), ...changes.coachDepartures.map((row) => ({ row, incoming: false }))]
+    .map(({ row, incoming }) => `<div class="archive-row"><strong>${staffRarityBadge(row.rarity)} ${coachLink(row.coachId)}</strong><span>${incoming ? 'Arrived' : 'Left'}</span><small class="move-how">${esc(row.how)}</small></div>`).join('');
+  const ratingRows = changes.ratingChanges.map((row) => `<div class="archive-row"><strong>${playerLink(row.playerId)}</strong><span>${row.before} → ${row.after} · ${esc(row.reason)}${row.age ? ` (age ${row.age})` : ''}</span><b class="${row.delta > 0 ? 'up' : 'down'}">${row.delta > 0 ? '+' : ''}${row.delta}</b></div>`).join('');
+  return `<section class="panel club-changes"><div class="panel-head"><h3>Since last season</h3><span class="panel-meta">${last ? `${esc(last.seasonLabel)}: ${last.position ? `finished ${last.position}` : ''}` : 'First season'}</span></div>
+    <div class="stats-ribbon compact-ribbon">${statCard('Power ranking', rankText, delta > 0 ? `Up ${delta}` : delta < 0 ? `Down ${-delta}` : 'No change')}${statCard('Arrivals', changes.arrivals.length)}${statCard('Departures', changes.departures.length)}${statCard('Coach', changes.coachArrivals.length ? 'New coach' : changes.coachDepartures.length ? 'Coach left' : 'Unchanged')}</div>
+    <div class="club-changes-grid"><div><span class="block-label">Arrivals</span>${changes.arrivals.length ? `<div class="archive-list">${changes.arrivals.slice(0, 8).map((row) => moveRow(row, true)).join('')}</div>` : '<div class="empty-state compact">No arrivals.</div>'}</div>
+    <div><span class="block-label">Departures</span>${changes.departures.length ? `<div class="archive-list">${changes.departures.slice(0, 8).map((row) => moveRow(row, false)).join('')}</div>` : '<div class="empty-state compact">No departures.</div>'}</div>
+    <div><span class="block-label">Biggest rating changes</span>${ratingRows ? `<div class="archive-list">${ratingRows}</div>` : '<div class="empty-state compact">No changes recorded yet.</div>'}${coachRows ? `<span class="block-label lineup-bench-label">Coach</span><div class="archive-list">${coachRows}</div>` : ''}</div></div></section>`;
+}
+
+// Arrivals and departures by season (permanent transfer history).
+function clubMovesHistory(club) {
+  const rank = { generational: 6, legend: 5, epic: 4, rare: 3, uncommon: 2, common: 1 };
+  const bySeason = new Map();
+  for (const move of state.history.transfers || []) {
+    if (move.toClubId !== club.id && move.fromClubId !== club.id) continue;
+    if (!bySeason.has(move.season)) bySeason.set(move.season, []);
+    bySeason.get(move.season).push(move);
+  }
+  const seasons = [...bySeason.keys()].sort((a, b) => b - a).slice(0, 10);
+  if (!seasons.length) return '<div class="empty-state compact">No moves recorded yet.</div>';
+  const line = (move, incoming) => {
+    const player = playerById(move.playerId);
+    const how = move.loan ? 'Loan' : move.signedAfterRelease ? 'Signed after release' : move.freeTransfer ? 'Free' : money(move.fee);
+    return `<div class="archive-row"><strong>${player ? rarityBadge(player.rarity) : ''} ${playerLink(move.playerId)}</strong><span>${incoming ? `from ${moveTeam(move.fromClubId)}` : `to ${moveTeam(move.toClubId)}`}</span><small class="move-how">${esc(how)}</small></div>`;
+  };
+  const sortMoves = (list) => list.sort((a, b) => (rank[playerById(b.playerId)?.rarity] || 0) - (rank[playerById(a.playerId)?.rarity] || 0) || (playerById(b.playerId)?.rating || 0) - (playerById(a.playerId)?.rating || 0));
+  return seasons.map((season) => {
+    const moves = bySeason.get(season);
+    const arrivals = sortMoves(moves.filter((move) => move.toClubId === club.id));
+    const departures = sortMoves(moves.filter((move) => move.fromClubId === club.id && move.toClubId !== club.id));
+    return `<div class="club-moves-season"><span class="block-label">${esc(getSeasonLabel(season))}</span><div class="club-changes-grid two"><div>${arrivals.map((move) => line(move, true)).join('') || '<div class="empty-state compact">No arrivals.</div>'}</div><div>${departures.map((move) => line(move, false)).join('') || '<div class="empty-state compact">No departures.</div>'}</div></div></div>`;
+  }).join('');
+}
+
 function clubPage(id, tabRaw = 'overview') {
   const club = clubById(id);
   if (!club) return notFound();
@@ -3693,7 +3775,8 @@ function clubPage(id, tabRaw = 'overview') {
     <section class="panel section-gap"><div class="panel-head"><h3>Results</h3><span class="panel-meta">Current season</span></div><div class="matches-list">${matches.slice(0, 16).map((m) => matchRow(m, true)).join('') || '<div class="empty-state">No matches played yet this season.</div>'}</div></section>`;
   }
   if (tab === 'history') {
-    return `${head}<div class="two-column wide-left"><section class="panel"><div class="panel-head"><h3>Season by season</h3></div>${clubHistoryTable(club, honours)}</section><section class="panel"><div class="panel-head"><h3>Trophy cabinet</h3><span class="panel-meta">${honours.length} titles</span></div>${trophyCabinet(honours)}</section></div>`;
+    return `${head}<div class="two-column wide-left"><section class="panel"><div class="panel-head"><h3>Season by season</h3></div>${clubHistoryTable(club, honours)}</section><section class="panel"><div class="panel-head"><h3>Trophy cabinet</h3><span class="panel-meta">${honours.length} titles</span></div>${trophyCabinet(honours)}</section></div>
+    <section class="panel section-gap"><div class="panel-head"><h3>Arrivals and departures by season</h3><span class="panel-meta">Arrivals left, departures right</span></div>${clubMovesHistory(club)}</section>`;
   }
   if (tab === 'legacy') {
     const legends = (state.history.clubLegends || []).filter((row) => row.clubId === club.id).sort((a, b) => b.score - a.score);
@@ -3703,7 +3786,7 @@ function clubPage(id, tabRaw = 'overview') {
     <section class="panel section-gap"><div class="panel-head"><h3>Rivalries</h3><span class="panel-meta">Historic and emerging opponents</span></div>${rivals.length ? `<div class="rivalry-grid">${rivals.map((row) => `<article class="rivalry-card"><div><span class="status-pill ${row.static ? 'gold' : ''}">${row.static ? 'Historic rivalry' : 'Emerging rivalry'}</span><h3>${esc(row.definition.name)}</h3><p>${teamLink(row.opponentId)}</p></div><div class="rivalry-record"><strong>${row.wins}-${row.draws}-${row.losses}</strong><span>W-D-L · ${row.gf}-${row.ga} goals</span><small>${row.matches} stored meetings</small></div>${row.recent?.length ? `<div class="rivalry-recent">${row.recent.slice(0, 5).map((meeting) => `<span title="${esc(competitionLabel(meeting.competitionId))}"><small>${getSeasonLabel(meeting.season)}</small> ${esc(getEntityName(state, meeting.homeId, false))} ${meeting.homeGoals}-${meeting.awayGoals} ${esc(getEntityName(state, meeting.awayId, false))}</span>`).join('')}</div>` : ''}</article>`).join('')}</div>` : '<div class="empty-state">No established rivalry is stored yet.</div>'}</section>`;
   }
   const recent = (state.current.matches || []).filter((m) => !isShowcaseMatchEmbargoed(state, m) && !m.isInternational && [m.homeId, m.awayId].includes(club.id)).sort((a, b) => b.week - a.week).slice(0, 4);
-  return `${head}<div class="two-column wide-left">${startingElevenPanel(club.id, false, 'Starting XI and substitutes') || `<section class="panel"><div class="panel-head"><h3>Squad</h3><a href="#/club/${club.id}/squad">Full squad</a></div><div class="squad-list">${history.allCurrentPlayers.slice(0, 8).map((player) => squadRow(player)).join('')}</div></section>`}
+  return `${head}${clubChangesPanel(club)}<div class="two-column wide-left section-gap">${startingElevenPanel(club.id, false, 'Starting XI and substitutes') || `<section class="panel"><div class="panel-head"><h3>Squad</h3><a href="#/club/${club.id}/squad">Full squad</a></div><div class="squad-list">${history.allCurrentPlayers.slice(0, 8).map((player) => squadRow(player)).join('')}</div></section>`}
     <div class="stack"><section class="panel"><div class="panel-head"><h3>Season so far</h3><a href="#/club/${club.id}/season">Season</a></div><div class="identity-list"><div><span>League</span><strong>${club.division === 1 ? (position ? `#${position} · ${tableRow?.points ?? 0} pts` : '—') : 'Promotion pool'}</strong></div><div><span>Record</span><strong>${tableRow ? `${tableRow.wins}W ${tableRow.draws}D ${tableRow.losses}L` : '—'}</strong></div><div><span>Form</span>${formPills(tableRow?.form || [])}</div></div>${recent.length ? `<div class="matches-list tight">${recent.map((m) => matchRow(m, true)).join('')}</div>` : ''}</section>
     <section class="panel"><div class="panel-head"><h3>Leadership</h3><a href="#/club/${club.id}/staff">Staff</a></div><div class="identity-list"><div><span>President</span><strong>${owner ? ownerLink(owner.id) : 'Vacant'}</strong></div><div><span>Coach</span><strong>${coach ? coachLink(coach.id) : 'Vacant'}</strong></div><div><span>Coach focus</span><strong>${esc(COACH_FOCUSES[coach?.focus]?.label || '—')}</strong></div><div><span>Formation</span><strong>${esc(formationSummary(getTeamSquadView(state, club.id, false)))}</strong></div></div></section>
     <section class="panel"><div class="panel-head"><h3>Trophy cabinet</h3><a href="#/club/${club.id}/history">History</a></div>${trophyCabinet(honours)}</section></div></div>`;
@@ -3883,7 +3966,7 @@ function offseasonPage(tabRaw='summary') {
   if (tab === 'boardroom') {
     return `${head}<section class="panel"><div class="panel-head"><div><h3>President / owner succession</h3></div><span class="muted">Terms last 4-12 years</span></div><div class="archive-list">${ownerChanges.map((change)=>{const next=ownerById(change.ownerId), former=ownerById(change.formerOwnerId), club=clubById(change.clubId); return `<div class="archive-row"><strong>${teamLink(change.clubId)}</strong><span>${former?esc(former.name):'—'} → ${next?esc(next.name):'New president'}${next?.profile==='billionaire'?` · ${money(club?.ownerAnnualInjection||0)}/yr injection`:''}</span><b>${next?staffRarityBadge(next.rarity):''}</b></div>`;}).join('')||'<div class="empty-state compact">No board changes this offseason.</div>'}</div></section>`;
   }
-  return `${head}<div class="stats-ribbon">${statCard('Retirements',data.retirements.length,`${retiredPlayers.length} players · ${retiredCoaches.length} coaches`)}${statCard('New stars',data.newStars.length,'Rookie intake')}${statCard('Transfers',data.transfers.length,'Opening market')}${statCard('Payroll resets',payrollChanges.length,'Dynasty wage pressure')}</div><section class="panel section-gap"><div class="panel-head"><div><h3>Offseason headlines</h3></div><a href="#/magazine/headlines">Full archive</a></div><div class="story-list magazine-list">${headlines.slice(0,10).map((story,index)=>`<article class="story-card ${story.importance||'digest'} ${index===0?'lead':''}"><div class="story-category">${esc(story.category)}</div><h4>${esc(story.headline)}</h4><p>${esc(story.body)}</p></article>`).join('')||'<div class="empty-state compact">No major world-changing story this summer.</div>'}</div></section><div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><h3>Market moves</h3></div><a href="#/offseason/signings">Full signings</a></div>${transferList(transfers.slice(0,12),true)}</section><section class="panel"><div class="panel-head"><div><h3>Arrivals and departures</h3></div><a href="#/offseason/lifecycle">Full lifecycle</a></div><p class="role-copy">${newcomers.length} elite/new tracked players entered the world while ${retiredPlayers.length} players and ${retiredCoaches.length} coaches retired.</p><div class="squad-list">${rowPlayers(newcomers.slice(0,8),'new')}</div></section></div>`;
+  return `${head}<div class="stats-ribbon">${statCard('Retirements',data.retirements.length,`${retiredPlayers.length} players · ${retiredCoaches.length} coaches`)}${statCard('New stars',data.newStars.length,'Rookie intake')}${statCard('Transfers',data.transfers.length,'Opening market')}${statCard('Payroll resets',payrollChanges.length,'Dynasty wage pressure')}</div><section class="panel section-gap"><div class="panel-head"><div><h3>Offseason headlines</h3></div><a href="#/magazine/headlines">Full archive</a></div><div class="story-list magazine-list">${headlines.slice(0,10).map((story,index)=>`<article class="story-card ${story.importance||'digest'} ${index===0?'lead':''}"><div class="story-category">${esc(story.category)}</div><h4>${esc(story.headline)}</h4><p>${esc(story.body)}</p></article>`).join('')||'<div class="empty-state compact">No major world-changing story this summer.</div>'}</div></section><div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><h3>Elite moves</h3></div><a href="#/transfers/moves">All moves</a></div>${eliteMovesList(12)}</section><section class="panel"><div class="panel-head"><div><h3>Arrivals and departures</h3></div><a href="#/offseason/lifecycle">Full lifecycle</a></div><p class="role-copy">${newcomers.length} elite/new tracked players entered the world while ${retiredPlayers.length} players and ${retiredCoaches.length} coaches retired.</p><div class="squad-list">${rowPlayers(newcomers.slice(0,8),'new')}</div></section></div>`;
 }
 
 function editorPage() {
@@ -4026,11 +4109,12 @@ function liveOffseasonScreen() {
     const destination = move.toClubId ? teamLink(move.toClubId) : teamLink(move.toNationalTeamId, true);
     return `<div class="archive-row"><strong>${coach ? `<a href="#/coach/${esc(coach.id)}/overview">${esc(coach.name)}</a>` : '—'}</strong><span>${destination}</span></div>`;
   }).join('');
-  const signings = (progress?.topTransfers || []).map((move) => `<div class="archive-row"><strong>${playerLink(move.playerId)}</strong><span>${teamLink(move.fromClubId)} → ${teamLink(move.toClubId)}</span><b>${move.fee ? money(move.fee) : 'Free'}</b></div>`).join('');
+  // Moves of the new window exist once the new season has been set up.
+  const signings = ['squads', 'transfers', 'reshape', 'done'].includes(stage) || !simLive ? eliteMovesList(12) : '';
   const retirements = (progress?.retirements || []).map((row) => `<div class="archive-row"><strong>${playerLink(row.playerId)}</strong><span>${row.formerClubId ? teamLink(row.formerClubId) : ''}</span></div>`).join('');
   return `<section class="live-hero"><div><span class="block-label">${simLive ? 'Offseason in progress' : 'Offseason complete'}</span><h2>${esc(OFFSEASON_STAGES[Math.max(0, reached)]?.[1] || 'Offseason')}</h2></div><ol class="live-steps">${steps}</ol></section>
     <div class="live-grid section-gap">
-      <section class="panel live-card"><div class="panel-head"><h3>Top signings</h3><span class="panel-meta">${progress?.transferCount || 0} transfers so far</span></div><div class="archive-list">${signings || '<div class="empty-state compact">The market opens after the coaching changes.</div>'}</div></section>
+      <section class="panel live-card"><div class="panel-head"><h3>Elite moves</h3><span class="panel-meta">${progress?.transferCount || 0} transfers so far</span></div>${signings || '<div class="empty-state compact">The market opens after the coaching changes.</div>'}</section>
       <section class="panel live-card"><div class="panel-head"><h3>Coaching changes</h3></div><div class="archive-list">${coaches || '<div class="empty-state compact">No appointments yet.</div>'}</div></section>
       ${retirements ? `<section class="panel live-card"><div class="panel-head"><h3>Star retirements</h3></div><div class="archive-list">${retirements}</div></section>` : ''}
     </div>`;
@@ -4789,6 +4873,11 @@ document.addEventListener('click', async (event) => {
   if (action === 'reveal-all-awards') await revealAllPostseasonAwards();
   if (action === 'finish-postseason') await finishPostseason();
   if (action === 'live-close') { simLiveDone = null; render(); }
+  if (action === 'moves-toggle-rarity') {
+    movesShowAll = !movesShowAll;
+    try { localStorage.setItem('fwc-moves-all', movesShowAll ? '1' : '0'); } catch (_) { /* storage unavailable */ }
+    render();
+  }
   if (action === 'live-continue') {
     const href = simLiveDone?.href;
     simLiveDone = null;

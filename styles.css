@@ -1565,3 +1565,16 @@ input::placeholder { color: var(--text-3); }
 @media (prefers-reduced-motion: reduce) {
   .sc-goal-moment, .sc-small-moment, .showcase-score b.flip, .sc-goal-score b.flip { animation: none !important; }
 }
+
+/* v4.3 moves and club changes */
+.moves-table td { vertical-align: middle; }
+.move-route { white-space: nowrap; }
+.move-how { display: block; color: var(--text-3); font-size: var(--fs-12); }
+.elite-move small { color: var(--text-3); font-weight: 600; }
+.club-changes-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 12px; }
+.club-changes-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 4px; }
+.club-changes .archive-row b.up { color: var(--green); }
+.club-changes .archive-row b.down { color: #ff8a95; }
+.club-moves-season { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.club-moves-season:last-child { border-bottom: 0; }
+@media (max-width: 900px) { .club-changes-grid, .club-changes-grid.two { grid-template-columns: minmax(0, 1fr); } .move-route { white-space: normal; } }

@@ -562,7 +562,7 @@ function createPlayer(state, {
     ? randomInt(state, 0, Math.max(0, Math.min(length.years - 4, 15)))
     : clamp(careerYear, 0, length.years - 1);
   const baseQuality = rarityQuality(state, rarity);
-  const rating = clamp(Math.round(baseQuality * curve[initialCareerYear]), 51, 100);
+  const rating = clamp(Math.round(baseQuality * curve[initialCareerYear]), 51, (STAR_RARITIES[rarity]?.rank || 1) < 4 ? STAR_RARITIES[rarity].max - 1 : 100);
   const name = uniqueName(state, actualNationality);
   const id = `${club?.id || actualNationality}-${slug(name)}-${state.nextPlayerId}`;
   state.nextPlayerId += 1;
@@ -2240,6 +2240,8 @@ function newCurrentSeason(state) {
     newStars: [...(state.pendingSeasonStars || [])],
     newCoaches: [...(state.pendingSeasonCoaches || [])],
     retirements: [...(state.pendingSeasonRetirements || [])],
+    contractExits: [...(state.pendingContractExits || [])],
+    loanReturns: [...(state.pendingLoanReturns || [])],
     ownerChanges: [...(state.pendingOwnerChanges || [])],
     payrollChanges: [...(state.pendingPayrollChanges || [])],
     news: [
@@ -2269,7 +2271,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 33,
+    dataRevision: 34,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -2779,17 +2781,10 @@ function starImpactForLineup(lineup, unit = 'overall') {
   const impact = lineup.reduce((sum, player) => {
     const surplus = Math.max(0, player.rating - 79);
     if (!surplus) return sum;
-    const rarityFactor = {
-      generational: 1.22,
-      legend: 1.12,
-      epic: 1.02,
-      rare: 0.86,
-      uncommon: 0.68,
-      common: 0.52
-    }[player.rarity] || 0.7;
+    const rarityFactor = ELITE_TUNING.starRarity[player.rarity] || 0.7;
     return sum + surplus ** 1.17 * 0.105 * rarityFactor * (unitFactors[player.position] || 1);
   }, 0);
-  return Math.min(unit === 'overall' ? 7.2 : 8.4, impact);
+  return Math.min(unit === 'overall' ? ELITE_TUNING.starCap : ELITE_TUNING.starCap + 1.2, impact);
 }
 
 function addPlayerLog(state, playerId, entry) {
@@ -3289,10 +3284,21 @@ const SLOT_ASSIST_FACTOR = { GK: 1, CB: 0.7, FB: 1.0, WB: 1.12, DM: 0.85, CM: 1.
 
 // Share of a side's shots a player takes. Flatter than goalWeight: quality still
 // matters a lot, but one star does not take every chance.
+// v4.3 elite tuning (calibrated with scripts/calibration-rarity.mjs).
+const ELITE_TUNING = {
+  shotShareRank: 0.32, shotSharePoint: 0.05,
+  starRarity: { generational: 1.6, legend: 1.4, epic: 1.15, rare: 0.86, uncommon: 0.68, common: 0.52 }, starCap: 9,
+  // Context points in the biggest competitions for a side without Legend/Generational.
+  majorTitleCompetitions: new Set(['UCL', 'WC', 'EURO', 'COPA', 'CWC']),
+  noEliteHandicap: { noEpic: 4, fewEpics: 2.5, epicCore: 0 }
+};
+
 function matchGoalWeight(player) {
   const base = player.position === 'FW' ? 6 : player.position === 'MF' ? 3.2 : player.position === 'DF' ? 1.1 : 0.08;
   const quality = clamp((player.rating - 54) / 46, 0.08, 1.05);
-  const rarity = 1 + Math.max(0, (STAR_RARITIES[player.rarity]?.rank || 1) - 3) * 0.06;
+  // Elite shooters take a far bigger share of their team's shots (v4.3).
+  const rank = STAR_RARITIES[player.rarity]?.rank || 1;
+  const rarity = rank >= 4 ? (1 + (rank - 3) * ELITE_TUNING.shotShareRank) * (1 + Math.max(0, player.rating - 84) * ELITE_TUNING.shotSharePoint) : 1;
   return base * (player.depth ? 1 : roleData(player).goal) * (0.4 + quality ** 1.6 * 1.1) * rarity;
 }
 
@@ -3410,6 +3416,23 @@ function isDerby(homeId, awayId, isInternational) {
   return !isInternational && Boolean(rivalryDefinitionForIds(homeId, awayId));
 }
 
+// The biggest titles go to teams with a true star: without a Legend or Generational a
+// side is handicapped in the Champions League, World Cup, Euros, Copa América and Club
+// World Cup, much less so when it has a compact core of four or more Epics.
+function eliteCoreHandicap(state, teamId, isInternational, competitionId, squadOverride) {
+  if (!ELITE_TUNING.majorTitleCompetitions.has(competitionId)) return 0;
+  const squad = squadOverride || getTeamSquad(state, teamId, isInternational);
+  let legends = 0;
+  let epics = 0;
+  for (const player of squad.starters) {
+    const rank = STAR_RARITIES[player.rarity]?.rank || 1;
+    if (rank >= 5) legends += 1; else if (rank === 4) epics += 1;
+  }
+  if (legends) return 0;
+  const table = ELITE_TUNING.noEliteHandicap;
+  return epics >= 4 ? table.epicCore : epics ? table.fewEpics : table.noEpic;
+}
+
 function matchExpectations(state, { homeId, awayId, competitionId, stage, knockout, isInternational, neutral, homeSquad = null, awaySquad = null, derby = false, preview = false }) {
   const homeFavoriteBonus = tournamentFavoriteBonus(state, competitionId, homeId, isInternational, preview);
   const awayFavoriteBonus = tournamentFavoriteBonus(state, competitionId, awayId, isInternational, preview);
@@ -3420,8 +3443,8 @@ function matchExpectations(state, { homeId, awayId, competitionId, stage, knocko
   const homeBase = calculateTeamStrength(state, homeId, isInternational, homeSquad);
   const awayBase = calculateTeamStrength(state, awayId, isInternational, awaySquad);
   const homeEdge = homeAdvantage(state, { homeId, awayId, isInternational, competitionId, neutral, derby });
-  const homeContext = homeFavoriteBonus + homeCoachContext - homeDynastyPressure - titleFatigue(state, homeId, competitionId);
-  const awayContext = awayFavoriteBonus + awayCoachContext - awayDynastyPressure - titleFatigue(state, awayId, competitionId);
+  const homeContext = homeFavoriteBonus + homeCoachContext - homeDynastyPressure - titleFatigue(state, homeId, competitionId) - eliteCoreHandicap(state, homeId, isInternational, competitionId, homeSquad);
+  const awayContext = awayFavoriteBonus + awayCoachContext - awayDynastyPressure - titleFatigue(state, awayId, competitionId) - eliteCoreHandicap(state, awayId, isInternational, competitionId, awaySquad);
   const homeStrength = homeBase + homeContext + homeEdge;
   const awayStrength = awayBase + awayContext;
   // Squad quality and the home edge go through the saturating curve below; coach
@@ -3740,7 +3763,7 @@ function assignPotential(player, { fresh = false } = {}) {
     const gap = Math.round(stableStringRoll(`${player.id}:gap`) * Math.max(0, 7 - (player.careerYear || 0) * 1.5) * eliteTalent);
     // Prospects stay inside their rarity band; the gap closes as they develop.
     player.baseQuality = Math.max(band.min, player.baseQuality - gap);
-    player.rating = clamp(Math.round(player.baseQuality * (player.careerMultipliers?.[player.careerYear] ?? 1)), 51, 100);
+    player.rating = playerRatingFor(player, player.careerMultipliers?.[player.careerYear] ?? 1);
   }
   return player.potential;
 }
@@ -3751,6 +3774,7 @@ function initialisePlayerProfile(player, fresh = false) {
   // Career counters (Phase 5) exist from creation so every player keeps one object shape.
   player.careerGoals ??= 0;
   player.careerApps ??= 0;
+  player.previousRating ??= null;
   return player;
 }
 
@@ -3782,6 +3806,29 @@ function buildSeasonPlayingTime(state) {
 }
 
 // Yearly growth or decline on top of the career-curve archetype.
+// Ratings stay inside the rarity: below Epic a player tops out one point under the next
+// band (Rare 84, Uncommon 79, Common 69), so "Epic" always means elite. Breakouts can
+// promote a young Rare to Epic while the Epic population is under its ceiling.
+const EPIC_POPULATION_CAP = 50;
+function rarityRatingCap(player) {
+  const band = STAR_RARITIES[player.rarity];
+  return band && (band.rank || 1) < 4 ? band.max - 1 : 100;
+}
+
+function playerRatingFor(player, multiplier) {
+  return clamp(Math.round(player.baseQuality * multiplier), 51, rarityRatingCap(player));
+}
+
+const PROMOTION_BUDGET = new WeakMap();
+function epicRoom(state) {
+  let budget = PROMOTION_BUDGET.get(state);
+  if (!budget || budget.season !== state.season) {
+    budget = { season: state.season, epics: rarityCounts(state).epic || 0 };
+    PROMOTION_BUDGET.set(state, budget);
+  }
+  return budget;
+}
+
 function developPlayer(state, player, playing, club, coach) {
   const band = STAR_RARITIES[player.rarity] || STAR_RARITIES.common;
   const year = player.careerYear || 0;
@@ -3807,6 +3854,14 @@ function developPlayer(state, player, playing, club, coach) {
       player.potential = Math.min(band.max + 1, player.potential + lift);
       player.baseQuality = Math.min(player.potential, player.baseQuality + 1);
       story.type = 'breakout';
+      // A Rare whose ceiling now reaches the Epic band joins the elite, if there is room.
+      const room = player.rarity === 'rare' && player.potential > band.max ? epicRoom(state) : null;
+      if (room && room.epics < EPIC_POPULATION_CAP) {
+        room.epics += 1;
+        player.rarity = 'epic';
+        player.potential = Math.max(player.potential, STAR_RARITIES.epic.min + 1);
+        story.type = 'promotion';
+      }
     }
   } else if (year >= 4 && year <= 9 && random(state) < (professional ? 0.025 : 0.015) && performance > 0.2) {
     // Late bloomer.
@@ -3825,19 +3880,22 @@ function developPlayer(state, player, playing, club, coach) {
     player.careerMultipliers = careerCurve(player.careerType || 'stable_prime', player.careerLength);
     player.careerExtended = true;
   }
-  player.baseQuality = clamp(player.baseQuality, band.min - 8, band.max + 1);
+  const finalBand = STAR_RARITIES[player.rarity] || band;
+  player.baseQuality = clamp(player.baseQuality, finalBand.min - 8, (finalBand.rank || 1) < 4 ? finalBand.max : finalBand.max + 1);
+  if (player.potential > player.baseQuality && (finalBand.rank || 1) < 4) player.potential = Math.min(player.potential, finalBand.max);
   if (story.type && (['generational', 'legend', 'epic'].includes(player.rarity) || player.baseQuality >= 84)) {
-    const headline = story.type === 'breakout' ? `${player.name}'s breakout season raises the ceiling`
+    const headline = story.type === 'promotion' ? `${player.name} breaks into the elite`
+      : story.type === 'breakout' ? `${player.name}'s breakout season raises the ceiling`
       : story.type === 'late_bloomer' ? `${player.name} blossoms late`
         : `${player.name} shows signs of decline`;
     state.pendingSeasonNews ||= [];
     state.pendingSeasonNews.push({
       id: `news-${state.season + 1}-development-${story.type}-${player.id}`,
       week: 0,
-      importance: 'digest',
+      importance: story.type === 'promotion' ? 'major' : 'digest',
       category: 'Player Development',
       headline,
-      body: story.type === 'decline'
+      body: story.type === 'promotion' ? `A breakout season makes the ${player.roleLabel.toLowerCase()} an Epic player heading into ${state.season + 1}.` : story.type === 'decline'
         ? `${player.name} begins ${state.season + 1} short of last season's level.`
         : `${player.name} heads into ${state.season + 1} with scouts revising their view of the ${player.roleLabel.toLowerCase()}.`,
       entityType: 'player',
@@ -3888,6 +3946,7 @@ function returnLoanedPlayers(state) {
     if (!player.loan) continue;
     const parent = getClub(state, player.loan.parentClubId);
     if (player.status === 'active' && parent) {
+      (state.pendingLoanReturns ||= []).push({ playerId: player.id, fromClubId: player.clubId, toClubId: parent.id });
       player.clubId = parent.id;
       player.clubJoinedSeason = player.loan.parentJoinedSeason ?? player.clubJoinedSeason;
     }
@@ -5672,15 +5731,21 @@ function buildAnnualAwardRace(state) {
     const player = getPlayer(state, item.playerId);
     const average = item.apps ? item.ratingWeighted / item.apps : 0;
     const trophies = trophyBonus.get(item.playerId) || 0;
+    // Decisive performances in the biggest games: finals, and semi-finals at a lower weight.
     const finalImpact = (state.current.playerMatchLogs?.[item.playerId] || [])
-      .filter((log) => String(log.stage || '').toLowerCase() === 'final')
-      .reduce((sum, log) => sum + Math.max(0, (log.rating || 0) - 7.0) * (log.isInternational ? 4.5 : 3.2), 0);
+      .reduce((sum, log) => {
+        const stage = String(log.stage || '').toLowerCase();
+        const weightForStage = stage === 'final' ? 1 : /semi/.test(stage) ? 0.6 : 0;
+        return sum + Math.max(0, (log.rating || 0) - 7.0) * (log.isInternational ? 4.5 : 3.2) * weightForStage + (weightForStage ? (log.goals || 0) * 2.5 * weightForStage : 0);
+      }, 0);
+    // Voters favour stars: rarity and quality above the elite line, plus fame.
+    const starAppeal = (AWARD_STAR_APPEAL[player?.rarity] ?? 0) + Math.max(0, (player?.rating || 0) - 84) * 1.5 + (player?.fame || 0) * 0.06;
     // Voters notice goals: with event-based ratings a creative midfielder can match a
     // prolific forward on rating alone, so weighted goals add a modest extra.
     const goalEmphasis = item.weightedGoals * 0.4 + item.weightedAssists * 0.08;
     const ballonPositionWeight = { GK: 0.82, DF: 0.92, MF: 0.98, FW: 1.03 }[player?.position] || 1;
-    const score = item.competitionScore * ballonPositionWeight + goalEmphasis + trophies + finalImpact + average * 0.9 + Math.min(3, item.eliteApps * 0.03) + (player?.fame || 0) * 0.025;
-    const components = { apps: item.apps, goals: item.goals, assists: item.assists, weightedGoals: Number(item.weightedGoals.toFixed(2)), averageRating: Number(average.toFixed(2)), performanceScore: Number(item.competitionScore.toFixed(1)), trophyBonus: Number(trophies.toFixed(1)), finalImpact: Number(finalImpact.toFixed(1)), score: Number(score.toFixed(2)) };
+    const score = item.competitionScore * ballonPositionWeight + goalEmphasis + trophies + finalImpact + average * 0.9 + Math.min(3, item.eliteApps * 0.03) + starAppeal;
+    const components = { apps: item.apps, goals: item.goals, assists: item.assists, weightedGoals: Number(item.weightedGoals.toFixed(2)), averageRating: Number(average.toFixed(2)), performanceScore: Number(item.competitionScore.toFixed(1)), trophyBonus: Number(trophies.toFixed(1)), finalImpact: Number(finalImpact.toFixed(1)), starAppeal: Number(starAppeal.toFixed(1)), score: Number(score.toFixed(2)) };
     const primaryClubId = Object.entries(item.clubApps || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || player?.clubId || null;
     return { ...item, primaryClubId, average, score, components, age: state.season + 1 - (player?.birthYear || state.season) };
   }).filter((candidate) => candidate.apps >= 5).sort((a, b) => b.score - a.score);
@@ -5702,7 +5767,26 @@ function buildAnnualAwardRace(state) {
     const score = candidate.score + (player?.baseQuality || 60) * 0.55 + Math.max(0, (player?.careerLength || 10) - (player?.careerYear || 0)) * 0.4;
     return { ...candidate, score, components: { ...candidate.components, potentialBonus: Number(((player?.baseQuality || 60) * 0.55).toFixed(1)), score: Number(score.toFixed(2)) } };
   }).sort((a, b) => b.score - a.score);
-  return { ballonDor: diversifyBallonRanking(state, candidates), goldenBoot, kopa };
+  return { ballonDor: applyBallonRules(state, diversifyBallonRanking(state, candidates)), goldenBoot, kopa };
+}
+
+// Ballon d'Or rules (v4.3): Uncommon and Common players never make the podium; a Rare
+// can win only with a historic season (a Champions League or World Cup-level title and
+// a score well clear of the best Epic+ candidate). Otherwise the best Epic+ goes first.
+const AWARD_STAR_APPEAL = { generational: 55, legend: 45, epic: 30, rare: 0, uncommon: -60, common: -80 };
+function applyBallonRules(state, ranking) {
+  const rankOf = (candidate) => STAR_RARITIES[getPlayer(state, candidate.playerId)?.rarity]?.rank || 1;
+  const list = ranking.filter((candidate) => rankOf(candidate) >= 3);
+  const top = list[0];
+  if (top && rankOf(top) === 3) {
+    const bestElite = list.find((candidate) => rankOf(candidate) >= 4);
+    const historic = (top.components?.trophyBonus || 0) >= 36 && (!bestElite || top.score >= bestElite.score * 1.2);
+    if (bestElite && !historic) {
+      list.splice(list.indexOf(bestElite), 1);
+      list.unshift(bestElite);
+    }
+  }
+  return list;
 }
 
 function calculateAwards(state) {
@@ -6115,7 +6199,15 @@ function compactArchivedMatch(match) {
   return rest;
 }
 
+// Squad-power rank of every first-division club (the Power rankings measure).
+function seasonPowerRanks(state) {
+  const rows = state.clubs.filter((club) => club.division === 1).map((club) => [club.id, getTeamPower(state, club.id, false), club.reputation || 0])
+    .sort((a, b) => b[1] - a[1] || b[2] - a[2]);
+  return new Map(rows.map((row, index) => [row[0], index + 1]));
+}
+
 function archiveSeason(state) {
+  let powerRanks = null;
   CONTRIBUTOR_INDEX.delete(state.current.playerStats);
   Object.values(state.current.playerStats).forEach((stat) => {
     if (!stat.apps) return;
@@ -6144,12 +6236,14 @@ function archiveSeason(state) {
   }
   for (const league of Object.values(state.current.leagues)) {
     const sorted = sortTable(league.table);
+    powerRanks ||= seasonPowerRanks(state);
     sorted.forEach((row, index) => state.history.clubSeasons.push({
       season: state.season,
       seasonLabel: formatSeason(state.season),
       leagueId: league.id,
       clubId: row.teamId,
       position: index + 1,
+      powerRank: powerRanks.get(row.teamId) ?? null,
       played: row.played,
       wins: row.wins,
       draws: row.draws,
@@ -6515,7 +6609,7 @@ function createSquadFiller(state, club, position, { roleOptions = null, debutSea
   const band = STAR_RARITIES[rarity];
   const multiplier = player.careerMultipliers[player.careerYear] || 1;
   player.baseQuality = clamp(Math.round(desired / multiplier), band.min, band.max);
-  player.rating = clamp(Math.round(player.baseQuality * multiplier), 51, 100);
+  player.rating = playerRatingFor(player, multiplier);
   player.potential = undefined;
   assignPotential(player);
   player.marketValue = calculateMarketValueRaw(player.baseQuality, rarity, debutSeason - player.birthYear, position);
@@ -6548,6 +6642,7 @@ function ensureClubRosters(state) {
         .sort((a, b) => a.rating - b.rating)
         .slice(0, active.length - (target + 3));
       for (const player of surplus) {
+        (state.current.surplusReleases ||= []).push({ playerId: player.id, clubId: club.id });
         player.lastClubId = club.id;
         player.clubId = null;
         player.contractYears = 0;
@@ -6587,7 +6682,7 @@ function ensureClubRosters(state) {
         freeAgents.splice(freeAgents.indexOf(player), 1);
         active.push(player);
         const record = { id: `transfer-${state.nextTransferId++}`, season: signingSeason, seasonLabel: formatSeason(signingSeason), playerId: player.id,
-          fromClubId: formerClubId, toClubId: club.id, fee: 0, marketValue: player.marketValue, freeTransfer: true, preTransfer };
+          fromClubId: formerClubId, toClubId: club.id, fee: 0, marketValue: player.marketValue, freeTransfer: true, contractYears: player.contractYears, preTransfer };
         state.history.transfers.push(record);
         if (state.current && !state.current.completed) state.current.transfers.push(record);
         if (state.current && !state.current.completed) state.current.offseasonFreeAgentSignings.push({ playerId: player.id, toClubId: club.id });
@@ -6738,10 +6833,14 @@ function runSquadReshape(state) {
       counts.get(club.id)[player.position] += 1;
       const afterRelease = released.has(player.id);
       const record = { id: `transfer-${state.nextTransferId++}`, season: signingSeason, seasonLabel: formatSeason(signingSeason), playerId: player.id,
-        fromClubId: formerClubId, toClubId: club.id, fee: 0, marketValue: player.marketValue, freeTransfer: true, preTransfer, reshape: true, signedAfterRelease: afterRelease };
+        fromClubId: formerClubId, toClubId: club.id, fee: 0, marketValue: player.marketValue, freeTransfer: true, contractYears: player.contractYears, preTransfer, reshape: true, signedAfterRelease: afterRelease };
       state.history.transfers.push(record);
       state.current.transfers.push(record);
       report.signings.push({ playerId: player.id, clubId: club.id, fromClubId: formerClubId, position: player.position, afterRelease });
+      if (!afterRelease && ['generational', 'legend'].includes(player.rarity)) {
+        state.current.news.unshift({ id: `news-${signingSeason}-free-move-${player.id}-${club.id}`, week: 0, importance: 'feature', category: 'Transfer Market', storyType: 'transfer', relevance: 80,
+          headline: `${player.name} joins ${club.name} on a free`, body: `The ${STAR_RARITIES[player.rarity].label.toLowerCase()} free agent signs a ${player.contractYears}-year deal.`, entityType: 'player', entityId: player.id });
+      }
       if (afterRelease && ['generational', 'legend', 'epic'].includes(player.rarity)) {
         state.current.news.unshift({ id: `news-${signingSeason}-resigned-${player.id}`, week: 0, importance: 'major', category: 'Squad Reshape', storyType: 'transfer',
           headline: `${club.name} snap up ${player.name}`, body: `Released by ${getClub(state, formerClubId)?.name || 'his club'}, he signs straight away.`, entityType: 'player', entityId: player.id });
@@ -6766,6 +6865,137 @@ function runSquadReshape(state) {
   invalidateRuntimeCache(state);
   recalculateClubPayrollPressure(state);
   return report;
+}
+
+// ─── Moves: everyone who changed team this offseason and season ──────────────────
+// One list for players and one for coaches, each move with a plain "how" line, sorted
+// by rarity (Generational first) and then current rating / quality. Never by fee.
+const MOVE_RARITY_ORDER = { generational: 6, legend: 5, epic: 4, rare: 3, uncommon: 2, common: 1 };
+
+function teamLabel(state, clubId, nationalTeamId = null) {
+  if (clubId) return getClub(state, clubId)?.name || clubId;
+  if (nationalTeamId) return getTeamName(state, nationalTeamId, true);
+  return null;
+}
+
+function playerMoveRows(state) {
+  const season = state.season;
+  const current = state.current || {};
+  const exits = new Map((current.contractExits || []).map((row) => [row.playerId, row.clubId]));
+  const surplus = new Map((current.surplusReleases || []).map((row) => [row.playerId, row.clubId]));
+  const reshape = current.reshape || current.offseason?.reshape || null;
+  const reshapeReleased = new Map((reshape?.releases || []).map((row) => [row.playerId, row.clubId]));
+  const rows = [];
+  const money = (fee) => '$' + `${Number(fee || 0).toFixed(fee >= 10 ? 0 : 1)}m`;
+  for (const move of state.history.transfers || []) {
+    if (move.season !== season) continue;
+    const from = teamLabel(state, move.fromClubId);
+    const to = teamLabel(state, move.toClubId);
+    const years = move.contractYears ? `${move.contractYears}-year deal` : null;
+    let how;
+    if (move.loan) how = 'Loan';
+    else if (move.editorCreated) how = `Editor move${move.fee ? ` · ${money(move.fee)}` : ''}`;
+    else if (move.reshape && move.signedAfterRelease) how = `Released by ${from || 'his club'} (squad reshape) · signed by ${to}`;
+    else if (move.freeTransfer && move.fromClubId && surplus.get(move.playerId) === move.fromClubId) how = `Released by ${from} · signed by ${to}`;
+    else if (move.freeTransfer && move.fromClubId) how = `Contract expired at ${from} · free${years ? `, ${years}` : ''}`;
+    else if (move.freeTransfer) how = `Free agent · ${years || 'signed'}`;
+    else how = `Transfer · ${money(move.fee)}`;
+    rows.push({ playerId: move.playerId, fromClubId: move.fromClubId || null, toClubId: move.toClubId || null, how, kind: move.loan ? 'loan' : move.freeTransfer ? 'free' : 'transfer', fee: move.fee || 0 });
+  }
+  for (const row of current.loanReturns || []) rows.push({ playerId: row.playerId, fromClubId: row.fromClubId, toClubId: row.toClubId, how: 'Back from loan', kind: 'loan-return', fee: 0 });
+  const unattached = (playerId, clubId, how) => {
+    const player = getPlayer(state, playerId);
+    if (!player || player.status !== 'active' || player.clubId) return;
+    if (rows.some((row) => row.playerId === playerId && !row.toClubId)) return;
+    rows.push({ playerId, fromClubId: clubId, toClubId: null, how, kind: 'unattached', fee: 0 });
+  };
+  for (const [playerId, clubId] of exits) unattached(playerId, clubId, 'Contract expired · unattached');
+  for (const [playerId, clubId] of reshapeReleased) unattached(playerId, clubId, `Released by ${teamLabel(state, clubId)} (squad reshape) · unattached`);
+  for (const [playerId, clubId] of surplus) unattached(playerId, clubId, `Released by ${teamLabel(state, clubId)} · unattached`);
+  return rows.map((row) => {
+    const player = getPlayer(state, row.playerId);
+    return player ? { ...row, rarity: player.rarity, position: player.position, rating: player.rating, age: state.season - (player.birthYear || state.season - 25), name: player.name } : null;
+  }).filter(Boolean).sort((a, b) => (MOVE_RARITY_ORDER[b.rarity] || 0) - (MOVE_RARITY_ORDER[a.rarity] || 0) || b.rating - a.rating || a.name.localeCompare(b.name));
+}
+
+function coachMoveRows(state) {
+  const season = state.season;
+  const inWindow = (move) => move.reason !== 'retired' && (move.season === season || (move.season === season - 1 && move.week === undefined));
+  const byCoach = new Map();
+  for (const move of state.history.coachMoves || []) {
+    if (!inWindow(move)) continue;
+    if (!byCoach.has(move.coachId)) byCoach.set(move.coachId, []);
+    byCoach.get(move.coachId).push(move);
+  }
+  const departureText = (move, from) => {
+    const reason = String(move.reason || '');
+    if (/sacked|dismiss|board change|elite upgrade|failure|disappointment|qualification|federation/.test(reason)) return `Dismissed by ${from}`;
+    if (/interim spell/.test(reason)) return `Interim spell at ${from} ends`;
+    if (/contract/.test(reason)) return `Left ${from} after his contract`;
+    return `Left ${from}`;
+  };
+  const rows = [];
+  for (const [coachId, moves] of byCoach) {
+    const coach = (state.coaches || []).find((item) => item.id === coachId);
+    if (!coach) continue;
+    const departure = moves.find((move) => (move.fromClubId || move.fromNationalTeamId) && !(move.toClubId || move.toNationalTeamId));
+    const arrival = [...moves].reverse().find((move) => move.toClubId || move.toNationalTeamId);
+    const fromClubId = departure?.fromClubId || arrival?.fromClubId || null;
+    const fromNationalTeamId = departure?.fromNationalTeamId || arrival?.fromNationalTeamId || null;
+    const from = teamLabel(state, fromClubId, fromNationalTeamId);
+    const to = arrival ? teamLabel(state, arrival.toClubId, arrival.toNationalTeamId) : null;
+    let how;
+    if (arrival && /poached|approach/.test(String(arrival.reason || '')) && from) how = `Poached from ${from}`;
+    else if (departure && arrival) how = `${departureText(departure, from)} · appointed by ${to}`;
+    else if (arrival && arrival.reason === 'interim appointment') how = `Interim coach at ${to}`;
+    else if (arrival) how = from ? `Left ${from} · appointed by ${to}` : `Appointed by ${to}`;
+    else how = `${departureText(departure, from)} · unattached`;
+    // Dismissed and taken back by the same employer: no change of job.
+    if (arrival && (fromClubId || fromNationalTeamId) && fromClubId === (arrival.toClubId || null) && fromNationalTeamId === (arrival.toNationalTeamId || null)) continue;
+    rows.push({ coachId, name: coach.name, rarity: coach.rarity, rating: coach.quality, fromClubId, fromNationalTeamId, toClubId: arrival?.toClubId || null, toNationalTeamId: arrival?.toNationalTeamId || null, how });
+  }
+  return rows.sort((a, b) => (MOVE_RARITY_ORDER[b.rarity] || 0) - (MOVE_RARITY_ORDER[a.rarity] || 0) || b.rating - a.rating || a.name.localeCompare(b.name));
+}
+
+export function getSeasonMoves(state, { clubId = null, eliteOnly = false } = {}) {
+  let players = playerMoveRows(state);
+  let coaches = coachMoveRows(state);
+  if (clubId) {
+    players = players.filter((row) => row.fromClubId === clubId || row.toClubId === clubId);
+    coaches = coaches.filter((row) => row.fromClubId === clubId || row.toClubId === clubId);
+  }
+  if (eliteOnly) {
+    players = players.filter((row) => (MOVE_RARITY_ORDER[row.rarity] || 0) >= 4);
+    coaches = coaches.filter((row) => (MOVE_RARITY_ORDER[row.rarity] || 0) >= 4);
+  }
+  return { season: state.season, players, coaches };
+}
+
+// "Since last season" for one club: power rank then and now, arrivals and departures,
+// the biggest rating changes in the squad (aging or growth) and any coach change.
+export function getClubChanges(state, clubId) {
+  const club = getClub(state, clubId);
+  if (!club) return null;
+  const lastRow = [...(state.history.clubSeasons || [])].filter((row) => row.clubId === clubId && row.season < state.season + (state.current?.completed ? 1 : 0)).sort((a, b) => b.season - a.season)[0] || null;
+  const nowRank = club.division === 1 ? seasonPowerRanks(state).get(clubId) ?? null : null;
+  const moves = getSeasonMoves(state, { clubId });
+  const squad = (state.players || []).filter((player) => player.status === 'active' && player.clubId === clubId && Number.isFinite(player.previousRating));
+  const changes = squad.map((player) => {
+    const age = state.season - (player.birthYear || state.season - 25);
+    const delta = player.rating - player.previousRating;
+    const reason = delta < 0 ? (age >= 30 ? 'aging' : player.injury ? 'injury' : 'decline') : delta > 0 ? (age <= 24 ? 'development' : 'improvement') : 'unchanged';
+    return { playerId: player.id, name: player.name, rarity: player.rarity, age, before: player.previousRating, after: player.rating, delta, reason };
+  }).filter((row) => row.delta !== 0).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || (MOVE_RARITY_ORDER[b.rarity] || 0) - (MOVE_RARITY_ORDER[a.rarity] || 0)).slice(0, 8);
+  return {
+    clubId,
+    lastSeason: lastRow ? { season: lastRow.season, seasonLabel: lastRow.seasonLabel, position: lastRow.position, powerRank: lastRow.powerRank ?? null } : null,
+    powerRankNow: nowRank,
+    arrivals: moves.players.filter((row) => row.toClubId === clubId),
+    departures: moves.players.filter((row) => row.fromClubId === clubId && row.toClubId !== clubId),
+    coachArrivals: moves.coaches.filter((row) => row.toClubId === clubId),
+    coachDepartures: moves.coaches.filter((row) => row.fromClubId === clubId && row.toClubId !== clubId),
+    ratingChanges: changes
+  };
 }
 
 export function getTeamFitness(state, teamId) {
@@ -7254,7 +7484,7 @@ function* evolveWorldSteps(state) {
     }
     developPlayer(state, player, seasonPlayingTime, clubBeforeLifecycle, clubBeforeLifecycle ? getCoach(state, clubBeforeLifecycle.id, false) : null);
     const multiplier = player.careerMultipliers[player.careerYear] ?? 0.85;
-    player.rating = clamp(Math.round(player.baseQuality * multiplier), 51, 100);
+    player.rating = playerRatingFor(player, multiplier);
     player.marketValue = calculateMarketValue(state, player);
     const currentClub = player.clubId ? getClub(state, player.clubId) : null;
     const ambitionChange = ambitionHappinessChange(state, player, currentClub);
@@ -7290,6 +7520,7 @@ function* evolveWorldSteps(state) {
       } else {
         if (club) {
           player.lastClubId = club.id;
+          (state.pendingContractExits ||= []).push({ playerId: player.id, clubId: club.id });
           if (lifecyclePayroll.has(club.id)) lifecyclePayroll.get(club.id).bill = Math.max(0, currentBill - salaryBeforeLifecycle);
           if (['generational', 'legend', 'epic'].includes(player.rarity)) {
             state.pendingSeasonNews ||= [];
@@ -7686,11 +7917,21 @@ function transferPlayer(state, player, buyer, seller, fee, freeTransfer = false)
     fee,
     marketValue: player.marketValue,
     freeTransfer,
+    contractYears: player.contractYears,
     preTransfer
   };
   state.current.transfers.push(record);
   state.history.transfers.push(record);
   recalculateClubPayrollPressure(state, [buyer.id, recordedFromClubId].filter(Boolean));
+  if (freeTransfer && ['generational', 'legend'].includes(player.rarity) && !(formerClub && formerClub.leagueId === buyer.leagueId && formerClub.id !== buyer.id)) {
+    state.current.news.unshift({
+      id: `news-${state.season}-free-move-${player.id}-${buyer.id}`, week: 0, importance: 'feature', category: 'Transfer Market', storyType: 'transfer', relevance: 80,
+      headline: `${player.name} joins ${buyer.name} on a free`,
+      body: `The ${STAR_RARITIES[player.rarity].label.toLowerCase()} ${player.roleLabel.toLowerCase()} ${formerClub ? `leaves ${formerClub.name} at the end of his contract` : 'was a free agent'} and signs a ${player.contractYears}-year deal.`,
+      entityType: 'player', entityId: player.id, transferRecordId: record.id
+    });
+    return;
+  }
   if (['generational', 'legend', 'epic'].includes(player.rarity)) {
     const rivalMove = formerClub && formerClub.leagueId === buyer.leagueId && formerClub.id !== buyer.id;
     state.current.news.unshift({
@@ -9201,6 +9442,10 @@ export function startNextSeason(state) {
 export function* startNextSeasonSteps(state) {
   if (!state.current.completed) return;
   state.offseasonProgress = { fromSeason: state.season, coachMoves: state.history.coachMoves.length, transfers: state.history.transfers.length, stage: 'start' };
+  // Ratings before the summer's development and aging, for "since last season" views.
+  for (const player of state.players) if (player.status === 'active') player.previousRating = player.rating;
+  state.pendingContractExits = [];
+  state.pendingLoanReturns = [];
   state.history.postseasons ||= [];
   if (state.current.postseason?.prepared && !state.history.postseasons.some((row) => row.season === state.season)) {
     state.history.postseasons.push({
@@ -10082,6 +10327,25 @@ export function upgradeWorld(state) {
       state.current.reshape ??= null;
     }
     state.dataRevision = 33;
+  }
+  if (state.dataRevision < 34) {
+    // v4.3: ratings stay inside the rarity (below Epic, one point under the next band);
+    // "since last season" ratings and the move lists start empty.
+    for (const player of state.players || []) {
+      const band = STAR_RARITIES[player.rarity];
+      if (band && (band.rank || 1) < 4) {
+        player.baseQuality = Math.min(player.baseQuality, band.max);
+        if (Number.isFinite(player.potential)) player.potential = Math.min(player.potential, band.max);
+        player.rating = Math.min(player.rating, band.max - 1);
+      }
+      player.previousRating ??= null;
+    }
+    if (state.current) {
+      state.current.contractExits ||= [];
+      state.current.loanReturns ||= [];
+      state.current.surplusReleases ||= [];
+    }
+    state.dataRevision = 34;
   }
   return state;
 }

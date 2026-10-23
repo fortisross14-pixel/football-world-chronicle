@@ -130,7 +130,10 @@ const raw = JSON.parse(JSON.stringify(old));
 const ratings = new Map(raw.players.map((player) => [player.id, player.rating]));
 const upgraded = upgradeWorld(raw);
 assert(upgraded.dataRevision >= 30);
-assert(upgraded.players.filter((player) => ratings.has(player.id)).every((player) => player.rating === ratings.get(player.id)), 'upgrading changes no ratings');
+// v4.3 (data revision 34) brings ratings of players below Epic back inside their band;
+// every other rating is unchanged.
+const bandCap = { rare: 84, uncommon: 79, common: 69 };
+assert(upgraded.players.filter((player) => ratings.has(player.id)).every((player) => player.rating === (bandCap[player.rarity] !== undefined ? Math.min(ratings.get(player.id), bandCap[player.rarity]) : ratings.get(player.id))), 'upgrading changes no ratings except the band caps');
 assert(upgraded.players.every((player) => Array.isArray(player.traits) && Number.isFinite(player.potential)));
 assert(upgraded.clubs.some((club) => club.captainId));
 simulateWeeks(upgraded, 4);

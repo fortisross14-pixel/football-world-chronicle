@@ -331,6 +331,11 @@ for (const [key, [min, max]] of Object.entries(TARGETS)) {
 }
 report.outsideTargets = outside;
 
+// Rarity (v4.3): do elite players drive awards, goals and titles? CAL_RARITY=0 skips it.
+if (process.env.CAL_RARITY !== '0') {
+  const { runRarityCalibration } = await import('./calibration-rarity.mjs');
+  report.rarity = await runRarityCalibration({ seeds: String(process.env.RARITY_SEEDS || '11,22,33').split(',').map(Number), seasons: Number(process.env.RARITY_SEASONS || 20), engineUrl });
+}
 // International tournaments (v4.2): how the pre-tournament top 4 fare. CAL_INTL=0 skips it.
 if (process.env.CAL_INTL !== '0') {
   const { runInternationalCalibration } = await import('./calibration-international.mjs');
