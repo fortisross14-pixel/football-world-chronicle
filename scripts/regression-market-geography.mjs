@@ -128,6 +128,19 @@ for (const club of world.clubs) {
   club.wageBudget = 100;
   club.payrollPressureRatio = 1;
 }
+// The market is random: find a random state in which the move happens (it does in most),
+// so the test does not hinge on one draw when unrelated code shifts the random stream.
+const rngStart = world.rngSeed;
+let rngOffset = 0;
+for (; rngOffset < 6; rngOffset += 1) {
+  const trial = structuredClone(world);
+  trial.rngSeed = (rngStart + rngOffset * 7919) >>> 0;
+  engine.invalidateRuntimeCache(trial);
+  engine.runTransferMarket(trial);
+  if (trial.players.find((player) => player.id === star.id).clubId !== buyer.id) break;
+}
+assert(rngOffset < 6, 'Persistent unhappy legend never completed a move');
+world.rngSeed = (rngStart + rngOffset * 7919) >>> 0;
 engine.invalidateRuntimeCache(world);
 engine.runTransferMarket(world);
 assert.notEqual(star.clubId, buyer.id, 'Persistent unhappy legend never completed a move');

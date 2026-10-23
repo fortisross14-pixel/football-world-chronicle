@@ -855,6 +855,39 @@ function initialRarityDeck(state, count) {
   return [...fixed, ...shuffle(state, lower)];
 }
 
+// Active coaches by rarity (v4.4): the world keeps 2–3 Generational, 8–10 Legend, 15–20
+// Epic and about 40 Rare coaches; everyone else is Uncommon or Common.
+const COACH_RARITY_TARGETS = { generational: 3, legend: 9, epic: 18, rare: 40 };
+const COACH_RARITY_CEILINGS = { generational: 3, legend: 10, epic: 20, rare: 44 };
+// Elite coaches mostly come from strong football nations.
+const COACH_NATION_WEIGHTS = {
+  generational: { 1: 14, 2: 2.2, 3: 0.08, 4: 0.01 },
+  legend: { 1: 7, 2: 3.2, 3: 0.45, 4: 0.05 },
+  epic: { 1: 3.5, 2: 2.4, 3: 1.1, 4: 0.35 },
+  rare: { 1: 1.8, 2: 1.45, 3: 1.15, 4: 0.9 }
+};
+
+function nationTier(nationality) {
+  const nation = NATIONAL_TEAMS.find((team) => team.id === nationality || COUNTRY_TO_CODE[team.name] === nationality);
+  return nation?.tier || 4;
+}
+
+// Below Rare: Uncommon about a third of the time, Common otherwise.
+function ordinaryCoachRarity(state) {
+  return random(state) < 0.35 ? 'uncommon' : 'common';
+}
+
+// A rarity the world can still take: anything at its ceiling drops to the next level.
+function cappedCoachRarity(state, desired) {
+  const counts = activeCoachRarityCounts(state);
+  const order = ['generational', 'legend', 'epic', 'rare'];
+  for (let index = order.indexOf(desired); index >= 0 && index < order.length; index += 1) {
+    const rarity = order[index];
+    if ((counts[rarity] || 0) < COACH_RARITY_CEILINGS[rarity]) return rarity;
+  }
+  return ['uncommon', 'common'].includes(desired) ? desired : 'uncommon';
+}
+
 function chooseStaffRarity(state, nationality = null, type = 'coach') {
   const nation = NATIONAL_TEAMS.find((team) => team.id === nationality || COUNTRY_TO_CODE[team.name] === nationality);
   const tier = nation?.tier || 4;
@@ -1701,8 +1734,19 @@ function initializeStaff(state) {
     ...state.clubs.map((club) => COUNTRY_TO_CODE[club.country] || 'eng'),
     ...state.nationalTeams.map((team) => team.id)
   ]);
+  const plannedRarity = new Array(coachCount).fill(null);
+  for (const [rarity, count] of Object.entries(COACH_RARITY_TARGETS)) {
+    const weights = COACH_NATION_WEIGHTS[rarity];
+    for (let made = 0; made < count; made += 1) {
+      const open = [];
+      for (let index = 0; index < coachCount; index += 1) if (!plannedRarity[index]) open.push(index);
+      const chosen = weightedPick(state, open, (index) => weights[nationTier(jobNationalities[index % jobNationalities.length])] || 0.5);
+      if (chosen === undefined || chosen === null) break;
+      plannedRarity[chosen] = rarity;
+    }
+  }
   for (let index = 0; index < coachCount; index += 1) {
-    coaches.push(createStaffMember(state, 'coach', jobNationalities[index % jobNationalities.length]));
+    coaches.push(createStaffMember(state, 'coach', jobNationalities[index % jobNationalities.length], { rarity: plannedRarity[index] || ordinaryCoachRarity(state) }));
   }
 
   // Federations choose first, preserving a strong domestic identity for elite nations.
@@ -1711,7 +1755,7 @@ function initializeStaff(state) {
   for (const team of nationalAssignments) {
     let domestic = available.filter((coach) => coach.nationality === team.id && nationalCoachCandidateAllowed(team, coach));
     if (!domestic.length) {
-      const generated = createStaffMember(state, 'coach', team.id, { rarity: team.tier === 1 ? 'epic' : team.tier === 2 ? 'rare' : team.tier === 3 ? 'uncommon' : 'common', careerYear: randomInt(state, 1, 4) });
+      const generated = createStaffMember(state, 'coach', team.id, { rarity: team.tier === 1 ? 'rare' : team.tier === 2 ? 'uncommon' : 'common', careerYear: randomInt(state, 1, 4) });
       coaches.push(generated);
       available.push(generated);
       domestic = [generated];
@@ -1743,7 +1787,8 @@ function initializeStaff(state) {
   state.owners = owners;
   state.coaches = coaches;
   state.targetActiveCoaches = coaches.length;
-  state.coachRarityTargets = coaches.reduce((counts, coach) => {
+  state.coachRarityTargets = coachTargetsFor(coaches.length);
+  void coaches.reduce((counts, coach) => {
     counts[coach.rarity] = (counts[coach.rarity] || 0) + 1;
     return counts;
   }, {});
@@ -2238,6 +2283,7 @@ function newCurrentSeason(state) {
     transfers: [],
     staffMoves: [],
     newStars: [...(state.pendingSeasonStars || [])],
+    youthIntake: [],
     newCoaches: [...(state.pendingSeasonCoaches || [])],
     retirements: [...(state.pendingSeasonRetirements || [])],
     contractExits: [...(state.pendingContractExits || [])],
@@ -2271,7 +2317,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 34,
+    dataRevision: 35,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -2335,6 +2381,7 @@ export function createWorld(seed = Date.now() % 2147483647) {
   state.clubs = entities.clubs;
   state.players = entities.players;
   initializeStaff(state);
+  seedEliteAcademies(state, () => random(state));
   refreshAllMarketValues(state);
   state.current = newCurrentSeason(state);
   state.pendingSeasonStars = [];
@@ -3775,6 +3822,7 @@ function initialisePlayerProfile(player, fresh = false) {
   player.careerGoals ??= 0;
   player.careerApps ??= 0;
   player.previousRating ??= null;
+  player.academyClubId ??= null;
   return player;
 }
 
@@ -3856,7 +3904,8 @@ function developPlayer(state, player, playing, club, coach) {
       story.type = 'breakout';
       // A Rare whose ceiling now reaches the Epic band joins the elite, if there is room.
       const room = player.rarity === 'rare' && player.potential > band.max ? epicRoom(state) : null;
-      if (room && room.epics < EPIC_POPULATION_CAP) {
+      // The last places under the cap are left for academy graduates (v4.4).
+      if (room && room.epics < EPIC_POPULATION_CAP - 8) {
         room.epics += 1;
         player.rarity = 'epic';
         player.potential = Math.max(player.potential, STAR_RARITIES.epic.min + 1);
@@ -3957,6 +4006,213 @@ function returnLoanedPlayers(state) {
 // Academy intake: top-flight clubs promote a youth graduate most summers (better
 // academies at bigger clubs; never above Rare, so rarity caps are untouched). The
 // weakest veteran ordinary player makes way, keeping the population stable.
+// ─── Youth academies (v4.4) ──────────────────────────────────────────────────────
+// Every club has an academy score (0–100, shown as 1–5 stars). Academy Patron owners
+// and Youth Developer coaches raise it, money-first owners let it slide, and every
+// academy drifts back toward 50. At the Squad Reshape, open squad slots get youth rolls:
+// the score sets the chance, the stars set the rarity table, the club's country (and a
+// few historic academies) decide how often a star appears.
+const HISTORIC_ACADEMIES = new Set(['flamengo', 'santos', 'sao-paulo', 'boca', 'river', 'real-madrid', 'milan', 'ajax', 'benfica', 'sporting', 'barcelona', 'man-utd', 'bayern', 'juventus', 'inter', 'fluminense', 'independiente', 'uru-penarol', 'nacional', 'porto']);
+const ELITE_YOUTH_NATIONS = {
+  core: new Set(['bra', 'arg', 'ger', 'fra', 'ita', 'esp', 'eng']),
+  second: new Set(['por', 'uru', 'ned', 'bel']),
+  third: new Set(['col', 'chi', 'mex', 'usa', 'nga', 'cmr', 'mar', 'egy', 'pol', 'rus', 'gre', 'nor', 'swe', 'jpn', 'kor', 'cro', 'srb', 'den', 'sui', 'sen', 'civ', 'gha'])
+};
+// How often an Epic+ roll survives, by country group (otherwise it becomes a Rare).
+const ELITE_YOUTH_KEEP = { core: 1, second: 0.55, third: 0.2, other: 0.05 };
+// Rarity tables by academy stars (percent).
+const ACADEMY_TABLES = {
+  1: { common: 100 },
+  2: { common: 55, uncommon: 45 },
+  3: { common: 20, uncommon: 52, rare: 23, epic: 4, legend: 0.8 },
+  4: { uncommon: 42, rare: 40, epic: 14, legend: 3.4, generational: 0.6 },
+  5: { rare: 55, epic: 30, legend: 12, generational: 3 }
+};
+const ACADEMY_PATRON_GAIN = { generational: 6, legend: 4, epic: 3, rare: 1.5, uncommon: 1, common: 0.5 };
+const MONEY_OWNER_LOSS = { generational: 0.5, legend: 1, epic: 2, rare: 3, uncommon: 3.5, common: 4 };
+const YOUTH_COACH_GAIN = { generational: 3, legend: 2.5, epic: 2, rare: 1.5, uncommon: 1, common: 0.5 };
+const ACADEMY_DRIFT = 0.08;
+const PLAYER_CAPS = { generational: 3, legend: 15, epic: 50 };
+
+function academyClass(club) {
+  const reputation = club.reputation || 60;
+  return reputation >= 85 || clubFinancialTierRank(club) >= 5 ? 'top' : reputation >= 72 ? 'mid' : 'other';
+}
+
+function ensureAcademy(club) {
+  if (!Number.isFinite(club.academyScore)) club.academyScore = { top: 61, mid: 50, other: 39 }[academyClass(club)];
+  club.academyHistory ||= [];
+  return club.academyScore;
+}
+
+export function academyStars(score) {
+  return clamp(Math.floor((score ?? 50) / 20) + 1, 1, 5);
+}
+
+function academyDrivers(state, club) {
+  const owner = getOwner(state, club.id);
+  const coach = getCoach(state, club.id, false);
+  const ownerDelta = owner?.profile === 'academy_patron' ? ACADEMY_PATRON_GAIN[owner.rarity] || 0
+    : ['billionaire', 'consortium'].includes(owner?.profile) ? -(MONEY_OWNER_LOSS[owner.rarity] || 0) : 0;
+  const coachDelta = coach?.profile === 'youth_developer' ? YOUTH_COACH_GAIN[coach.rarity] || 0 : 0;
+  return { owner, coach, ownerDelta, coachDelta };
+}
+
+// Yearly change, once per offseason.
+function updateAcademies(state) {
+  for (const club of state.clubs) {
+    const score = ensureAcademy(club);
+    const { ownerDelta, coachDelta } = academyDrivers(state, club);
+    const next = clamp(score + ownerDelta + coachDelta + (club.academyTradition || 0) + (50 - score) * ACADEMY_DRIFT, 0, 100);
+    club.academyScore = Number(next.toFixed(1));
+    club.academyHistory.push([state.season, club.academyScore]);
+    if (club.academyHistory.length > 30) club.academyHistory.shift();
+  }
+}
+
+function eliteYouthGroup(nationality) {
+  if (ELITE_YOUTH_NATIONS.core.has(nationality)) return 'core';
+  if (ELITE_YOUTH_NATIONS.second.has(nationality)) return 'second';
+  if (ELITE_YOUTH_NATIONS.third.has(nationality)) return 'third';
+  return 'other';
+}
+
+const RARITY_DOWN = { generational: 'legend', legend: 'epic', epic: 'rare', rare: 'uncommon', uncommon: 'common', common: 'common' };
+
+// Rarity of one academy product: the star table, a boost for historic academies, the
+// country's football culture, the population caps and one Generational per club.
+function rollYouthRarity(state, club, nationality, counts, clubHasGenerational) {
+  const stars = academyStars(club.academyScore);
+  const table = { ...ACADEMY_TABLES[stars] };
+  if (HISTORIC_ACADEMIES.has(club.id)) for (const rarity of ['epic', 'legend', 'generational']) if (table[rarity]) table[rarity] *= 1.6;
+  let rarity = weightedPick(state, Object.keys(table), (key) => table[key]);
+  if ((STAR_RARITIES[rarity]?.rank || 1) >= 4 && random(state) > ELITE_YOUTH_KEEP[eliteYouthGroup(nationality)]) rarity = 'rare';
+  if (rarity === 'generational' && clubHasGenerational) rarity = 'legend';
+  while (PLAYER_CAPS[rarity] !== undefined && (counts[rarity] || 0) >= PLAYER_CAPS[rarity]) rarity = RARITY_DOWN[rarity];
+  return rarity;
+}
+
+// Creates one academy graduate for a club (an unused historical icon of the club's
+// country when an Epic+ comes through and the icon rules allow it).
+function createYouthPlayer(state, club, position, counts, clubHasGenerational) {
+  const home = COUNTRY_TO_CODE[club.country] || 'eng';
+  const nationality = random(state) < 0.92 ? home : chooseNationality(state, 'common', null);
+  const rarity = rollYouthRarity(state, club, nationality, counts, clubHasGenerational);
+  const debutSeason = state.season + (state.current.completed ? 1 : 0);
+  let player = null;
+  if ((STAR_RARITIES[rarity]?.rank || 1) >= 4 && shouldSpawnRealWorldStar(state, rarity)) {
+    const icons = availableRealWorldStars(state, rarity).filter((template) => template.startCountry === club.country || teamById(template.nationality)?.name === club.country);
+    if (icons.length) player = createRealWorldPlayer(state, pick(state, icons), { club, careerYear: 0, debutSeason });
+  }
+  if (!player) {
+    player = createPlayer(state, { club, rarity, position, nationality, careerYear: 0 });
+    player.birthYear += debutSeason - state.season;
+    player.debutSeason = debutSeason;
+  }
+  player.clubId = club.id;
+  player.debutAge ||= 17;
+  player.academy = true;
+  player.academyClubId = club.id;
+  player.spawnClubId = club.id;
+  markPlayerArrival(player, debutSeason);
+  player.contractYears = randomInt(state, 3, 5);
+  player.salary = Math.max(0.2, Number((player.marketValue * 0.03).toFixed(1)));
+  state.players.push(player);
+  counts[player.rarity] = (counts[player.rarity] || 0) + 1;
+  const record = { playerId: player.id, clubId: club.id, academyStars: academyStars(club.academyScore), rarity: player.rarity, position: player.position, icon: Boolean(player.realWorldId) };
+  (state.current.youthIntake ||= []).push(record);
+  if ((STAR_RARITIES[player.rarity]?.rank || 1) >= 4) {
+    state.current.news.unshift({
+      id: `news-${debutSeason}-youth-${player.id}`, week: 0, importance: player.rarity === 'epic' ? 'major' : 'feature', category: 'Youth Academy', storyType: 'youth', relevance: 70 + (STAR_RARITIES[player.rarity].rank - 4) * 10,
+      headline: `${club.name}'s academy produces ${player.rarity === 'epic' ? 'an Epic' : `a ${STAR_RARITIES[player.rarity].label}`}`,
+      body: `${player.name}, a ${player.roleLabel.toLowerCase()} from ${teamById(player.nationality)?.name || 'abroad'}, joins the first team from the ${academyStars(club.academyScore)}-star academy.`,
+      entityType: 'player', entityId: player.id
+    });
+  }
+  return player;
+}
+
+// Chance that an open slot is filled by the club's own youth.
+function youthSlotChance(club, smallCore = false) {
+  const score = club.academyScore ?? 50;
+  return smallCore ? 0.15 + score / 100 * 0.4 : 0.25 + score / 100 * 0.6;
+}
+
+// Top clubs two seasons without a major trophy make room for youth: up to two veterans
+// or Common players are released before the youth rolls.
+function majorTrophyDrought(state, club) {
+  const majors = new Set([club.leagueId, 'UCL', 'UEL', 'LIB', 'CWC', 'ICUP', `CUP-${club.leagueId}`]);
+  const last = (state.history.champions || []).filter((row) => row.winnerId === club.id && majors.has(row.competitionId)).reduce((max, row) => Math.max(max, row.season), -Infinity);
+  return state.season - last > 2;
+}
+
+// A new world starts with a few elite academies (like the first Generational players):
+// four 5-star and eighteen 4-star, weighted toward historic academies, the big
+// football nations and big clubs. roll() is the seeded RNG for new worlds, a stable
+// per-club roll when an old save is upgraded.
+function seedEliteAcademies(state, roll) {
+  for (const club of state.clubs) ensureAcademy(club);
+  const candidates = state.clubs.filter((club) => club.division === 1).map((club) => {
+    const nation = eliteYouthGroup(COUNTRY_TO_CODE[club.country] || '');
+    const weight = (HISTORIC_ACADEMIES.has(club.id) ? 6 : 1) * ({ core: 3, second: 1.6, third: 0.7, other: 0.35 }[nation]) * ((club.reputation || 60) / 80) ** 2;
+    return { club, key: Math.pow(Math.max(1e-6, roll(club)), 1 / weight) };
+  }).sort((a, b) => b.key - a.key);
+  const fiveStar = Math.max(3, Math.round(candidates.length * 0.045));
+  const fourStar = Math.max(8, Math.round(candidates.length * 0.08));
+  // Seeded academies have a youth tradition that keeps them near their level.
+  candidates.slice(0, fiveStar).forEach(({ club }) => { club.academyScore = 82 + Math.floor(roll(club) * 13); club.academyTradition = 3.4; });
+  candidates.slice(fiveStar, fiveStar + fourStar).forEach(({ club }) => { club.academyScore = 62 + Math.floor(roll(club) * 15); club.academyTradition = 1.6; });
+  for (const club of state.clubs) if (HISTORIC_ACADEMIES.has(club.id)) club.academyTradition = Math.max(club.academyTradition || 0, 1.6);
+  // Starting point for the trend chart.
+  for (const club of state.clubs) if (ensureAcademy(club) >= 0 && !club.academyHistory.length) club.academyHistory.push([state.season, Number(club.academyScore.toFixed(1))]);
+}
+
+export function getClubAcademy(state, clubId) {
+  const club = getClub(state, clubId);
+  if (!club) return null;
+  const score = ensureAcademy(club);
+  const { owner, coach, ownerDelta, coachDelta } = academyDrivers(state, club);
+  const graduates = (state.players || []).filter((player) => player.academyClubId === clubId || (player.academy && !player.academyClubId && player.spawnClubId === clubId));
+  return {
+    score: Math.round(score), stars: academyStars(score), history: club.academyHistory.map(([season, value]) => ({ season, score: value })),
+    historic: HISTORIC_ACADEMIES.has(clubId),
+    drivers: { ownerId: owner?.id || null, ownerProfile: owner?.profile || null, ownerDelta, coachId: coach?.id || null, coachProfile: coach?.profile || null, coachDelta, tradition: club.academyTradition || 0, drift: Number(((50 - score) * ACADEMY_DRIFT).toFixed(1)) },
+    graduates: graduates.length, activeGraduates: graduates.filter((player) => player.status === 'active').length
+  };
+}
+
+export function getYouthIntake(state, { clubId = null } = {}) {
+  const rows = (state.current?.youthIntake || []).filter((row) => !clubId || row.clubId === clubId);
+  return rows.map((row) => ({ ...row, rating: getPlayer(state, row.playerId)?.rating ?? null }))
+    .sort((a, b) => (STAR_RARITIES[b.rarity]?.rank || 0) - (STAR_RARITIES[a.rarity]?.rank || 0) || (b.rating || 0) - (a.rating || 0));
+}
+
+export function getBestAcademies(state, limit = 30) {
+  return state.clubs.filter((club) => club.division === 1).map((club) => ({ clubId: club.id, score: Math.round(ensureAcademy(club)), stars: academyStars(club.academyScore), historic: HISTORIC_ACADEMIES.has(club.id) }))
+    .sort((a, b) => b.score - a.score || a.clubId.localeCompare(b.clubId)).slice(0, limit);
+}
+
+// Elite safety net: academies supply the stars; this only refills a floor if a run of
+// quiet years leaves the world short of elite players.
+const ELITE_FLOORS = { generational: 2, legend: 12, epic: 40 };
+function topUpElitePopulation(state) {
+  const counts = rarityCounts(state);
+  let spawned = 0;
+  for (const [rarity, floor] of Object.entries(ELITE_FLOORS)) {
+    while ((counts[rarity] || 0) < floor) {
+      const template = shouldSpawnRealWorldStar(state, rarity) ? pick(state, availableRealWorldStars(state, rarity)) : null;
+      const player = template ? createRealWorldPlayer(state, template, { careerYear: 0, debutSeason: state.season }) : createPlayer(state, { rarity, careerYear: 0, nationalSpecialist: true });
+      const club = template ? resolveRealWorldClub(state, state.clubs, template) : chooseRookieDestination(state, state.clubs, player);
+      if (club) { player.clubId = club.id; player.spawnClubId = club.id; markPlayerArrival(player, state.season); player.contractYears = randomInt(state, 2, 5); player.salary = Number((player.marketValue * 0.045).toFixed(1)); }
+      state.players.push(player);
+      counts[rarity] = (counts[rarity] || 0) + 1;
+      spawned += 1;
+    }
+  }
+  if (state.current) state.current.eliteTopUps = spawned;
+  return spawned;
+}
+
 function runAcademyIntake(state) {
   const cache = getRuntimeCache(state);
   let graduates = 0;
@@ -6176,6 +6432,7 @@ function archiveCoachSummaries(state) {
       coachId: row.coachId,
       teamId: row.teamId,
       isInternational: row.isInternational,
+      quality: state.coaches.find((coach) => coach.id === row.coachId)?.quality ?? null,
       games: 0, wins: 0, draws: 0, losses: 0, gf: 0, ga: 0, cleanSheets: 0, titles: 0
     };
     item.games += row.games || 0;
@@ -6286,11 +6543,8 @@ function rarityCounts(state) {
     }, {});
 }
 
+// v4.4: Epic and above come from academies (and the elite safety net), not from here.
 function chooseNewRarity(state, counts, remainingSlots) {
-  const targets = { generational: 3, legend: 14, epic: 42 };
-  for (const rarity of ['generational', 'legend', 'epic']) {
-    if ((counts[rarity] || 0) < targets[rarity]) return rarity;
-  }
   const roll = random(state);
   if (roll < 0.13) return 'rare';
   if (roll < 0.44) return 'uncommon';
@@ -6306,11 +6560,8 @@ function generateReplacementStars(state) {
   // Each preseason introduces a small visible rookie class while respecting the
   // simultaneous rarity ceilings. Generational talent only appears when one of the
   // three slots opens; Legends can rise to 15 and Epics gradually refill toward 50.
+  // v4.4: elite players now come from academies (Squad Reshape); this only keeps the total.
   const eliteIntake = [];
-  while ((counts.generational || 0) + eliteIntake.filter((rarity) => rarity === 'generational').length < 3) eliteIntake.push('generational');
-  while ((counts.legend || 0) + eliteIntake.filter((rarity) => rarity === 'legend').length < 15) eliteIntake.push('legend');
-  const epicRoom = Math.max(0, 50 - (counts.epic || 0));
-  eliteIntake.push(...Array(Math.min(epicRoom, randomInt(state, 2, 4))).fill('epic'));
   const totalNew = Math.max(populationNeed, eliteIntake.length);
   let rosterByClub = null;
 
@@ -6392,6 +6643,12 @@ function generateReplacementStars(state) {
   });
 }
 
+function coachTargetsFor(total) {
+  const elite = Object.values(COACH_RARITY_TARGETS).reduce((sum, value) => sum + value, 0);
+  const rest = Math.max(0, total - elite);
+  return { ...COACH_RARITY_TARGETS, uncommon: Math.round(rest * 0.35), common: rest - Math.round(rest * 0.35) };
+}
+
 function activeCoachRarityCounts(state) {
   return (state.coaches || [])
     .filter((coach) => coach.status !== 'retired')
@@ -6411,18 +6668,12 @@ function chooseReplacementCoachRarity(state, counts) {
       return rankGap || b.deficit - a.deficit;
     });
   if (deficits.length) return deficits[0].rarity;
-  return chooseStaffRarity(state, null, 'coach');
+  return ordinaryCoachRarity(state);
 }
 
 function chooseCoachNationalityForRarity(state, rarity) {
   return weightedPick(state, NATIONAL_TEAMS, (team) => {
-    const byTier = rarity === 'generational'
-      ? { 1: 14, 2: 2.2, 3: 0.08, 4: 0.01 }
-      : rarity === 'legend'
-        ? { 1: 7, 2: 3.2, 3: 0.45, 4: 0.05 }
-        : rarity === 'epic'
-          ? { 1: 3.5, 2: 2.4, 3: 1.1, 4: 0.35 }
-          : { 1: 1.8, 2: 1.45, 3: 1.15, 4: 0.9 };
+    const byTier = COACH_NATION_WEIGHTS[rarity] || COACH_NATION_WEIGHTS.rare;
     return byTier[team.tier] || 0.5;
   })?.id || 'eng';
 }
@@ -6650,8 +6901,15 @@ function ensureClubRosters(state) {
         active.splice(active.indexOf(player), 1);
       }
     }
-    while (active.length < target) {
+    // v4.4: in the offseason full squads are completed by the Squad Reshape (youth first,
+    // then the re-signing pool), so this only fills small cores here.
+    while (active.length < target && !(state.offseasonProgress && rosterTargetFor(club) >= SQUAD_SIZE)) {
       const needPosition = positionNeedFromRoster(state, club, active);
+      if (state.offseasonProgress && target < SQUAD_SIZE && (ensureAcademy(club), random(state) < youthSlotChance(club, true))) {
+        const youth = createYouthPlayer(state, club, needPosition, rarityCounts(state), active.some((player) => player.rarity === 'generational'));
+        active.push(youth);
+        continue;
+      }
       const desiredRating = club.strength + (club.reputation >= 84 ? 2 : club.division === 2 ? -8 : -3);
       const currentBill = rosterPayroll(active);
       const signable = (player) => recruitmentDestinationAllowed(state, player, club)
@@ -6741,7 +6999,7 @@ function reshapeDisappointment(state, club, lastSeasonRows) {
 function runSquadReshape(state) {
   invalidateRuntimeCache(state);
   const cache = getRuntimeCache(state);
-  const report = { releases: [], signings: [], spawned: 0 };
+  const report = { releases: [], signings: [], spawned: 0, youth: 0 };
   state.current.reshape = report;
   const signingSeason = state.season + (state.current.completed ? 1 : 0);
   const loanedOut = new Map();
@@ -6786,6 +7044,35 @@ function runSquadReshape(state) {
     }
     rosters.set(club.id, roster);
     counts.set(club.id, count);
+  }
+  // Youth intake: open slots below the coach's 15 get academy rolls first.
+  updateAcademies(state);
+  const playerCounts = rarityCounts(state);
+  for (const club of clubs) {
+    const target = clubSquadTarget(state, club);
+    const count = counts.get(club.id);
+    const roster = rosters.get(club.id);
+    if (academyClass(club) === 'top' && majorTrophyDrought(state, club)) {
+      const extras = roster.filter((player) => !player.loan && player.clubJoinedSeason !== signingSeason && ((STAR_RARITIES[player.rarity]?.rank || 1) <= 3 && ((player.careerYear || 0) >= 9 || player.rarity === 'common')))
+        .sort((a, b) => a.rating - b.rating).slice(0, 2);
+      for (const player of extras) {
+        player.lastClubId = club.id; player.clubId = null; player.contractYears = 0; player.salary = 0;
+        roster.splice(roster.indexOf(player), 1);
+        count[player.position] -= 1;
+        released.add(player.id);
+        report.releases.push({ playerId: player.id, clubId: club.id, position: player.position, rarity: player.rarity, rating: player.rating, reason: 'youth' });
+      }
+    }
+    const hasGenerational = roster.some((player) => player.rarity === 'generational');
+    for (const position of RESHAPE_POSITIONS) {
+      for (let gap = target[position] - count[position]; gap > 0; gap -= 1) {
+        if (random(state) >= youthSlotChance(club)) continue;
+        const youth = createYouthPlayer(state, club, position, playerCounts, hasGenerational);
+        roster.push(youth);
+        count[youth.position] = (count[youth.position] || 0) + 1;
+        report.youth = (report.youth || 0) + 1;
+      }
+    }
   }
   // One pool, best first within each position.
   const pool = { GK: [], DF: [], MF: [], FW: [] };
@@ -6994,6 +7281,7 @@ export function getClubChanges(state, clubId) {
     departures: moves.players.filter((row) => row.fromClubId === clubId && row.toClubId !== clubId),
     coachArrivals: moves.coaches.filter((row) => row.toClubId === clubId),
     coachDepartures: moves.coaches.filter((row) => row.fromClubId === clubId && row.toClubId !== clubId),
+    youthIntake: getYouthIntake(state, { clubId }),
     ratingChanges: changes
   };
 }
@@ -7016,7 +7304,8 @@ function compactFreeAgentPool(state) {
   let excess = Math.max(0, activeCount - (state.targetActivePlayers || activeCount));
   if (!excess) return;
   const candidates = state.players
-    .filter((player) => player.status === 'active' && !player.clubId && ['common', 'uncommon'].includes(player.rarity))
+    // v4.4: academies add Rare youth too, so unsigned Rares can also leave football.
+    .filter((player) => player.status === 'active' && !player.clubId && ['common', 'uncommon', 'rare'].includes(player.rarity))
     .sort((a, b) => (STAR_RARITIES[a.rarity]?.rank || 1) - (STAR_RARITIES[b.rarity]?.rank || 1)
       || a.rating - b.rating || b.careerYear - a.careerYear);
   for (const player of candidates) {
@@ -7092,9 +7381,71 @@ function coachSystemFitBonus(fitByFormation, coach) {
   return clamp((fit - 85) * 0.22, -4, 2.5);
 }
 
+// Career phases from careerYear / careerLength: early (first 30 %), peak, late (last 25 %).
+export function coachCareerPhase(coach) {
+  const length = Math.max(1, coach?.careerLength || 10);
+  const share = (coach?.careerYear || 0) / length;
+  return share < 0.3 ? 'early' : share > 0.75 ? 'late' : 'peak';
+}
+
+// The 12 strongest European clubs by reputation (then finances): where prime elite coaches work.
+function topEuropeanClubs(state) {
+  return new Set(state.clubs.filter((club) => club.confederation === 'Europe' && club.division === 1)
+    .sort((a, b) => (b.reputation || 0) - (a.reputation || 0) || clubFinancialTierRank(b) - clubFinancialTierRank(a))
+    .slice(0, 12).map((club) => club.id));
+}
+
+const isEliteCoach = (coach) => coach && ['generational', 'legend'].includes(coach.rarity);
+
+// Seasons since a coach last left a job (for national-team reluctance).
+function coachSeasonsOutOfWork(state, coach, lastMoveSeason) {
+  if (coach.clubId || coach.nationalTeamId) return 0;
+  return state.season - (lastMoveSeason.get(coach.id) ?? coach.debutSeason ?? state.season);
+}
+
+// Top clubs go after rising and prime elite coaches even without a vacancy: a top club
+// without a Generational/Legend coach approaches the best one working elsewhere.
+function poachEliteCoaches(state, topClubs) {
+  const moves = [];
+  const taken = new Set();
+  const clubs = state.clubs.filter((club) => topClubs.has(club.id)).sort((a, b) => b.reputation - a.reputation);
+  for (const club of clubs) {
+    const current = getCoach(state, club.id, false);
+    if (isEliteCoach(current) && coachCareerPhase(current) !== 'late') continue;
+    const target = state.coaches.filter((coach) => coach.status !== 'retired' && isEliteCoach(coach) && !taken.has(coach.id)
+      && coachCareerPhase(coach) !== 'late' && !(coach.clubId && topClubs.has(coach.clubId)))
+      .sort((a, b) => b.quality - a.quality)[0];
+    if (!target) continue;
+    // Prime coaches accept; rising ones usually do.
+    if (coachCareerPhase(target) === 'early' && random(state) > 0.75) continue;
+    taken.add(target.id);
+    if (current) {
+      current.clubId = null;
+      current.performanceScore = -1;
+      state.history.coachMoves.push({ season: state.season, coachId: current.id, fromClubId: club.id, toClubId: null, reason: 'replaced by an elite coach' });
+    }
+    club.coachId = null;
+    const fromClubId = target.clubId;
+    const move = releaseCoachFromCurrentJob(state, target, state.season + 1, fromClubId ? 'poached by stronger club' : target.nationalTeamId ? 'national-team approach' : 'appointed');
+    assignCoachToClub(state, target, club);
+    state.history.coachMoves.push({ ...move, toClubId: club.id });
+    moves.push({ club, coach: target, fromClubId });
+    state.pendingSeasonNews ||= [];
+    state.pendingSeasonNews.push({
+      id: `news-${state.season + 1}-elite-coach-${club.id}`, week: 0, importance: 'major', category: 'Coaching Market',
+      headline: `${club.name} land ${target.name}`,
+      body: `The ${STAFF_RARITIES[target.rarity].label.toLowerCase()} coach ${fromClubId ? `leaves ${getClub(state, fromClubId)?.name || 'his club'}` : move.fromNationalTeamId ? 'leaves the national team' : 'returns to work'} for one of Europe's biggest jobs.`
+    });
+  }
+  return moves;
+}
+
 function runCoachMarket(state) {
   const clubVacancies = [];
   const nationalVacancies = [];
+  const topClubs = topEuropeanClubs(state);
+  const lastMoveSeason = new Map();
+  for (const move of state.history.coachMoves || []) lastMoveSeason.set(move.coachId, move.season);
 
   // Cache recent coaching success once per market. Previously each comparison
   // inside each vacancy sort rescanned the complete coach-season archive. As the
@@ -7191,12 +7542,23 @@ function runCoachMarket(state) {
     nationalVacancies.push(team);
   }
 
-  // National federations recruit first. Major nations can approach successful domestic coaches already employed by clubs.
+  // Top clubs first fill any vacancy and replace non-elite coaches with rising or prime elite ones.
+  for (const { fromClubId } of poachEliteCoaches(state, topClubs)) {
+    const formerClub = fromClubId ? getClub(state, fromClubId) : null;
+    if (formerClub && formerClub.division === 1 && !clubVacancies.includes(formerClub)) clubVacancies.push(formerClub);
+  }
+  for (const club of state.clubs) if (club.division === 1 && !club.coachId && !clubVacancies.includes(club)) clubVacancies.push(club);
+  for (const team of state.nationalTeams) if (!team.coachId && !nationalVacancies.includes(team)) nationalVacancies.push(team);
+  // National federations recruit next. Major nations can approach successful domestic coaches already employed by clubs.
   nationalVacancies.sort((a, b) => b.strength - a.strength).forEach((team) => {
-    let candidates = state.coaches.filter((coach) => coach.status !== 'retired' && !coach.nationalTeamId && nationalCoachCandidateAllowed(team, coach) && (coach.nationality === team.id || team.tier >= 3));
+    let candidates = state.coaches.filter((coach) => coach.status !== 'retired' && !coach.nationalTeamId && nationalCoachCandidateAllowed(team, coach) && (coach.nationality === team.id || team.tier >= 3)
+      && !(isEliteCoach(coach) && coachCareerPhase(coach) !== 'late' && coachSeasonsOutOfWork(state, coach, lastMoveSeason) < 2)
+      // Epic coaches build club careers first: early ones stay in club football, prime ones usually turn federations down.
+      && !(coach.rarity === 'epic' && coachCareerPhase(coach) !== 'late' && coachSeasonsOutOfWork(state, coach, lastMoveSeason) < 2
+        && (coachCareerPhase(coach) === 'early' || stableStringRoll(`${coach.id}:${state.season}:national`) < 0.7)));
     let domestic = candidates.filter((coach) => coach.nationality === team.id);
     if (!domestic.length) {
-      const generated = createStaffMember(state, 'coach', team.id, { rarity: team.tier === 1 ? 'epic' : team.tier === 2 ? 'rare' : team.tier === 3 ? 'uncommon' : 'common', careerYear: randomInt(state, 1, 4), debutSeason: state.season + 1, appointmentSeason: state.season + 1, status: 'active' });
+      const generated = createStaffMember(state, 'coach', team.id, { rarity: cappedCoachRarity(state, team.tier === 1 ? 'rare' : team.tier === 2 ? 'uncommon' : 'common'), careerYear: randomInt(state, 1, 4), debutSeason: state.season + 1, appointmentSeason: state.season + 1, status: 'active' });
       state.coaches.push(generated);
       candidates.push(generated);
       domestic = [generated];
@@ -7205,7 +7567,7 @@ function runCoachMarket(state) {
     const pool = useDomestic ? domestic : candidates;
     const destinationScore = team.strength + 12;
     const fitByFormation = formationFitTable(getNationalSquad(state, team.id).squad);
-    const scores = new Map(pool.map((coach) => [coach, ambition(coach) + nationalCoachRarityFit(team, coach) + (coach.nationality === team.id ? 10 : 0)
+    const scores = new Map(pool.map((coach) => [coach, ambition(coach) + nationalCoachRarityFit(team, coach) + (coach.nationality === team.id ? 10 : 0) + (coachCareerPhase(coach) === 'late' ? 12 : 0)
       - (coach.clubId ? Math.max(0, clubJobScore(getClub(state, coach.clubId)) - destinationScore) : 0)
       + coachSystemFitBonus(fitByFormation, coach)]));
     const ranked = [...pool].sort((a, b) => scores.get(b) - scores.get(a));
@@ -7247,7 +7609,15 @@ function runCoachMarket(state) {
     const pool = useDomestic ? domestic : candidates;
     // Boards also weigh how well the squad suits the candidate's preferred system.
     const fitByFormation = formationFitTable(getRuntimeCache(state).clubPlayers.get(club.id) || []);
-    const scores = new Map(pool.map((coach) => [coach, ambition(coach) + (coach.nationality === nationality ? 3 : 0)
+    const topJob = topClubs.has(club.id);
+    const phaseBonus = (coach) => {
+      const phase = coachCareerPhase(coach);
+      if (topJob) return isEliteCoach(coach) && phase !== 'late' ? 30 : coach.rarity === 'epic' && phase === 'peak' ? 6 : 0;
+      // Prime elite coaches hold out for a top job; late ones are happy at home.
+      if (isEliteCoach(coach) && phase === 'peak') return -25;
+      return phase === 'late' && coach.nationality === nationality ? 6 : 0;
+    };
+    const scores = new Map(pool.map((coach) => [coach, ambition(coach) + (coach.nationality === nationality ? 3 : 0) + phaseBonus(coach)
       - (coach.clubId ? Math.max(0, clubJobScore(getClub(state, coach.clubId)) - destinationScore) : 0)
       + coachSystemFitBonus(fitByFormation, coach)]));
     const ranked = [...pool].sort((a, b) => scores.get(b) - scores.get(a));
@@ -9473,11 +9843,11 @@ export function* startNextSeasonSteps(state) {
   runTransferMarket(state, false);
   state.offseasonProgress.stage = 'transfers';
   yield 'transfers';
-  runAcademyIntake(state);
   runLoanMarket(state);
   invalidateRuntimeCache(state);
   ensureClubRosters(state);
   runSquadReshape(state);
+  topUpElitePopulation(state);
   state.offseasonProgress.stage = 'reshape';
   yield 'reshape';
   compactFreeAgentPool(state);
@@ -9497,7 +9867,8 @@ export function* startNextSeasonSteps(state) {
     freeAgentSignings: [...(state.current.offseasonFreeAgentSignings || [])].slice(-120),
     coachMoves: [...(state.history.coachMoves || [])].filter((move)=>move.season === state.season).slice(-120),
     payrollChanges: [...(state.current.payrollChanges || [])],
-    reshape: state.current.reshape || null
+    reshape: state.current.reshape || null,
+    youthIntake: [...(state.current.youthIntake || [])]
   };
   state.pendingPayrollChanges = [];
   addPreseasonMagazine(state);
@@ -9937,7 +10308,7 @@ export function upgradeWorld(state) {
       if (!mustRepair && !shouldRepairTier3) continue;
       let domestic = state.coaches.find((coach) => coach.status !== 'retired' && coach.nationality === team.id && !coach.clubId && !coach.nationalTeamId);
       if (!domestic) {
-        domestic = createStaffMember(state, 'coach', team.id, { careerYear: 0, debutSeason: state.season, appointmentSeason: state.season, status: 'active' });
+        domestic = createStaffMember(state, 'coach', team.id, { rarity: ordinaryCoachRarity(state), careerYear: 0, debutSeason: state.season, appointmentSeason: state.season, status: 'active' });
         state.coaches.push(domestic);
       }
       if (currentCoach) currentCoach.nationalTeamId = null;
@@ -10050,7 +10421,7 @@ export function upgradeWorld(state) {
       let replacement = (state.coaches || []).filter((coach)=>coach.status !== 'retired' && !coach.clubId && !coach.nationalTeamId && coach.nationality === team.id && nationalCoachCandidateAllowed(team, coach))
         .sort((a,b)=>nationalCoachRarityFit(team,b)-nationalCoachRarityFit(team,a) || b.quality-a.quality)[0];
       if (!replacement) {
-        replacement = createStaffMember(state, 'coach', team.id, { rarity: team.tier === 1 ? 'epic' : team.tier === 2 ? 'rare' : team.tier === 3 ? 'uncommon' : 'common', careerYear: randomInt(state,1,4), debutSeason: state.season, status:'active' });
+        replacement = createStaffMember(state, 'coach', team.id, { rarity: cappedCoachRarity(state, team.tier === 1 ? 'rare' : team.tier === 2 ? 'uncommon' : 'common'), careerYear: randomInt(state,1,4), debutSeason: state.season, status:'active' });
         state.coaches.push(replacement);
       }
       assignCoachToNation(state, replacement, team);
@@ -10346,6 +10717,18 @@ export function upgradeWorld(state) {
       state.current.surplusReleases ||= [];
     }
     state.dataRevision = 34;
+  }
+  if (state.dataRevision < 35) {
+    // v4.4: coach rarity targets (nobody is demoted; counts converge as coaches retire),
+    // academy scores with a few elite academies, and academy graduates linked to clubs.
+    const activeCoaches = (state.coaches || []).filter((coach) => coach.status !== 'retired').length;
+    state.coachRarityTargets = coachTargetsFor(activeCoaches);
+    seedEliteAcademies(state, (club) => stableStringRoll(`${club.id}:academy-seed`));
+    for (const player of state.players || []) {
+      player.academyClubId ??= player.academy ? (player.spawnClubId || null) : null;
+    }
+    if (state.current) state.current.youthIntake ||= [];
+    state.dataRevision = 35;
   }
   return state;
 }

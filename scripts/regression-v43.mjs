@@ -59,7 +59,7 @@ legacy.dataRevision = 33;
 delete legacy.current.contractExits;
 const upgraded = upgradeWorld(JSON.parse(JSON.stringify(legacy)));
 const upgradedRare = upgraded.players.find((player) => player.id === rare.id);
-assert.equal(upgraded.dataRevision, 34);
+assert(upgraded.dataRevision >= 34);
 assert(upgradedRare.rating <= 84 && upgradedRare.baseQuality <= 85, 'old Rare ratings are brought back inside the band');
 assert(Array.isArray(upgraded.current.contractExits));
 
@@ -85,7 +85,7 @@ await click('moves-toggle-rarity');
 assert(app.innerHTML.includes('Show Epic and above only'), 'the rarity toggle switches to all rarities');
 assert(storage.get('fwc-moves-all') === '1', 'the choice is remembered');
 const overview = go(`#/club/${giant.id}/overview`);
-for (const marker of ['Since last season', 'Power ranking', 'Arrivals', 'Departures', 'Biggest rating changes']) assert(overview.includes(marker), `club overview shows ${marker}`);
+for (const marker of ['Since last season', 'Power ranking', 'Signings', 'Departures', 'Biggest rating changes']) assert(overview.includes(marker), `club overview shows ${marker}`);
 assert(go(`#/club/${giant.id}/history`).includes('Arrivals and departures by season'));
 assert(go('#/offseason/summary').includes('Elite moves'), 'the offseason summary lists Elite moves');
 

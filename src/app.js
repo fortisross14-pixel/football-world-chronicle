@@ -70,7 +70,12 @@ import {
   getClubSquadTarget,
   getSquadReshape,
   getSeasonMoves,
-  getClubChanges
+  getClubChanges,
+  coachCareerPhase,
+  academyStars,
+  getClubAcademy,
+  getYouthIntake,
+  getBestAcademies,
 } from './engine.js';
 import { styleMatchup, styleMatchupSummary } from './match-engine.js';
 import { playerPortrait as visualPlayerPortrait, coachPortrait as visualCoachPortrait, clubLogoUrls, competitionEmblem } from './visuals.js';
@@ -919,8 +924,9 @@ function currentLeaguePowerRows() {
 }
 
 function rankingsHubPage(tabRaw='clubs') {
-  const tab=['clubs','leagues','history'].includes(tabRaw)?tabRaw:'clubs';
-  const tabs=`<nav class="tab-bar"><a href="#/rankings/clubs" class="${tab==='clubs'?'active':''}">Club Power</a><a href="#/rankings/leagues" class="${tab==='leagues'?'active':''}">League Strength</a><a href="#/rankings/history" class="${tab==='history'?'active':''}">Historical Evolution</a></nav>`;
+  const tab=['clubs','leagues','history','academies'].includes(tabRaw)?tabRaw:'clubs';
+  const tabs=`<nav class="tab-bar"><a href="#/rankings/clubs" class="${tab==='clubs'?'active':''}">Club Power</a><a href="#/rankings/leagues" class="${tab==='leagues'?'active':''}">League Strength</a><a href="#/rankings/history" class="${tab==='history'?'active':''}">Historical Evolution</a><a href="#/rankings/academies" class="${tab==='academies'?'active':''}">Best academies</a></nav>`;
+  if(tab==='academies') return bestAcademiesPage(tabs);
   if(tab==='leagues') {const all=currentLeaguePowerRows(); const rows=all.filter((row)=>leagueRegionFilter==='ALL'||row.league.confederation===leagueRegionFilter).slice(0,50); const regionalRank=new Map(); for(const region of REGION_ORDER){all.filter((row)=>row.league.confederation===region).forEach((row,index)=>regionalRank.set(row.league.id,index+1));} return `${pageHead('WORLD POWER INDEX','League strength','A snapshot of where football power currently lives. Golden eras strengthen a league ecosystem, while historic clubs can remain elite outside the current boom.')}${tabs}<section class="panel"><div class="filter-toolbar"><label>Continent<select id="league-region-filter"><option value="ALL">All continents</option>${REGION_ORDER.map((region)=>`<option value="${esc(region)}" ${leagueRegionFilter===region?'selected':''}>${esc(region)}</option>`).join('')}</select></label><span>${rows.length} leagues shown</span></div><div class="ranking-stack">${rows.map((row,index)=>`<a class="ranking-row" href="#/country/${encodeURIComponent(row.league.country)}/overview"><b>${leagueRegionFilter==='ALL'?index+1:regionalRank.get(row.league.id)}</b>${flag(row.league.country,'xs')}<div><strong>${esc(row.league.name)} ${row.eraActive?'<span class="panel-chip">GOLDEN ERA</span>':''}</strong><small>${esc(row.league.country)} · ${esc(row.league.confederation)} · #${regionalRank.get(row.league.id)} in continent · ${money(row.financialPool || 0)} annual pool${row.eraActive?` · Era through ${getSeasonLabel(row.eraEndSeason)}`:''}</small></div><span>${row.score.toFixed(1)}</span></a>`).join('')}</div></section>`;}
   if(tab==='history') {
     const clubRows=[...(state.history.clubPowerRankings||[])].sort((a,b)=>b.season-a.season||a.rank-b.rank).slice(0,150);
@@ -2038,7 +2044,7 @@ function magazinePage(tabRaw = 'results') {
       <section class="panel section-gap"><div class="panel-head"><h3>Archive</h3><span class="panel-meta">${rows.length} stories kept permanently</span></div>${archive.length ? `<ol class="mag-archive">${archive.map((story) => `<li><span class="mag-archive-date">${dateline(story)}</span><span class="story-category">${esc(story.category)}</span><div><strong>${esc(story.headline)}</strong><p>${esc(story.body)}</p></div>${openLink(story)}</li>`).join('')}</ol>` : `<div class="empty-state">${cover ? 'More stories will join the archive as seasons pass.' : 'The first major stories will appear as the world develops.'}</div>`}</section>`;
   }
   if (tab === 'preseason') {
-    const newStars = (state.current.newStars || [])
+    const newStars = [...(state.current.newStars || []), ...getYouthIntake(state).filter((row) => !(state.current.newStars || []).some((star) => star.playerId === row.playerId))]
       .map((row) => ({ ...row, player: playerById(row.playerId) }))
       .filter((row) => row.player && ['generational', 'legend', 'epic'].includes(row.player.rarity))
       .sort((a, b) => STAR_RARITIES[b.player.rarity].rank - STAR_RARITIES[a.player.rarity].rank || b.player.baseQuality - a.player.baseQuality);
@@ -2062,7 +2068,7 @@ function magazinePage(tabRaw = 'results') {
       .filter((row) => row.coach)
       .sort((a, b) => (STAFF_RARITIES[b.coach.rarity]?.rank || 0) - (STAFF_RARITIES[a.coach.rarity]?.rank || 0) || b.coach.quality - a.coach.quality);
     const favoriteStories = state.current.news.filter((story) => ['Preseason Favorites', 'Preseason Guide'].includes(story.category)).slice(0, 12);
-    const starRows = newStars.map(({ player }) => `<tr><td><div class="portrait-table-cell">${playerPortrait(player, 'sm')}<div>${playerLink(player.id)}${player.realWorldId ? '<span class="historical-icon-badge compact">Historical icon</span>' : ''}</div></div></td><td>${rarityBadge(player.rarity)}</td><td>${flag(player.nationality)} ${esc(countryName(player.nationality))}</td><td>${player.position} · ${esc(player.roleLabel)}</td><td>${player.clubId ? teamLink(player.clubId) : '<span class="free-agent">Free agent</span>'}</td><td>${player.realWorldId ? '<strong>Real</strong>' : '<span class="muted">Procedural</span>'}</td><td><strong>${player.baseQuality}</strong></td></tr>`).join('');
+    const starRows = newStars.map(({ player }) => `<tr><td><div class="portrait-table-cell">${playerPortrait(player, 'sm')}<div>${playerLink(player.id)}${player.realWorldId ? '<span class="historical-icon-badge compact">Historical icon</span>' : ''}</div></div></td><td>${rarityBadge(player.rarity)}</td><td>${flag(player.nationality)} ${esc(countryName(player.nationality))}</td><td>${player.position} · ${esc(player.roleLabel)}</td><td>${player.clubId ? teamLink(player.clubId) : '<span class="free-agent">Free agent</span>'}</td><td>${player.academyClubId ? `Academy${player.realWorldId ? ' · <strong>Real</strong>' : ''}` : player.realWorldId ? '<strong>Real</strong>' : '<span class="muted">Procedural</span>'}</td><td><strong>${player.baseQuality}</strong></td></tr>`).join('');
     const coachRows = newCoaches.map(({ coach }) => `<tr><td><div class="portrait-table-cell">${coachPortrait(coach, 'sm')}<div>${coachLink(coach.id)}</div></div></td><td>${staffRarityBadge(coach.rarity)}</td><td>${flag(coach.nationality)} ${esc(countryName(coach.nationality))}</td><td>${esc(COACH_PROFILES[coach.profile]?.label || coach.profileLabel)}</td><td>${esc(COACH_FOCUSES[coach.focus]?.label || 'Balanced')}</td><td><strong>${coach.quality}</strong></td><td>${coachJob(coach)}</td></tr>`).join('');
     const ownerRows = ownerChanges.map(({ club, owner, former }) => `<tr><td>${teamLink(club.id)}</td><td>${former ? `<strong>${esc(former.name)}</strong><small>${staffRarityBadge(former.rarity)}</small>` : '—'}</td><td><strong>${esc(owner.name)}</strong><small>${staffRarityBadge(owner.rarity)} · ${esc(OWNER_PROFILES[owner.profile]?.label || owner.profileLabel)}</small></td><td>${owner.yearsRemaining || '—'} years</td></tr>`).join('');
     const retirementRows = [
@@ -3039,9 +3045,15 @@ function eliteMovesList(limit = 12) {
 
 function movesPage() {
   const moves = getSeasonMoves(state, { eliteOnly: !movesShowAll });
+  const allMoves = getSeasonMoves(state, { eliteOnly: false }).players;
+  const youthAll = getYouthIntake(state);
+  const youthShown = movesShowAll ? youthAll : youthAll.filter((row) => ['generational', 'legend', 'epic'].includes(row.rarity));
+  const youthIds = new Set(youthAll.map((row) => row.playerId));
+  const summary = `<div class="stats-ribbon">${statCard('Signings', allMoves.filter((row) => row.toClubId && !youthIds.has(row.playerId)).length, 'Players joining a club')}${statCard('Departures', allMoves.filter((row) => row.fromClubId).length, 'Players leaving a club')}${statCard('Youth intake', youthAll.length, `${youthAll.filter((row) => ['generational', 'legend', 'epic'].includes(row.rarity)).length} Epic or better`)}</div>`;
   const toggle = `<button class="control-button" data-action="moves-toggle-rarity" aria-pressed="${movesShowAll}">${movesShowAll ? 'Show Epic and above only' : 'Show all rarities'}</button>`;
-  return `${pageHead('TRANSFER MARKET', `${state.current.seasonLabel} moves`, 'Everyone who changed team this offseason and season, whatever the reason: transfers, expired contracts, releases, loans and coaching changes. Sorted by rarity, then rating.')}${transferMarketTabs('moves')}
-    <section class="panel"><div class="panel-head"><h3>Players</h3><span class="panel-meta">${movesShowAll ? 'All rarities' : 'Generational, Legend and Epic'} · ${moves.players.length} moves</span>${toggle}</div>${playerMovesTable(moves.players)}</section>
+  return `${pageHead('TRANSFER MARKET', `${state.current.seasonLabel} moves`, 'Everyone who changed team this offseason and season, whatever the reason: transfers, expired contracts, releases, loans and coaching changes. Sorted by rarity, then rating.')}${transferMarketTabs('moves')}${summary}
+    <section class="panel section-gap"><div class="panel-head"><h3>Players</h3><span class="panel-meta">${movesShowAll ? 'All rarities' : 'Generational, Legend and Epic'} · ${moves.players.length} moves</span>${toggle}</div>${playerMovesTable(moves.players)}</section>
+    <section class="panel section-gap"><div class="panel-head"><h3>Youth intake</h3><span class="panel-meta">${youthShown.length} academy players promoted</span></div>${youthShown.length ? `<div class="squad-list">${youthIntakeRows(youthShown, 40)}</div>` : '<div class="empty-state compact">No academy players promoted yet this year.</div>'}</section>
     <section class="panel section-gap"><div class="panel-head"><h3>Coaches</h3><span class="panel-meta">${moves.coaches.length} changes</span></div>${coachMovesTable(moves.coaches)}</section>`;
 }
 
@@ -3397,6 +3409,180 @@ function aggregateCurrentCoachJobs(career) {
   return [...map.values()];
 }
 
+// v4.4 coach page: one row per season with quality, record, trophies and the main job.
+function coachSeasonSeries(coach, career, currentJobs) {
+  const bySeason = new Map();
+  const add = (row, live) => {
+    const item = bySeason.get(row.season) || { season: row.season, seasonLabel: row.seasonLabel, games: 0, wins: 0, mainGames: -1, teamId: null, isInternational: false, quality: null, live };
+    item.games += row.games || 0;
+    item.wins += row.wins || 0;
+    if ((row.games || 0) > item.mainGames) { item.mainGames = row.games || 0; item.teamId = row.teamId; item.isInternational = Boolean(row.isInternational); }
+    if (row.quality != null) item.quality = row.quality;
+    bySeason.set(row.season, item);
+  };
+  career.seasons.forEach((row) => add(row, false));
+  currentJobs.forEach((row) => add(row, true));
+  const trophies = new Map();
+  for (const honour of career.honours) trophies.set(honour.season, (trophies.get(honour.season) || 0) + 1);
+  return [...bySeason.values()].sort((a, b) => a.season - b.season).map((row) => {
+    let quality = row.quality;
+    // Seasons archived before v4.4 have no quality: rebuild it from the career curve.
+    if (quality == null) {
+      const index = (coach.careerYear || 0) - (state.season - row.season);
+      const multiple = coach.careerMultipliers?.[index];
+      quality = row.live ? coach.quality : multiple ? Math.round((coach.baseQuality || coach.quality) * multiple) : null;
+    }
+    return { ...row, quality, winRate: row.games ? row.wins / row.games : null, trophies: trophies.get(row.season) || 0 };
+  });
+}
+
+function shortSeason(label = '') {
+  return String(label).replace(/^Years+/, 'Y');
+}
+
+function seasonRange(from, to) {
+  return from === to ? getSeasonLabel(from) : `Years ${from - START_SEASON + 1}–${to - START_SEASON + 1}`;
+}
+
+// Small per-season chart. Club seasons are blue circles, national-team seasons amber squares.
+function coachSeasonChart(rows, { title, value, format, kind = 'bar', min = 0, max = 100, ticks = [], plain = false }) {
+  const width = 640, height = 170, left = 34, right = 10, top = 12, bottom = 26;
+  const usable = rows.filter((row) => value(row) != null);
+  if (!usable.length) return `<figure class="coach-chart"><figcaption>${esc(title)}</figcaption><div class="empty-state compact">No completed seasons yet.</div></figure>`;
+  const step = (width - left - right) / rows.length;
+  const x = (index) => left + step * index + step / 2;
+  const y = (v) => top + (max - Math.max(min, Math.min(max, v))) / (max - min) * (height - top - bottom);
+  const base = y(min);
+  const every = Math.max(1, Math.ceil(rows.length / 8));
+  const grid = ticks.map((tick) => `<line x1="${left}" x2="${width - right}" y1="${y(tick)}" y2="${y(tick)}" class="coach-chart-grid"/><text x="${left - 6}" y="${y(tick) + 4}" text-anchor="end">${format(tick, true)}</text>`).join('');
+  const labels = rows.map((row, index) => (index % every === 0 || index === rows.length - 1) ? `<text x="${x(index)}" y="${height - 8}" text-anchor="middle">${esc(shortSeason(row.seasonLabel))}</text>` : '').join('');
+  const job = (row) => (plain ? 'trophy' : row.isInternational ? 'nation' : 'club');
+  const tip = (row) => `${row.seasonLabel} · ${getEntityName(state, row.teamId, row.isInternational) || 'No job'} · ${title}: ${value(row) == null ? '—' : format(value(row))}`;
+  let marks = '';
+  if (kind === 'line') {
+    const points = rows.map((row, index) => (value(row) == null ? null : `${x(index).toFixed(1)},${y(value(row)).toFixed(1)}`)).filter(Boolean).join(' ');
+    marks = `<polyline points="${points}" class="coach-chart-line"/>${rows.map((row, index) => {
+      if (value(row) == null) return '';
+      const cx = x(index), cy = y(value(row));
+      return row.isInternational ? `<rect x="${cx - 4.5}" y="${cy - 4.5}" width="9" height="9" class="mark nation"/>` : `<circle cx="${cx}" cy="${cy}" r="4.5" class="mark club"/>`;
+    }).join('')}`;
+  } else {
+    const barWidth = Math.max(3, Math.min(26, step - 2));
+    marks = rows.map((row, index) => {
+      const v = value(row);
+      if (v == null || v <= min) return '';
+      const x0 = x(index) - barWidth / 2, y0 = y(v), r = Math.min(4, barWidth / 2, base - y0);
+      return `<path d="M${x0},${base}V${y0 + r}Q${x0},${y0} ${x0 + r},${y0}H${x0 + barWidth - r}Q${x0 + barWidth},${y0} ${x0 + barWidth},${y0 + r}V${base}Z" class="mark ${job(row)}"/>`;
+    }).join('');
+  }
+  const hits = rows.map((row, index) => `<rect x="${x(index) - step / 2}" y="${top}" width="${step}" height="${base - top}" class="coach-chart-hit"><title>${esc(tip(row))}</title></rect>`).join('');
+  return `<figure class="coach-chart"><figcaption>${esc(title)}</figcaption><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(title)} by season">${grid}<line x1="${left}" x2="${width - right}" y1="${base}" y2="${base}" class="coach-chart-axis"/>${marks}${hits}${labels}</svg></figure>`;
+}
+
+function coachChartsPanel(coach, series) {
+  const legend = '<div class="coach-chart-legend"><span><i class="club"></i>Club</span><span><i class="nation"></i>National team</span></div>';
+  const maxTrophies = Math.max(2, ...series.map((row) => row.trophies));
+  return `<section class="panel"><div class="panel-head"><h3>Season by season</h3>${legend}</div><div class="coach-charts">
+    ${coachSeasonChart(series, { title: 'Quality', kind: 'line', value: (row) => row.quality, format: (v) => String(Math.round(v)), min: 40, max: 100, ticks: [50, 70, 90] })}
+    ${coachSeasonChart(series, { title: 'Win rate', value: (row) => (row.winRate == null ? null : row.winRate * 100), format: (v, axis) => `${Math.round(v)}%`, min: 0, max: 100, ticks: [25, 50, 75] })}
+    ${coachSeasonChart(series, { title: 'Trophies', plain: true, value: (row) => row.trophies, format: (v) => String(Math.round(v)), min: 0, max: maxTrophies, ticks: [1, maxTrophies] })}
+  </div></section>`;
+}
+
+// One band per spell at a club or national team, on a shared season axis.
+function coachTimelinePanel(coach, career, currentJobs) {
+  const rows = [...career.seasons, ...currentJobs].sort((a, b) => a.season - b.season);
+  if (!rows.length) return '';
+  const spells = [];
+  for (const row of rows) {
+    const key = `${row.teamId}::${row.isInternational ? 1 : 0}`;
+    const spell = [...spells].reverse().find((item) => item.key === key && item.to >= row.season - 1);
+    if (spell) {
+      spell.to = Math.max(spell.to, row.season);
+      for (const field of ['games', 'wins', 'draws', 'losses']) spell[field] += row[field] || 0;
+    } else {
+      spells.push({ key, teamId: row.teamId, isInternational: Boolean(row.isInternational), from: row.season, to: row.season, games: row.games || 0, wins: row.wins || 0, draws: row.draws || 0, losses: row.losses || 0 });
+    }
+  }
+  const first = Math.min(...spells.map((spell) => spell.from)), last = Math.max(...spells.map((spell) => spell.to));
+  const span = last - first + 1;
+  for (const spell of spells) spell.trophies = career.honours.filter((honour) => honour.winnerId === spell.teamId && honour.season >= spell.from && honour.season <= spell.to).length;
+  const bands = spells.sort((a, b) => b.from - a.from || b.to - a.to).map((spell) => {
+    const seasons = spell.to - spell.from + 1;
+    const range = seasonRange(spell.from, spell.to);
+    return `<div class="coach-band"><div class="coach-band-team">${teamLink(spell.teamId, spell.isInternational)}<small>${esc(range)} · ${seasons} season${seasons === 1 ? '' : 's'}</small></div><div class="coach-band-track" aria-hidden="true"><span class="${spell.isInternational ? 'nation' : 'club'}" style="left:${((spell.from - first) / span * 100).toFixed(2)}%;width:${(seasons / span * 100).toFixed(2)}%"></span></div><div class="coach-band-stats"><span>${spell.wins}-${spell.draws}-${spell.losses}</span><span>${spell.games ? `${Math.round(spell.wins / spell.games * 100)}% wins` : '—'}</span>${spell.trophies ? `<strong class="gold-text">${icon('trophy')}${spell.trophies}</strong>` : '<span class="muted">No trophies</span>'}</div></div>`;
+  }).join('');
+  return `<section class="panel section-gap"><div class="panel-head"><h3>Career timeline</h3><span class="panel-meta">${esc(seasonRange(first, last))}</span></div><div class="coach-bands">${bands}</div></section>`;
+}
+
+function coachPhaseText(coach) {
+  if (coach.status === 'retired') return 'Retired';
+  const phase = { early: 'Early career', peak: 'Peak years', late: 'Late career' }[coachCareerPhase(coach)];
+  const left = Math.max(0, (coach.careerLength || 0) - (coach.careerYear || 0) - 1);
+  return `${phase} · ${left ? `${left} season${left === 1 ? '' : 's'} left` : 'final season'}`;
+}
+
+// v4.4 academies.
+function academyStarsHtml(stars) {
+  return `<span class="academy-stars" role="img" aria-label="${stars} of 5 stars">${'★'.repeat(stars)}<span class="off">${'★'.repeat(5 - stars)}</span></span>`;
+}
+
+function academyTrendChart(history) {
+  if (history.length < 2) return '<p class="role-copy muted">The trend appears after the first offseason.</p>';
+  const width = 320, height = 96, left = 6, right = 6, top = 6, bottom = 6;
+  const x = (index) => left + index * (width - left - right) / (history.length - 1);
+  const y = (v) => top + (100 - v) / 100 * (height - top - bottom);
+  const points = history.map((row, index) => `${x(index).toFixed(1)},${y(row.score).toFixed(1)}`).join(' ');
+  const bands = [20, 40, 60, 80].map((v) => `<line x1="${left}" x2="${width - right}" y1="${y(v)}" y2="${y(v)}" class="coach-chart-grid"/>`).join('');
+  const hits = history.map((row, index) => `<rect x="${x(index) - (width / history.length) / 2}" y="0" width="${width / history.length}" height="${height}" class="coach-chart-hit"><title>${esc(getSeasonLabel(row.season))}: ${Math.round(row.score)} (${academyStars(row.score)}★)</title></rect>`).join('');
+  const lastRow = history[history.length - 1];
+  return `<svg class="academy-trend" viewBox="0 0 ${width} ${height}" role="img" aria-label="Academy score by season">${bands}<polyline points="${points}" class="coach-chart-line"/><circle cx="${x(history.length - 1)}" cy="${y(lastRow.score)}" r="4" class="mark club"/>${hits}</svg><div class="academy-trend-axis"><span>${esc(getSeasonLabel(history[0].season))}</span><span>${esc(getSeasonLabel(lastRow.season))}</span></div>`;
+}
+
+function signed(value) {
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded > 0 ? '+' : rounded < 0 ? '−' : '±'}${Math.abs(rounded)}`;
+}
+
+function academyPanel(club) {
+  const info = getClubAcademy(state, club.id);
+  if (!info) return '';
+  const d = info.drivers;
+  const ownerProfile = OWNER_PROFILES[d.ownerProfile]?.label;
+  const drivers = [
+    ['President', d.ownerId ? `${ownerLink(d.ownerId)}${ownerProfile ? ` <small>${esc(ownerProfile)}</small>` : ''}` : 'Vacant', d.ownerDelta],
+    ['Coach', d.coachId ? `${coachLink(d.coachId)}${d.coachProfile === 'youth_developer' ? ' <small>Youth developer</small>' : ''}` : 'Vacant', d.coachDelta],
+    ...(d.tradition ? [['Tradition', info.historic ? 'Historic academy' : 'Youth tradition', d.tradition]] : []),
+    ['Drift', 'Pull back toward 50', d.drift]
+  ].map(([label, who, delta]) => `<div><span>${label}</span><strong>${who}</strong><b class="${delta > 0 ? 'up' : delta < 0 ? 'down' : ''}">${signed(delta)}/yr</b></div>`).join('');
+  const intake = getYouthIntake(state, { clubId: club.id });
+  return `<section class="panel academy-panel"><div class="panel-head"><h3>Youth academy</h3><a href="#/rankings/academies">Best academies</a></div>
+    <div class="academy-head">${academyStarsHtml(info.stars)}<strong>${info.score}<small>/100</small></strong>${info.historic ? '<span class="status-pill">Historic</span>' : ''}</div>
+    ${academyTrendChart(info.history)}
+    <div class="identity-list academy-drivers">${drivers}</div>
+    <p class="role-copy">${fmt(info.graduates)} graduates · ${fmt(info.activeGraduates)} still playing${intake.length ? ` · ${intake.length} joined the first team this season` : ''}.</p></section>`;
+}
+
+function youthIntakeRows(rows, limit = 10) {
+  return rows.slice(0, limit).map((row) => {
+    const player = playerById(row.playerId);
+    return player ? squadRow(player, ` · Academy: ${esc(clubById(row.clubId)?.name || '')}`) : '';
+  }).join('');
+}
+
+function bestAcademiesPage(tabs) {
+  const rows = getBestAcademies(state, 50);
+  const counts = [0, 0, 0, 0, 0];
+  for (const club of state.clubs) if (club.division === 1 && Number.isFinite(club.academyScore)) counts[academyStars(club.academyScore) - 1] += 1;
+  return `${pageHead('WORLD POWER INDEX', 'Best academies', 'Top-division youth academies by score. Presidents, youth coaches and tradition move the score each offseason.')}${tabs}<div class="stats-ribbon">${[5, 4, 3, 2, 1].map((stars) => statCard(`${stars}★ academies`, counts[stars - 1])).join('')}</div><section class="panel section-gap"><div class="ranking-stack">${rows.map((row, index) => {
+    const club = clubById(row.clubId);
+    const history = club.academyHistory || [];
+    const previous = history.length > 1 ? history[history.length - 2][1] : null;
+    const delta = previous == null ? '' : `${signed(row.score - previous)} since last season`;
+    return `<a class="ranking-row" href="#/club/${club.id}/overview"><b>${index + 1}</b>${crest(club.id, 'sm')}<div><strong>${esc(club.name)} ${academyStarsHtml(row.stars)}</strong><small>${esc(club.country)}${row.historic ? ' · Historic academy' : ''}${delta ? ` · ${delta}` : ''}</small></div><span>${row.score}</span></a>`;
+  }).join('')}</div></section>`;
+}
+
 function coachPage(id, tabRaw = 'overview') {
   const coach = coachById(id);
   if (!coach) return notFound();
@@ -3416,8 +3602,10 @@ function coachPage(id, tabRaw = 'overview') {
     nationLink(coach.nationality),
     `<span class="hero-job">${coachJob(coach)}</span>`,
     `<span>${esc(profile?.label || coach.profileLabel)} · ${esc(focus.label)}</span>`,
-    `<span>Formation ${esc(coachFormationText(coach))}</span>`
+    `<span>Formation ${esc(coachFormationText(coach))}</span>`,
+    `<span class="coach-phase phase-${coach.status === 'retired' ? 'retired' : coachCareerPhase(coach)}">${esc(coachPhaseText(coach))}</span>`
   ].join('');
+  const series = coachSeasonSeries(coach, career, currentJobs);
   const hero = profileHero({
     kind: 'coach', rarity: coach.rarity, portrait: coachPortrait(coach, 'xl'),
     badges: staffRarityBadge(coach.rarity), name: coach.name, meta,
@@ -3425,11 +3613,11 @@ function coachPage(id, tabRaw = 'overview') {
     rating: coach.quality, ratingLabel: 'QUALITY', follow: favoriteButton('coach', coach.id)
   });
   const head = `${hero}${entityTabs(`#/coach/${coach.id}`, [['overview', 'Overview'], ['career', 'Career & statistics'], ['honours', 'Honours']], tab)}`;
-  if (tab === 'career') return `${head}<section class="panel"><div class="panel-head"><h3>Career curve · ${esc((coach.careerType || 'stable_prime').replaceAll('_', ' '))}</h3><span class="panel-meta">Year ${Math.min((coach.careerYear || 0) + 1, coach.careerLength || 1)} of ${coach.careerLength || '—'}</span></div><div class="career-curve">${(coach.careerMultipliers || []).map((multiple, index) => `<div class="career-year ${index === coach.careerYear ? 'current' : ''} ${index < coach.careerYear ? 'past' : ''}"><span>Y${index + 1}</span><strong>${Number(multiple).toFixed(2)}</strong><small>${Math.round((coach.baseQuality || coach.quality) * multiple)}</small></div>`).join('')}</div></section>
+  if (tab === 'career') return `${head}${coachTimelinePanel(coach, career, currentJobs)}<section class="panel section-gap"><div class="panel-head"><h3>Career curve · ${esc((coach.careerType || 'stable_prime').replaceAll('_', ' '))}</h3><span class="panel-meta">Year ${Math.min((coach.careerYear || 0) + 1, coach.careerLength || 1)} of ${coach.careerLength || '—'}</span></div><div class="career-curve">${(coach.careerMultipliers || []).map((multiple, index) => `<div class="career-year ${index === coach.careerYear ? 'current' : ''} ${index < coach.careerYear ? 'past' : ''}"><span>Y${index + 1}</span><strong>${Number(multiple).toFixed(2)}</strong><small>${Math.round((coach.baseQuality || coach.quality) * multiple)}</small></div>`).join('')}</div></section>
     <section class="panel section-gap"><div class="panel-head"><h3>Teams coached by season</h3></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Season</th><th>Team</th><th>Type</th><th class="num">G</th><th class="num">W</th><th class="num">D</th><th class="num">L</th><th class="num">GF</th><th class="num">GA</th><th class="num">Win %</th><th class="num">Titles</th></tr></thead><tbody>${timeline.map((row) => `<tr><td><strong>${esc(row.seasonLabel)}</strong></td><td>${teamLink(row.teamId, row.isInternational)}</td><td>${row.isInternational ? 'National team' : 'Club'}</td><td class="num">${row.games}</td><td class="num"><strong>${row.wins}</strong></td><td class="num">${row.draws}</td><td class="num">${row.losses}</td><td class="num">${row.gf}</td><td class="num">${row.ga}</td><td class="num">${row.games ? `${(row.wins / row.games * 100).toFixed(1)}%` : '—'}</td><td class="num">${row.titles ? `<strong class="gold-text">${row.titles}</strong>` : 0}</td></tr>`).join('') || '<tr><td colspan="11">No completed coaching season yet.</td></tr>'}</tbody></table></div></section>
     <section class="panel section-gap"><div class="panel-head"><h3>By competition</h3><span class="panel-meta">${fmt(totals.gf)} scored · ${fmt(totals.ga)} conceded · ${totals.draws} draws · ${totals.losses} losses</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>Season</th><th>Competition</th><th>Team</th><th class="num">G</th><th class="num">W</th><th class="num">D</th><th class="num">L</th><th class="num">GF</th><th class="num">GA</th><th class="num">CS</th><th class="num">Titles</th></tr></thead><tbody>${competitionRows.map((row) => `<tr><td>${esc(row.seasonLabel)}</td><td>${esc(competitionLabel(row.competitionId))}</td><td>${teamLink(row.teamId, row.isInternational)}</td><td class="num">${row.games}</td><td class="num">${row.wins}</td><td class="num">${row.draws}</td><td class="num">${row.losses}</td><td class="num">${row.gf}</td><td class="num">${row.ga}</td><td class="num">${row.cleanSheets || 0}</td><td class="num">${row.titles || 0}</td></tr>`).join('') || '<tr><td colspan="11">No competition records yet.</td></tr>'}</tbody></table></div></section>`;
   if (tab === 'honours') return `${head}<section class="panel"><div class="panel-head"><h3>Career trophies</h3><span class="panel-meta">${career.honours.length} won</span></div>${honoursList(career.honours, 'competitionName')}</section>`;
-  return `${head}<div class="two-column wide-left"><section class="panel"><div class="panel-head"><h3>${esc(profile?.label || coach.profileLabel)}</h3><span class="panel-meta">Tactical identity</span></div><p class="role-copy">${esc(profile?.description || 'A flexible football coach.')}</p><div class="staff-effects"><span>Focus: ${esc(focus.label)}</span><span>Base quality ${coach.baseQuality || coach.quality}</span><span>${coach.status === 'retired' ? 'Retired' : 'Active career'}</span></div><p class="role-copy">${esc(focus.description)}</p><div class="spotlight-grid"><article class="spotlight-card"><span>Current role</span><strong>${coach.clubId ? esc(clubById(coach.clubId)?.name || 'Club') : coach.nationalTeamId ? esc(nationalById(coach.nationalTeamId)?.name || 'National team') : 'Free agent'}</strong><small>${coach.clubId ? 'Club football' : coach.nationalTeamId ? 'International football' : 'Available on market'}</small></article><article class="spotlight-card"><span>Current cycle</span><strong>${coach.seasonsInRole || 0} seasons</strong><small>${coach.status === 'retired' ? 'Completed' : 'In current job'}</small></article><article class="spotlight-card"><span>Record</span><strong>${totals.wins} wins</strong><small>${totals.draws} draws · ${totals.losses} losses</small></article></div></section><section class="panel"><div class="panel-head"><h3>Legacy</h3><a href="#/coach/${coach.id}/honours">Honours</a></div><p class="role-copy">${coach.status === 'retired' ? `${esc(coach.name)} completed a ${coach.careerLength}-season coaching career.` : `${esc(coach.name)} is in season ${Math.min((coach.careerYear || 0) + 1, coach.careerLength || 1)} of a planned ${coach.careerLength}-season career.`}</p>${career.honours.length ? `<div class="trophy-cabinet compact">${groupedRecords(career.honours, 'competitionName').slice(0, 6).map((group) => `<div class="trophy-shelf"><span class="trophy-count">${group.years.length}</span><div><strong>${esc(group.name)}</strong><small>${group.years.sort((a, b) => a - b).map((year) => getSeasonLabel(year)).join(' · ')}</small></div></div>`).join('')}</div>` : '<div class="empty-state compact">No trophies yet.</div>'}</section></div>${coachMatchupPanel(coach)}`;
+  return `${head}${coachChartsPanel(coach, series)}${coachTimelinePanel(coach, career, currentJobs)}<div class="two-column wide-left section-gap"><section class="panel"><div class="panel-head"><h3>${esc(profile?.label || coach.profileLabel)}</h3><span class="panel-meta">Tactical identity</span></div><p class="role-copy">${esc(profile?.description || 'A flexible football coach.')}</p><div class="staff-effects"><span>Focus: ${esc(focus.label)}</span><span>Base quality ${coach.baseQuality || coach.quality}</span><span>${coach.status === 'retired' ? 'Retired' : 'Active career'}</span></div><p class="role-copy">${esc(focus.description)}</p><div class="spotlight-grid"><article class="spotlight-card"><span>Current role</span><strong>${coach.clubId ? esc(clubById(coach.clubId)?.name || 'Club') : coach.nationalTeamId ? esc(nationalById(coach.nationalTeamId)?.name || 'National team') : 'Free agent'}</strong><small>${coach.clubId ? 'Club football' : coach.nationalTeamId ? 'International football' : 'Available on market'}</small></article><article class="spotlight-card"><span>Current cycle</span><strong>${coach.seasonsInRole || 0} seasons</strong><small>${coach.status === 'retired' ? 'Completed' : 'In current job'}</small></article><article class="spotlight-card"><span>Record</span><strong>${totals.wins} wins</strong><small>${totals.draws} draws · ${totals.losses} losses</small></article></div></section><section class="panel"><div class="panel-head"><h3>Legacy</h3><a href="#/coach/${coach.id}/honours">Honours</a></div><p class="role-copy">${coach.status === 'retired' ? `${esc(coach.name)} completed a ${coach.careerLength}-season coaching career.` : `${esc(coach.name)} is in season ${Math.min((coach.careerYear || 0) + 1, coach.careerLength || 1)} of a planned ${coach.careerLength}-season career.`}</p>${career.honours.length ? `<div class="trophy-cabinet compact">${groupedRecords(career.honours, 'competitionName').slice(0, 6).map((group) => `<div class="trophy-shelf"><span class="trophy-count">${group.years.length}</span><div><strong>${esc(group.name)}</strong><small>${group.years.sort((a, b) => a - b).map((year) => getSeasonLabel(year)).join(' · ')}</small></div></div>`).join('')}</div>` : '<div class="empty-state compact">No trophies yet.</div>'}</section></div>${coachMatchupPanel(coach)}`;
 }
 
 function ownerPage(id, tabRaw='overview') {
@@ -3617,7 +3805,9 @@ function playerExtrasPanel(player) {
     : '—';
   const loan = details.loan ? `<div><span>Loan</span><strong>At ${teamLink(details.loan.clubId)} from ${teamLink(details.loan.parentClubId)}</strong></div>` : '';
   const captain = details.captainOf ? `<div><span>Role</span><strong>Captain of ${teamLink(details.captainOf)}</strong></div>` : '';
-  return `<section class="panel"><div class="panel-head"><h3>Personality and outlook</h3>${details.academy ? '<span class="panel-meta">Academy graduate</span>' : ''}</div><div class="identity-list"><div><span>Traits</span><strong class="trait-row">${traits}</strong></div><div><span>Potential</span><strong>${esc(potential)}</strong></div><div><span>Form</span><strong>${esc(details.formLabel)} ${formArrow(details.form)}</strong></div>${captain}${loan}</div></section>`;
+  const academyClubId = player.academyClubId || (player.academy ? player.spawnClubId : null);
+  const academyRow = academyClubId && clubById(academyClubId) ? `<div><span>Academy</span><strong>${teamLink(academyClubId)}</strong></div>` : '';
+  return `<section class="panel"><div class="panel-head"><h3>Personality and outlook</h3>${details.academy ? '<span class="panel-meta">Academy graduate</span>' : ''}</div><div class="identity-list"><div><span>Traits</span><strong class="trait-row">${traits}</strong></div><div><span>Potential</span><strong>${esc(potential)}</strong></div><div><span>Form</span><strong>${esc(details.formLabel)} ${formArrow(details.form)}</strong></div>${academyRow}${captain}${loan}</div></section>`;
 }
 
 // Injured, suspended and tired markers for squad lists.
@@ -3677,6 +3867,9 @@ function clubChangesPanel(club) {
   const changes = getClubChanges(state, club.id);
   if (!changes) return '';
   const last = changes.lastSeason;
+  const youth = changes.youthIntake || [];
+  const youthIds = new Set(youth.map((row) => row.playerId));
+  const signings = changes.arrivals.filter((row) => !youthIds.has(row.playerId));
   const rankText = last?.powerRank && changes.powerRankNow ? `#${last.powerRank} → #${changes.powerRankNow}` : changes.powerRankNow ? `#${changes.powerRankNow}` : '—';
   const delta = last?.powerRank && changes.powerRankNow ? last.powerRank - changes.powerRankNow : 0;
   const moveRow = (row, incoming) => `<div class="archive-row"><strong>${rarityBadge(row.rarity)} ${playerLink(row.playerId)} <small>${row.rating}</small></strong><span>${incoming ? `from ${moveTeam(row.fromClubId)}` : `to ${moveTeam(row.toClubId)}`}</span><small class="move-how">${esc(row.how)}</small></div>`;
@@ -3684,9 +3877,10 @@ function clubChangesPanel(club) {
     .map(({ row, incoming }) => `<div class="archive-row"><strong>${staffRarityBadge(row.rarity)} ${coachLink(row.coachId)}</strong><span>${incoming ? 'Arrived' : 'Left'}</span><small class="move-how">${esc(row.how)}</small></div>`).join('');
   const ratingRows = changes.ratingChanges.map((row) => `<div class="archive-row"><strong>${playerLink(row.playerId)}</strong><span>${row.before} → ${row.after} · ${esc(row.reason)}${row.age ? ` (age ${row.age})` : ''}</span><b class="${row.delta > 0 ? 'up' : 'down'}">${row.delta > 0 ? '+' : ''}${row.delta}</b></div>`).join('');
   return `<section class="panel club-changes"><div class="panel-head"><h3>Since last season</h3><span class="panel-meta">${last ? `${esc(last.seasonLabel)}: ${last.position ? `finished ${last.position}` : ''}` : 'First season'}</span></div>
-    <div class="stats-ribbon compact-ribbon">${statCard('Power ranking', rankText, delta > 0 ? `Up ${delta}` : delta < 0 ? `Down ${-delta}` : 'No change')}${statCard('Arrivals', changes.arrivals.length)}${statCard('Departures', changes.departures.length)}${statCard('Coach', changes.coachArrivals.length ? 'New coach' : changes.coachDepartures.length ? 'Coach left' : 'Unchanged')}</div>
-    <div class="club-changes-grid"><div><span class="block-label">Arrivals</span>${changes.arrivals.length ? `<div class="archive-list">${changes.arrivals.slice(0, 8).map((row) => moveRow(row, true)).join('')}</div>` : '<div class="empty-state compact">No arrivals.</div>'}</div>
+    <div class="stats-ribbon compact-ribbon">${statCard('Power ranking', rankText, delta > 0 ? `Up ${delta}` : delta < 0 ? `Down ${-delta}` : 'No change')}${statCard('Signings', signings.length)}${statCard('Departures', changes.departures.length)}${statCard('Youth intake', youth.length)}${statCard('Coach', changes.coachArrivals.length ? 'New coach' : changes.coachDepartures.length ? 'Coach left' : 'Unchanged')}</div>
+    <div class="club-changes-grid four"><div><span class="block-label">Signings</span>${signings.length ? `<div class="archive-list">${signings.slice(0, 8).map((row) => moveRow(row, true)).join('')}</div>` : '<div class="empty-state compact">No signings.</div>'}</div>
     <div><span class="block-label">Departures</span>${changes.departures.length ? `<div class="archive-list">${changes.departures.slice(0, 8).map((row) => moveRow(row, false)).join('')}</div>` : '<div class="empty-state compact">No departures.</div>'}</div>
+    <div><span class="block-label">Youth intake</span>${youth.length ? `<div class="archive-list">${youth.slice(0, 8).map((row) => `<div class="archive-row"><strong>${rarityBadge(row.rarity)} ${playerLink(row.playerId)} <small>${row.rating ?? ''}</small></strong><span>${esc(row.position)} · from the academy</span></div>`).join('')}</div>` : '<div class="empty-state compact">No academy players promoted.</div>'}</div>
     <div><span class="block-label">Biggest rating changes</span>${ratingRows ? `<div class="archive-list">${ratingRows}</div>` : '<div class="empty-state compact">No changes recorded yet.</div>'}${coachRows ? `<span class="block-label lineup-bench-label">Coach</span><div class="archive-list">${coachRows}</div>` : ''}</div></div></section>`;
 }
 
@@ -3789,6 +3983,7 @@ function clubPage(id, tabRaw = 'overview') {
   return `${head}${clubChangesPanel(club)}<div class="two-column wide-left section-gap">${startingElevenPanel(club.id, false, 'Starting XI and substitutes') || `<section class="panel"><div class="panel-head"><h3>Squad</h3><a href="#/club/${club.id}/squad">Full squad</a></div><div class="squad-list">${history.allCurrentPlayers.slice(0, 8).map((player) => squadRow(player)).join('')}</div></section>`}
     <div class="stack"><section class="panel"><div class="panel-head"><h3>Season so far</h3><a href="#/club/${club.id}/season">Season</a></div><div class="identity-list"><div><span>League</span><strong>${club.division === 1 ? (position ? `#${position} · ${tableRow?.points ?? 0} pts` : '—') : 'Promotion pool'}</strong></div><div><span>Record</span><strong>${tableRow ? `${tableRow.wins}W ${tableRow.draws}D ${tableRow.losses}L` : '—'}</strong></div><div><span>Form</span>${formPills(tableRow?.form || [])}</div></div>${recent.length ? `<div class="matches-list tight">${recent.map((m) => matchRow(m, true)).join('')}</div>` : ''}</section>
     <section class="panel"><div class="panel-head"><h3>Leadership</h3><a href="#/club/${club.id}/staff">Staff</a></div><div class="identity-list"><div><span>President</span><strong>${owner ? ownerLink(owner.id) : 'Vacant'}</strong></div><div><span>Coach</span><strong>${coach ? coachLink(coach.id) : 'Vacant'}</strong></div><div><span>Coach focus</span><strong>${esc(COACH_FOCUSES[coach?.focus]?.label || '—')}</strong></div><div><span>Formation</span><strong>${esc(formationSummary(getTeamSquadView(state, club.id, false)))}</strong></div></div></section>
+    ${academyPanel(club)}
     <section class="panel"><div class="panel-head"><h3>Trophy cabinet</h3><a href="#/club/${club.id}/history">History</a></div>${trophyCabinet(honours)}</section></div></div>`;
 }
 
@@ -3801,7 +3996,7 @@ function clubLoansPanel(club) {
 
 function clubPlayerLeadersTable(clubId){const rows=clubAllTimePlayerRows(clubId).sort((a,b)=>b.games-a.games).slice(0,15);return `<div class="table-scroll"><table class="data-table"><thead><tr><th>Player</th><th>G</th><th>Goals</th><th>Assists</th><th>CS</th><th>Rating</th><th>Titles</th></tr></thead><tbody>${rows.map((r)=>`<tr><td>${playerLink(r.playerId)}</td><td>${r.games}</td><td>${r.goals}</td><td>${r.assists}</td><td>${r.cleanSheets}</td><td>${r.averageRating?r.averageRating.toFixed(2):'—'}</td><td>${r.titles}</td></tr>`).join('')||'<tr><td colspan="7">No archived player history yet.</td></tr>'}</tbody></table></div>`;}
 
-function clubRecordsPage(club){const seasons=clubSeasonRows(club);const players=clubAllTimePlayerRows(club.id);const bestPoints=[...seasons].sort((a,b)=>b.points-a.points)[0],bestWins=[...seasons].sort((a,b)=>b.wins-a.wins)[0],bestGoals=[...seasons].sort((a,b)=>b.gf-a.gf)[0];const scorer=[...players].sort((a,b)=>b.goals-a.goals)[0],apps=[...players].sort((a,b)=>b.games-a.games)[0],assists=[...players].sort((a,b)=>b.assists-a.assists)[0];const transfer=[...(state.history.transfers||[])].filter((t)=>t.toClubId===club.id).sort((a,b)=>b.fee-a.fee)[0];return `<div class="record-grid">${statCard('Highest points',bestPoints?.points??'—',bestPoints?.seasonLabel||'')}${statCard('Most league wins',bestWins?.wins??'—',bestWins?.seasonLabel||'')}${statCard('Most league goals',bestGoals?.gf??'—',bestGoals?.seasonLabel||'')}${statCard('All-time scorer',scorer?scorer.goals:'—',scorer?playerById(scorer.playerId)?.name:'')}${statCard('Most appearances',apps?apps.games:'—',apps?playerById(apps.playerId)?.name:'')}${statCard('Most assists',assists?assists.assists:'—',assists?playerById(assists.playerId)?.name:'')}${statCard('Record signing',transfer?money(transfer.fee):'—',transfer?playerById(transfer.playerId)?.name:'')}${(()=>{const so=getShootoutRecord(state,club.id,'team');return statCard('Penalty shootouts',so.shootouts?`${so.won}-${so.lost}`:'—',so.shootouts?'Won-lost':'None yet');})()}</div>`;}
+function clubRecordsPage(club){const academy=getClubAcademy(state,club.id);const seasons=clubSeasonRows(club);const players=clubAllTimePlayerRows(club.id);const bestPoints=[...seasons].sort((a,b)=>b.points-a.points)[0],bestWins=[...seasons].sort((a,b)=>b.wins-a.wins)[0],bestGoals=[...seasons].sort((a,b)=>b.gf-a.gf)[0];const scorer=[...players].sort((a,b)=>b.goals-a.goals)[0],apps=[...players].sort((a,b)=>b.games-a.games)[0],assists=[...players].sort((a,b)=>b.assists-a.assists)[0];const transfer=[...(state.history.transfers||[])].filter((t)=>t.toClubId===club.id).sort((a,b)=>b.fee-a.fee)[0];return `<div class="record-grid">${statCard('Academy graduates',academy?fmt(academy.graduates):'—',academy?`${fmt(academy.activeGraduates)} still playing`:'')}${statCard('Highest points',bestPoints?.points??'—',bestPoints?.seasonLabel||'')}${statCard('Most league wins',bestWins?.wins??'—',bestWins?.seasonLabel||'')}${statCard('Most league goals',bestGoals?.gf??'—',bestGoals?.seasonLabel||'')}${statCard('All-time scorer',scorer?scorer.goals:'—',scorer?playerById(scorer.playerId)?.name:'')}${statCard('Most appearances',apps?apps.games:'—',apps?playerById(apps.playerId)?.name:'')}${statCard('Most assists',assists?assists.assists:'—',assists?playerById(assists.playerId)?.name:'')}${statCard('Record signing',transfer?money(transfer.fee):'—',transfer?playerById(transfer.playerId)?.name:'')}${(()=>{const so=getShootoutRecord(state,club.id,'team');return statCard('Penalty shootouts',so.shootouts?`${so.won}-${so.lost}`:'—',so.shootouts?'Won-lost':'None yet');})()}</div>`;}
 
 // The national coach's matchday 15 (starters first, then substitutes).
 function nationalLineup(id) {
@@ -3946,6 +4141,7 @@ function offseasonPage(tabRaw='summary') {
   const payrollChanges = [...(data.payrollChanges||[])].sort((a,b)=>(b.pressure||0)-(a.pressure||0));
   const coachMoves = (data.coachMoves||[]).slice(-100).reverse();
   const headlines = (data.headlines||[]).slice(0,16);
+  const youthSummary = [...(data.youthIntake||[])].map((row)=>({ ...row, rating: playerById(row.playerId)?.rating ?? 0 })).sort((a,b)=>(STAR_RARITIES[b.rarity]?.rank||0)-(STAR_RARITIES[a.rarity]?.rank||0)||b.rating-a.rating);
   const rowPlayers=(rows,mode='new')=>rows.map((player)=>`<a class="squad-row squad-row-wide portrait-row" href="#/player/${player.id}/overview">${playerPortrait(player,'sm')}<span class="position-chip">${player.position}</span><div><strong>${esc(player.name)}</strong><small>${rarityBadge(player.rarity)} ${flag(player.nationality,'xs')} ${mode==='new'?(player.clubId?esc(clubById(player.clubId)?.name):'Free agent'):'Retired'} · Age ${state.season-player.birthYear}</small></div><b>${player.rating}</b></a>`).join('')||'<div class="empty-state compact">None this offseason.</div>';
   const head = `${pageHead('OFFSEASON',`${esc(data.seasonLabel)} lifecycle`,`The complete transition between seasons, split into markets, arrivals, retirements and leadership changes.`)}${offseasonTabs(tab)}`;
   if (tab === 'signings') {
@@ -3966,7 +4162,7 @@ function offseasonPage(tabRaw='summary') {
   if (tab === 'boardroom') {
     return `${head}<section class="panel"><div class="panel-head"><div><h3>President / owner succession</h3></div><span class="muted">Terms last 4-12 years</span></div><div class="archive-list">${ownerChanges.map((change)=>{const next=ownerById(change.ownerId), former=ownerById(change.formerOwnerId), club=clubById(change.clubId); return `<div class="archive-row"><strong>${teamLink(change.clubId)}</strong><span>${former?esc(former.name):'—'} → ${next?esc(next.name):'New president'}${next?.profile==='billionaire'?` · ${money(club?.ownerAnnualInjection||0)}/yr injection`:''}</span><b>${next?staffRarityBadge(next.rarity):''}</b></div>`;}).join('')||'<div class="empty-state compact">No board changes this offseason.</div>'}</div></section>`;
   }
-  return `${head}<div class="stats-ribbon">${statCard('Retirements',data.retirements.length,`${retiredPlayers.length} players · ${retiredCoaches.length} coaches`)}${statCard('New stars',data.newStars.length,'Rookie intake')}${statCard('Transfers',data.transfers.length,'Opening market')}${statCard('Payroll resets',payrollChanges.length,'Dynasty wage pressure')}</div><section class="panel section-gap"><div class="panel-head"><div><h3>Offseason headlines</h3></div><a href="#/magazine/headlines">Full archive</a></div><div class="story-list magazine-list">${headlines.slice(0,10).map((story,index)=>`<article class="story-card ${story.importance||'digest'} ${index===0?'lead':''}"><div class="story-category">${esc(story.category)}</div><h4>${esc(story.headline)}</h4><p>${esc(story.body)}</p></article>`).join('')||'<div class="empty-state compact">No major world-changing story this summer.</div>'}</div></section><div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><h3>Elite moves</h3></div><a href="#/transfers/moves">All moves</a></div>${eliteMovesList(12)}</section><section class="panel"><div class="panel-head"><div><h3>Arrivals and departures</h3></div><a href="#/offseason/lifecycle">Full lifecycle</a></div><p class="role-copy">${newcomers.length} elite/new tracked players entered the world while ${retiredPlayers.length} players and ${retiredCoaches.length} coaches retired.</p><div class="squad-list">${rowPlayers(newcomers.slice(0,8),'new')}</div></section></div>`;
+  return `${head}<div class="stats-ribbon">${statCard('Retirements',data.retirements.length,`${retiredPlayers.length} players · ${retiredCoaches.length} coaches`)}${statCard('New stars',data.newStars.length,'Rookie intake')}${statCard('Youth intake',(data.youthIntake||[]).length,`${(data.youthIntake||[]).filter((row)=>['generational', 'legend', 'epic'].includes(row.rarity)).length} Epic or better`)}${statCard('Transfers',data.transfers.length,'Opening market')}${statCard('Payroll resets',payrollChanges.length,'Dynasty wage pressure')}</div><section class="panel section-gap"><div class="panel-head"><div><h3>Offseason headlines</h3></div><a href="#/magazine/headlines">Full archive</a></div><div class="story-list magazine-list">${headlines.slice(0,10).map((story,index)=>`<article class="story-card ${story.importance||'digest'} ${index===0?'lead':''}"><div class="story-category">${esc(story.category)}</div><h4>${esc(story.headline)}</h4><p>${esc(story.body)}</p></article>`).join('')||'<div class="empty-state compact">No major world-changing story this summer.</div>'}</div></section><div class="two-column section-gap"><section class="panel"><div class="panel-head"><div><h3>Elite moves</h3></div><a href="#/transfers/moves">All moves</a></div>${eliteMovesList(12)}</section><section class="panel"><div class="panel-head"><div><h3>Arrivals and departures</h3></div><a href="#/offseason/lifecycle">Full lifecycle</a></div><p class="role-copy">${newcomers.length} elite/new tracked players entered the world while ${retiredPlayers.length} players and ${retiredCoaches.length} coaches retired.</p><div class="squad-list">${rowPlayers(newcomers.slice(0,8),'new')}</div></section></div>${youthSummary.length?`<section class="panel section-gap"><div class="panel-head"><div><h3>Notable youth intakes</h3></div><a href="#/rankings/academies">Best academies</a></div><div class="squad-list">${youthIntakeRows(youthSummary,10)}</div></section>`:''}`;
 }
 
 function editorPage() {

@@ -13,13 +13,15 @@ A browser-first football universe simulator with 137 domestic systems, continent
 - **International tournaments:** seeded pot draws, 24-team Euros, AFCON and Asian Cup with best third-placed teams, a 12-team Gold Cup and a two-group Copa América.
 - **Moves and club changes:** one list of every player and coach who changed team (rarity first, with how they moved) and a "since last season" panel on every club.
 - **Elite players matter:** ratings stay inside their rarity, stars drive goals and big games, and the Ballon d'Or goes to Epic+ players except after a historic season.
+- **Coaches with careers:** 2–3 Generational, 8–10 Legend, 15–20 Epic and about 40 Rare coaches at any time, mostly from the big football nations. Elite coaches spend their prime at the 12 biggest European clubs (who poach rising stars) and finish at national teams or back home. The coach page leads with quality, win-rate and trophy charts and a career timeline.
+- **Youth academies:** every club has an academy score (0–100, one to five stars) moved each offseason by the president, a youth-developer coach and tradition. Academies fill open squad slots during Squad Reshape and are now where Epic, Legend and Generational players come from, mostly in the big football countries. Club pages show the academy and its trend; Rankings → Best academies.
 - **Stats filters:** Region, Country and Competition on the stats desk and the player and coach statistics.
 - **Players who change:** hidden potential with scouting ranges, development driven by minutes, coaching and league, in-season form, personality traits, captains, academy graduates and loans.
 - **A living world:** derbies with their own heat and head-to-head ledger, a home edge that varies with crowds, travel and altitude, live records and milestones, mid-season sackings with interim coaches, and transfer-window drama.
 - **For the reader:** a personal Following feed, a pre-season predictions game scored at Awards Night, bookmaker odds on featured and Showcase matches, and upsets against the odds in the Magazine.
 - `npm run calibration` reports match realism and award spread; `npm run perf` times 20 seasons. Results are in docs/CALIBRATION.md.
 - `node scripts/run-regressions.mjs` runs the regression suite, including the v4 phase scripts.
-- Existing saves upgrade automatically (data revisions 26–34). No Neon schema changes.
+- Existing saves upgrade automatically (data revisions 26–35). No Neon schema changes.
 
 ## v3.16.1 offseason editor
 

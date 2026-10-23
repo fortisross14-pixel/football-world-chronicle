@@ -417,3 +417,53 @@ run in v4.2 gave 28 %).
 
 Within the +20 % budget. The extra offseason time is the move bookkeeping and the
 season power ranks; the extra season time is the elite terms in every shot.
+
+## v4.4 — coach rarity and careers, youth academies
+
+### Coaches (`npm run calibration-coaches`, 2 seeds × 10 seasons, same seeds before and after)
+
+| Active coaches per world | Before (main) | After | Target |
+|---|---:|---:|---:|
+| Generational | 5.5 | 3 | 2–3 |
+| Legend | 22 | 9 | 8–10 |
+| Epic | 73 | 18 | 15–20 |
+| Rare | 244.5 | 40 | about 40 |
+
+Counts are the same at the start and after ten seasons (and after 20 seasons on a third seed).
+
+Where Generational and Legend coaches work, by career phase (share of coach-seasons):
+
+| | Before: top-12 club / other club / national / free | After |
+|---|---|---|
+| Early | 23 % / 77 % / 0 % / 0 % | 94 % / 6 % / 0 % / 0 % |
+| Peak | 36 % / 49 % / 16 % / 0 % | 95 % / 2 % / 2 % / 0 % |
+| Late | 7 % / 25 % / 69 % / 0 % | 4 % / 0 % / 96 % / 0 % |
+
+Targets: at least 80 % of prime elite coach-seasons at the top 12 European clubs, at most 10 % at national teams.
+
+Epic coaches: before 4 % top-12 clubs, 10 % second line of the big five, 24 % top-three clubs of other leagues, 41 % national teams, 22 % elsewhere. After 3 %, 17 %, 30 %, 47 % and 4 % (2 × 10); 4 %, 23 %, 34 %, 34 % and 4 % over 20 seasons. The top-12 jobs are almost all taken by the 12 Generational and Legend coaches.
+
+### Academies (1 seed × 20 seasons, top-division clubs)
+
+| | After 20 seasons | Target |
+|---|---:|---:|
+| Mean score | 45.2 (p10 25, median 48, p90 63) | 45–55 |
+| Score 60–100 | 11 % | some |
+| Score 0–40 | 33 % | some |
+| Stars 1/2/3/4/5 | 4.6 / 29.5 / 55.0 / 7.5 / 3.5 % | 5★ about 3–5 % |
+| Pinned at 0 or 100 | 2 of 1,228 | few |
+
+Youth intake per season: 0.2 Generational, 0.7 Legend, 2.5 Epic, 294 Rare, 464 Uncommon, 259 Common. Elite graduates over 20 seasons: 57 from the core countries (BRA ARG GER FRA ITA ESP ENG), 4 from the third group, 4 elsewhere. Population stays between 12,286 and 12,400 active players with 3 Generational, 14–15 Legend and 42–50 Epic; the elite safety net never had to add a player.
+
+### Matches and rarity (final run, 2 seeds × 10 seasons)
+
+2.72 goals, 45.5 / 25.9 / 28.6, 12.5 shots and 4.4 on target per team, 2.14 yellows, 0.127 reds, 28.4 % clean sheets: all targets met. Ballon d'Or winners and podium 100 % Epic+; UCL and World Cup winners all had a Legend or Generational; World Golden Boot 90 % Epic+; no player below Epic rated 85+.
+
+### Performance (seed 314159, five seasons, CPU time, run alongside the other final checks)
+
+| | Season | Offseason |
+|---|---:|---:|
+| v4.3 (main) | 7.89 s | 11.44 s |
+| v4.4 | 7.86 s | 11.15 s |
+
+No change (both measured under the same parallel load, so the absolute times are higher than in v4.3's table).

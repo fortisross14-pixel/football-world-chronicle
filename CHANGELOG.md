@@ -1,5 +1,41 @@
 # v4 match engine and player model (in progress)
 
+## v4.4 — Coach rarity and careers, youth academies
+
+### Coach rarity
+- At any time the world has 2–3 Generational, 8–10 Legend, 15–20 Epic and about 40 Rare coaches; everyone else is Uncommon or Common. Before, a world had about 5 Generational, 22 Legend, 73 Epic and 245 Rare coaches.
+- New worlds generate to these numbers and replacement coaches keep them: a retiring Legend is replaced by a Legend only when the world is short of one. Elite coaches come mostly from the big football nations.
+- Fallback national-team coaches created when a federation finds no one are Rare at most.
+
+### Coach careers
+- Every coach has an early, peak and late phase (from career year and career length).
+- In their prime, Generational and Legend coaches work at the 12 biggest European clubs. Those clubs poach rising and prime elite coaches from smaller jobs ("X land Y"). Prime elite coaches turn national jobs down unless they have been out of work for two seasons.
+- Epic coaches split between the biggest clubs, the second line of the big five leagues, the top clubs of other leagues and national teams; early-career Epics stay in club football and prime Epics usually turn federations down.
+- Late in their careers coaches most often take national teams, go back home or stay where they are.
+
+### Coach page
+- Header: career phase and seasons left next to style, focus and formation.
+- Overview now leads with three charts by season (quality, win rate, trophies; club seasons in blue circles, national-team seasons in amber squares) and a career timeline with one band per spell (crest or flag, seasons, record, trophies). The tables stay in Career & statistics.
+
+### Youth academies
+- Every club has an academy score from 0 to 100, shown as one to five stars (0–19 one star … 80–100 five stars). Big clubs start at 61, mid-sized clubs at 50, others at 39; each new world also seeds a few five-star (about 4.5 %) and four-star (about 8 %) academies, more often at historic academies and in the big football countries.
+- Each offseason the score moves: Academy Patron presidents raise it (+6 Generational … +0.5 Common), Billionaire and Consortium owners lower it (−0.5 … −4), a Youth Developer coach adds +0.5 to +3, seeded and historic academies have a tradition bonus, and every academy drifts about 8 % back toward 50.
+- Academies now produce the elite players. One-star academies only produce Commons, two-star Common or Uncommon, three-star mostly Uncommon with some Rares and the odd Epic, four-star no Commons, five-star Rare and better with the best Legend and Generational odds. Epic+ graduates come mostly from Brazil, Argentina, Germany, France, Italy, Spain and England, sometimes from Portugal, Uruguay, the Netherlands and Belgium, rarely elsewhere. Elite graduates are often an unused historical icon from the club's country.
+- Caps hold the elite population steady (3 Generational, about 15 Legend, about 50 Epic); a roll above a cap becomes the rarity below, and a club with a Generational cannot produce another. Rare breakouts to Epic stop 8 places under the Epic cap so academies fill the rest.
+- Youth intake happens during Squad Reshape: after releases, each open slot below the coach's 15 gets a youth roll based on the academy score; unfilled slots go to the re-sign pool. A club already at 15 gets no youth. Top clubs that have gone two seasons without a major trophy may release up to two extra veterans or Commons to make room. Smaller cores also get youth.
+- Most graduates are from the club's own country, with a small chance of a foreign youngster.
+
+### Academy UI
+- Club Overview → **Youth academy**: stars, score, trend chart, what is moving it (president, coach, tradition, drift) and the number of graduates.
+- "Since last season" splits **Signings**, **Departures** and **Youth intake**; so do the Moves summary, the Offseason summary (with notable youth intakes) and the Magazine preseason rookies.
+- Player profiles show "Academy: club"; club records count academy graduates.
+- Rankings → **Best academies**.
+- Magazine stories when an academy produces an Epic, Legend or Generational.
+
+### Calibration and saves
+- New `npm run calibration-coaches` (also part of `npm run calibration`): coach rarity counts, elite coach jobs by phase, Epic coach jobs, academy scores and stars, youth intake by rarity and elite youth by country group. Before and after in docs/CALIBRATION.md.
+- Data revision 35: coach targets are stored without demoting anyone (replacements fill only the gaps), academies are seeded and existing academy graduates keep their club. No Neon schema changes.
+
 ## v4.3 — Every move in one list, club changes and elite players who matter
 
 ### Moves
