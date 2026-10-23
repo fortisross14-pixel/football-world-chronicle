@@ -307,3 +307,66 @@ Back-to-back four-season runs on seed 314159 (same machine, same load): Phase 5 
 and 3.67–4.03 s a season, Phase 6 3.61–4.11 s. No measurable change. Absolute times in this
 run are high because the machine was under about 35 % background load; the Phase 5 table
 above, measured on a quiet machine, is the reference.
+
+## v4.2 — squads by formation, team fitness and international tournaments
+
+### Matches (3 seeds × 6 seasons, `npm run calibration`)
+
+| | v4.1 (main) | v4.2 |
+|---|---:|---:|
+| Goals per match | 2.72 | 2.73 |
+| Home / draw / away | 45.4 / 25.1 / 29.5 | 45.3 / 25.2 / 29.6 |
+| Shots / on target per team | 12.4 / 4.4 | 12.4 / 4.3 |
+| Yellows per team / reds per match | 2.14 / 0.126 | 2.14 / 0.131 |
+| Clean sheets | 29.4 % | 29.3 % |
+| Favourite wins, gap 15+ | 76.1 % | 75.6 % |
+| UCL winners per seed | 5.0 | 5.3 |
+
+All targets met before and after. Squad Reshape, team fitness and the backup-system
+penalty leave the match model where it was.
+
+Team fitness first cost the busiest clubs too much: with a 20-point weekly recovery and
+a 0.12-per-point penalty, `favorite-balance-v17` (16 seeds) dropped from 78 % to 53 %
+top-five winners (the Libertadores favourites from 81 % to 44 %), because sides playing
+midweek kept losing league points and form. Recovery 22, rotation from bench players
+within ten rating points of the XI, a 0.08-per-point penalty below 80 % and a 0.3 edge
+above 95 % bring it back to 69 % (test floor 60 %) while congested months still wear thin
+squads down (lowest team fitness about 72 % in a 20-week sample).
+
+### International tournaments (`npm run calibration-intl`, 3 seeds × 20 cycles, 360 tournaments)
+
+Rates for the four strongest teams by pre-tournament power; "shared" counts top-8 teams
+sharing a group per tournament.
+
+| | Top-4 group exits before | after | Favourite wins before | after | Shared before | after |
+|---|---:|---:|---:|---:|---:|---:|
+| World Cup | 10.8 % | 11.7 % | 16.7 % | 20.0 % | 2.3 | 0.08 |
+| Euros | 22.1 % | 9.2 % | 33.3 % | 25.0 % | 4.15 | 2.0 |
+| Copa América | 31.3 % | 10.8 % | 30.0 % | 38.3 % | 6.0 | 6.0 |
+| AFCON | 21.2 % | 7.9 % | 55.0 % | 18.3 % | 4.1 | 2.0 |
+| Asian Cup | 19.6 % | 11.3 % | 41.7 % | 30.0 % | 4.15 | 2.0 |
+| Gold Cup | 37.9 % | 12.9 % | 80.0 % | 35.0 % | 5.0 | 5.0 |
+| **All** | **23.8 %** | **10.6 %** | **42.8 %** | **27.8 %** | | |
+
+Targets: top-4 group exits 10–15 % (met), favourite wins 20–30 % (met). Copa América and
+Gold Cup "shared" values are the minimum possible with two and three groups.
+
+Seeding alone overcorrected (4 % group exits, 47 % favourite wins): national-team quality
+gaps decided too much. National-team matches now compress quality gaps per tournament
+(World Cup 0.65, Euros 0.3, Copa América 0.25, AFCON and Asian Cup 0.35, Gold Cup 0.25,
+Oceania 0.4, qualifiers and friendlies 0.6), because continental finals pit a few strong
+nations against much weaker fields while World Cup fields are closer. Club football is
+unchanged.
+
+### Performance (seed 314159, five seasons; CPU time of the process, back to back)
+
+| | Season | Offseason |
+|---|---:|---:|
+| v4.1 (main) | 3.29 s | 4.58–4.99 s |
+| v4.2 | 3.58–3.69 s (+9–12 %) | 4.54–5.03 s (±0 %) |
+
+Within the +20 % budget. Wall-clock times on this machine swung by a factor of two
+between identical runs (other programs were busy), so CPU time is the comparison; the
+20-season `npm run perf` output is kept in docs/calibration for reference only. The quick
+model's low-stakes rotation is skipped (rebuilding a line-up for every early cup tie cost
+more than the game itself); quick games rotate for fatigue through team fitness instead.

@@ -1,0 +1,344 @@
+{
+  "seeds": [
+    314159,
+    271828,
+    161803
+  ],
+  "seasons": 6,
+  "targets": {
+    "goalsPerMatch": [
+      2.6,
+      2.8
+    ],
+    "homeWin": [
+      0.43,
+      0.47
+    ],
+    "draw": [
+      0.25,
+      0.29
+    ],
+    "awayWin": [
+      0.26,
+      0.3
+    ],
+    "shotsPerTeam": [
+      12,
+      13
+    ],
+    "onTargetPerTeam": [
+      4,
+      5
+    ],
+    "cornersPerTeam": [
+      4.5,
+      5.5
+    ],
+    "yellowPerTeam": [
+      1.8,
+      2.2
+    ],
+    "redPerMatch": [
+      0.08,
+      0.13
+    ],
+    "cleanSheetRate": [
+      0.26,
+      0.32
+    ]
+  },
+  "overall": {
+    "matches": 238385,
+    "goalsPerMatch": 2.724,
+    "homeWin": 0.454,
+    "draw": 0.251,
+    "awayWin": 0.295,
+    "shotsPerTeam": 12.438,
+    "onTargetPerTeam": 4.374,
+    "cornersPerTeam": 5.132,
+    "yellowPerTeam": 2.137,
+    "redPerMatch": 0.126,
+    "cleanSheetRate": 0.294,
+    "extraTimeRate": 0.243,
+    "penaltyRate": 0.137
+  },
+  "byTier": {
+    "Continental & global": {
+      "matches": 21126,
+      "goalsPerMatch": 2.787,
+      "homeWin": 0.457,
+      "draw": 0.251,
+      "awayWin": 0.292,
+      "shotsPerTeam": 12.423,
+      "onTargetPerTeam": 4.363,
+      "cornersPerTeam": 5.104,
+      "yellowPerTeam": 2.095,
+      "redPerMatch": 0.12,
+      "cleanSheetRate": 0.291,
+      "extraTimeRate": 0.286,
+      "penaltyRate": 0.164
+    },
+    "Domestic cups": {
+      "matches": 13895,
+      "goalsPerMatch": 2.877,
+      "homeWin": null,
+      "draw": null,
+      "awayWin": null,
+      "shotsPerTeam": 13.038,
+      "onTargetPerTeam": 4.588,
+      "cornersPerTeam": 5.416,
+      "yellowPerTeam": 2.358,
+      "redPerMatch": 0.154,
+      "cleanSheetRate": 0.286,
+      "extraTimeRate": 0.243,
+      "penaltyRate": 0.136
+    },
+    "Elite leagues (ENG/ESP/ITA/GER/FRA)": {
+      "matches": 34200,
+      "goalsPerMatch": 2.731,
+      "homeWin": 0.458,
+      "draw": 0.234,
+      "awayWin": 0.308,
+      "shotsPerTeam": 12.829,
+      "onTargetPerTeam": 4.628,
+      "cornersPerTeam": 5.198,
+      "yellowPerTeam": 2.27,
+      "redPerMatch": 0.17,
+      "cleanSheetRate": 0.308,
+      "extraTimeRate": null,
+      "penaltyRate": null
+    },
+    "International": {
+      "matches": 5004,
+      "goalsPerMatch": 2.708,
+      "homeWin": 0.448,
+      "draw": 0.249,
+      "awayWin": 0.302,
+      "shotsPerTeam": 11.966,
+      "onTargetPerTeam": 4.214,
+      "cornersPerTeam": 5.014,
+      "yellowPerTeam": 2.121,
+      "redPerMatch": 0.122,
+      "cleanSheetRate": 0.309,
+      "extraTimeRate": 0.211,
+      "penaltyRate": 0.117
+    },
+    "Other full leagues": {
+      "matches": 164160,
+      "goalsPerMatch": 2.702,
+      "homeWin": 0.453,
+      "draw": 0.254,
+      "awayWin": 0.293,
+      "shotsPerTeam": null,
+      "onTargetPerTeam": null,
+      "cornersPerTeam": null,
+      "yellowPerTeam": null,
+      "redPerMatch": null,
+      "cleanSheetRate": 0.292,
+      "extraTimeRate": null,
+      "penaltyRate": null
+    }
+  },
+  "condensedLeagues": {
+    "teamMatches": 116640,
+    "goalsPerMatch": 2.679,
+    "draw": 0.273,
+    "cleanSheetRate": 0.275
+  },
+  "favouriteByStrengthGap": {
+    "0–3": {
+      "matches": 49808,
+      "favouriteWin": 0.401,
+      "draw": 0.276,
+      "upset": 0.323
+    },
+    "3–6": {
+      "matches": 44342,
+      "favouriteWin": 0.473,
+      "draw": 0.267,
+      "upset": 0.26
+    },
+    "6–10": {
+      "matches": 48409,
+      "favouriteWin": 0.55,
+      "draw": 0.249,
+      "upset": 0.201
+    },
+    "10–15": {
+      "matches": 43267,
+      "favouriteWin": 0.646,
+      "draw": 0.22,
+      "upset": 0.135
+    },
+    "15–+": {
+      "matches": 52559,
+      "favouriteWin": 0.761,
+      "draw": 0.17,
+      "upset": 0.069
+    }
+  },
+  "spread": {
+    "ballonDorDistinctPlayersPerSeed": 4,
+    "ballonDorDistinctClubsPerSeed": 3.67,
+    "goldenBootDistinctPlayersPerSeed": 4.33,
+    "goldenBootAverageGoals": 44.1,
+    "uclDistinctWinnersPerSeed": 5,
+    "eliteLeagueDistinctChampionsPerLeague": 3,
+    "eliteLeagueMostTitlesByOneClub": 3,
+    "eliteLeagueTopScorerGoals": 36.3,
+    "eliteLeagueTopScorerShareOfGoals": 0.035,
+    "eliteLeagueTop10ScorerClubs": 7.9
+  },
+  "styles": {
+    "defensive_rock": {
+      "teamMatches": 48945,
+      "pointsPerGame": 1.379,
+      "winRate": 0.375,
+      "goalsFor": 1.29,
+      "goalsAgainst": 1.28
+    },
+    "possession": {
+      "teamMatches": 48696,
+      "pointsPerGame": 1.44,
+      "winRate": 0.399,
+      "goalsFor": 1.43,
+      "goalsAgainst": 1.33
+    },
+    "youth_developer": {
+      "teamMatches": 48016,
+      "pointsPerGame": 1.391,
+      "winRate": 0.382,
+      "goalsFor": 1.38,
+      "goalsAgainst": 1.36
+    },
+    "pressing": {
+      "teamMatches": 47063,
+      "pointsPerGame": 1.429,
+      "winRate": 0.397,
+      "goalsFor": 1.43,
+      "goalsAgainst": 1.34
+    },
+    "motivator": {
+      "teamMatches": 46671,
+      "pointsPerGame": 1.398,
+      "winRate": 0.385,
+      "goalsFor": 1.38,
+      "goalsAgainst": 1.35
+    },
+    "counter_attack": {
+      "teamMatches": 46010,
+      "pointsPerGame": 1.35,
+      "winRate": 0.369,
+      "goalsFor": 1.35,
+      "goalsAgainst": 1.4
+    },
+    "pragmatist": {
+      "teamMatches": 43592,
+      "pointsPerGame": 1.357,
+      "winRate": 0.371,
+      "goalsFor": 1.32,
+      "goalsAgainst": 1.35
+    },
+    "adaptive": {
+      "teamMatches": 43270,
+      "pointsPerGame": 1.329,
+      "winRate": 0.361,
+      "goalsFor": 1.32,
+      "goalsAgainst": 1.4
+    },
+    "tournament_expert": {
+      "teamMatches": 40733,
+      "pointsPerGame": 1.362,
+      "winRate": 0.372,
+      "goalsFor": 1.34,
+      "goalsAgainst": 1.37
+    },
+    "direct": {
+      "teamMatches": 39352,
+      "pointsPerGame": 1.358,
+      "winRate": 0.374,
+      "goalsFor": 1.4,
+      "goalsAgainst": 1.44
+    },
+    "none": {
+      "teamMatches": 14414,
+      "pointsPerGame": 1.289,
+      "winRate": 0.349,
+      "goalsFor": 1.29,
+      "goalsAgainst": 1.45
+    }
+  },
+  "averageRatingByPosition": {
+    "GK": 7.49,
+    "DF": 7.68,
+    "MF": 7.74,
+    "FW": 7.71
+  },
+  "ballonDorPodiumPositions": {
+    "FW": 46,
+    "MF": 7,
+    "DF": 1
+  },
+  "availability": {
+    "injuriesPerSeason": 2566,
+    "pointsPerGameByMissingStarters": {
+      "0": {
+        "games": 395990,
+        "pointsPerGame": 1.374
+      },
+      "1": {
+        "games": 482,
+        "pointsPerGame": 1.471
+      },
+      "2": {
+        "games": 195,
+        "pointsPerGame": 1.841
+      },
+      "3+": {
+        "games": 53,
+        "pointsPerGame": 2.019
+      }
+    }
+  },
+  "homeResultsByVenue": {
+    "league": {
+      "matches": 612,
+      "home": 0.493,
+      "draw": 0.15,
+      "away": 0.356,
+      "cardsPerMatch": 4.51
+    },
+    "league (light)": {
+      "matches": 196854,
+      "home": 0.454,
+      "draw": 0.251,
+      "away": 0.295,
+      "cardsPerMatch": 0
+    },
+    "continental, cross-border": {
+      "matches": 19502,
+      "home": 0.459,
+      "draw": 0.249,
+      "away": 0.292,
+      "cardsPerMatch": 4.29
+    },
+    "derby": {
+      "matches": 1151,
+      "home": 0.455,
+      "draw": 0.259,
+      "away": 0.286,
+      "cardsPerMatch": 1.65
+    }
+  },
+  "midSeasonSackings": {
+    "perSeason": 32.6,
+    "pointsPerGameSixBefore": 0.65,
+    "pointsPerGameSixAfter": 1.4
+  },
+  "substitutionsPerTeam": 2.59,
+  "timing": {
+    "averageSeasonSeconds": 1.77,
+    "averageOffseasonSeconds": 3.01
+  },
+  "outsideTargets": []
+}

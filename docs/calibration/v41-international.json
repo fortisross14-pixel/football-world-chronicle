@@ -1,0 +1,80 @@
+{
+  "seeds": [
+    101,
+    202,
+    303
+  ],
+  "cyclesPerSeed": 20,
+  "targets": {
+    "top4GroupExitRate": [
+      0.1,
+      0.15
+    ],
+    "favouriteWinRate": [
+      0.2,
+      0.3
+    ]
+  },
+  "overall": {
+    "tournaments": 360,
+    "top4GroupExitRate": 0.238,
+    "favouriteWinRate": 0.428
+  },
+  "byCompetition": {
+    "WC": {
+      "tournaments": 60,
+      "top4GroupExitRate": 0.108,
+      "top4SemiFinalRate": 0.446,
+      "top4WinRate": 0.163,
+      "favouriteWinRate": 0.167,
+      "favouriteGroupExitRate": 0.083,
+      "top8SharingAGroupPerTournament": 2.3
+    },
+    "EURO": {
+      "tournaments": 60,
+      "top4GroupExitRate": 0.221,
+      "top4SemiFinalRate": 0.529,
+      "top4WinRate": 0.208,
+      "favouriteWinRate": 0.333,
+      "favouriteGroupExitRate": 0.083,
+      "top8SharingAGroupPerTournament": 4.15
+    },
+    "COPA": {
+      "tournaments": 60,
+      "top4GroupExitRate": 0.313,
+      "top4SemiFinalRate": 0.688,
+      "top4WinRate": 0.246,
+      "favouriteWinRate": 0.3,
+      "favouriteGroupExitRate": 0.3,
+      "top8SharingAGroupPerTournament": 6
+    },
+    "AFCON": {
+      "tournaments": 60,
+      "top4GroupExitRate": 0.212,
+      "top4SemiFinalRate": 0.533,
+      "top4WinRate": 0.221,
+      "favouriteWinRate": 0.55,
+      "favouriteGroupExitRate": 0.05,
+      "top8SharingAGroupPerTournament": 4.1
+    },
+    "ASIACUP": {
+      "tournaments": 60,
+      "top4GroupExitRate": 0.196,
+      "top4SemiFinalRate": 0.533,
+      "top4WinRate": 0.212,
+      "favouriteWinRate": 0.417,
+      "favouriteGroupExitRate": 0.15,
+      "top8SharingAGroupPerTournament": 4.15
+    },
+    "GOLDCUP": {
+      "tournaments": 60,
+      "top4GroupExitRate": 0.379,
+      "top4SemiFinalRate": 0.621,
+      "top4WinRate": 0.246,
+      "favouriteWinRate": 0.8,
+      "favouriteGroupExitRate": 0.05,
+      "top8SharingAGroupPerTournament": 5
+    }
+  },
+  "seconds": 21.1
+}
