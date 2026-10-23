@@ -43,7 +43,7 @@ for (const row of intake) {
   assert(player && club, 'youth rows point at real players and clubs');
   assert.equal(player.academyClubId, club.id, 'youth players remember their academy');
   assert(player.academy, 'youth players are academy graduates');
-  const stars = academyStars(getClubAcademy(world, club.id).score);
+  const stars = row.academyStars;
   if (stars === 1) assert.equal(row.rarity, 'common', '1★ academies only produce Commons');
   if (stars === 2) assert(['common', 'uncommon'].includes(row.rarity), '2★ academies produce Common/Uncommon');
   if (stars === 4) assert.notEqual(row.rarity, 'common', '4★ academies produce no Commons');

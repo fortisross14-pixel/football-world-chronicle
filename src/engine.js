@@ -4119,7 +4119,7 @@ function createYouthPlayer(state, club, position, counts, clubHasGenerational) {
   player.salary = Math.max(0.2, Number((player.marketValue * 0.03).toFixed(1)));
   state.players.push(player);
   counts[player.rarity] = (counts[player.rarity] || 0) + 1;
-  const record = { playerId: player.id, clubId: club.id, rarity: player.rarity, position: player.position, icon: Boolean(player.realWorldId) };
+  const record = { playerId: player.id, clubId: club.id, academyStars: academyStars(club.academyScore), rarity: player.rarity, position: player.position, icon: Boolean(player.realWorldId) };
   (state.current.youthIntake ||= []).push(record);
   if ((STAR_RARITIES[player.rarity]?.rank || 1) >= 4) {
     state.current.news.unshift({
@@ -4157,10 +4157,10 @@ function seedEliteAcademies(state, roll) {
     const weight = (HISTORIC_ACADEMIES.has(club.id) ? 6 : 1) * ({ core: 3, second: 1.6, third: 0.7, other: 0.35 }[nation]) * ((club.reputation || 60) / 80) ** 2;
     return { club, key: Math.pow(Math.max(1e-6, roll(club)), 1 / weight) };
   }).sort((a, b) => b.key - a.key);
-  const fiveStar = Math.max(3, Math.round(candidates.length * 0.03));
+  const fiveStar = Math.max(3, Math.round(candidates.length * 0.045));
   const fourStar = Math.max(8, Math.round(candidates.length * 0.08));
   // Seeded academies have a youth tradition that keeps them near their level.
-  candidates.slice(0, fiveStar).forEach(({ club }) => { club.academyScore = 82 + Math.floor(roll(club) * 13); club.academyTradition = 3; });
+  candidates.slice(0, fiveStar).forEach(({ club }) => { club.academyScore = 82 + Math.floor(roll(club) * 13); club.academyTradition = 3.4; });
   candidates.slice(fiveStar, fiveStar + fourStar).forEach(({ club }) => { club.academyScore = 62 + Math.floor(roll(club) * 15); club.academyTradition = 1.6; });
   for (const club of state.clubs) if (HISTORIC_ACADEMIES.has(club.id)) club.academyTradition = Math.max(club.academyTradition || 0, 1.6);
   // Starting point for the trend chart.
