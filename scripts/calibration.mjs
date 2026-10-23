@@ -336,6 +336,11 @@ if (process.env.CAL_RARITY !== '0') {
   const { runRarityCalibration } = await import('./calibration-rarity.mjs');
   report.rarity = await runRarityCalibration({ seeds: String(process.env.RARITY_SEEDS || '11,22,33').split(',').map(Number), seasons: Number(process.env.RARITY_SEASONS || 20), engineUrl });
 }
+// Coaches and academies (v4.4): coach rarity, elite coach jobs by phase, academy scores and youth. CAL_COACHES=0 skips it.
+if (process.env.CAL_COACHES !== '0') {
+  const { runCoachCalibration } = await import('./calibration-coaches.mjs');
+  report.coaches = await runCoachCalibration({ seeds: String(process.env.COACH_SEEDS || '11,22').split(',').map(Number), seasons: Number(process.env.COACH_SEASONS || 10), engineUrl });
+}
 // International tournaments (v4.2): how the pre-tournament top 4 fare. CAL_INTL=0 skips it.
 if (process.env.CAL_INTL !== '0') {
   const { runInternationalCalibration } = await import('./calibration-international.mjs');
