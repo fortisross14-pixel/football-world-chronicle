@@ -99,7 +99,7 @@ const legacy = createWorld(42045);
 for (const comp of Object.values(legacy.current.internationalCompetitions)) { delete comp.format; delete comp.draw; }
 legacy.dataRevision = 32;
 const upgraded = upgradeWorld(JSON.parse(JSON.stringify(legacy)));
-assert.equal(upgraded.dataRevision, 33);
+assert(upgraded.dataRevision >= 33);
 assert(Object.values(upgraded.current.internationalCompetitions).every((comp) => comp.format === null && comp.draw === null), 'in-progress tournaments keep their old format');
 assert.deepEqual(upgraded.current.teamFitness, {});
 

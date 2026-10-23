@@ -1,5 +1,29 @@
 # v4 match engine and player model (in progress)
 
+## v4.3 — Every move in one list, club changes and elite players who matter
+
+### Moves
+- Transfer market → **Moves** (the new default tab): every player who changed team this offseason and season, whatever the reason, and every coach who changed job. Columns: name, rarity, position, age, rating, from → to and a plain "How": "Transfer · $85m", "Contract expired at Juventus · free, 4-year deal", "Released by Milan (squad reshape) · signed by Roma", "Loan", "Back from loan", "Contract expired · unattached"; for coaches "Poached from Porto", "Dismissed by Lazio · appointed by Valencia", "Appointed by Santos".
+- Generational, Legend and Epic by default, with a toggle for all rarities (remembered). Sorted by rarity, then current rating; never by fee.
+- "Elite moves" (Epic+, any reason, same order) replace the fee-sorted lists in the Offseason summary, the live offseason screen and the preseason home stage.
+- Legend and Generational players who move on a free get their own Magazine headline ("joins X on a free").
+- Contract exits, loan returns and surplus releases are now recorded, and new deals record their length.
+
+### Club pages
+- Overview → **Since last season**: power ranking last season → now, arrivals and departures (same wording and order as Moves), the biggest rating changes in the squad with the reason (aging, development, decline) and any coach change.
+- History → **Arrivals and departures by season**.
+- Each season's squad-power rank is stored with the club's season record.
+
+### Elite players drive results, goals and awards
+- Ratings stay inside the rarity: below Epic a player tops out one point under the next band (Rare 84, Uncommon 79, Common 69). Before, about 140 Rare players a season were rated 85–88, inside the Epic band, and they were the ones winning awards. A breakout season can promote a young Rare to Epic (with a Magazine story) while there are fewer than 50 Epics.
+- Match engine: Epic, Legend and Generational players take a far bigger share of shots, finish better, create more big chances for teammates, and elite keepers save more; all of this is stronger in finals and semi-finals. Star impact on team strength is steeper.
+- Major titles: in the Champions League, World Cup, Euros, Copa América and Club World Cup a side without a Legend or Generational is handicapped (lightly with a core of four or more Epics). Other competitions keep their openness.
+- Ballon d'Or: voters favour stars (rarity, quality above the elite line, fame) and decisive performances in finals and semi-finals. Uncommon and Common players never reach the podium; a Rare wins only with a historic season (a Champions League or World Cup-level title and a score well clear of the best Epic+). Positional awards and the Best XI follow from the same ranking.
+- New rarity calibration (`npm run calibration-rarity`, also part of `npm run calibration`); before and after in docs/CALIBRATION.md.
+
+### Saves
+- Data revision 34: ratings of existing Rare, Uncommon and Common players are brought inside their band; move lists start empty. No Neon schema changes.
+
 ## v4.2 — Squads by formation, matchday screens and fairer international tournaments
 
 ### Squads set by the coach's formation

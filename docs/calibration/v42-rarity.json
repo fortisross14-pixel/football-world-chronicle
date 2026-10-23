@@ -1,0 +1,138 @@
+{
+  "seeds": [
+    11,
+    22,
+    33
+  ],
+  "seasons": 20,
+  "targets": {
+    "ballonWinnerEpicPlus": 0.95,
+    "ballonPodiumEpicPlus": 0.85,
+    "goldenBootEpicPlus": 0.8,
+    "uclWcLegendPlus": 0.75,
+    "uclWcNoEpicPlus": 0.05
+  },
+  "ballonDorWinners": {
+    "counts": {
+      "generational": 2,
+      "legend": 20,
+      "epic": 16,
+      "rare": 21,
+      "uncommon": 1,
+      "common": 0
+    },
+    "epicPlus": 0.633,
+    "legendPlus": 0.367
+  },
+  "ballonDorPodium": {
+    "counts": {
+      "generational": 18,
+      "legend": 60,
+      "epic": 36,
+      "rare": 64,
+      "uncommon": 2,
+      "common": 0
+    },
+    "epicPlus": 0.633,
+    "legendPlus": 0.433
+  },
+  "worldGoldenBoot": {
+    "counts": {
+      "generational": 7,
+      "legend": 16,
+      "epic": 4,
+      "rare": 29,
+      "uncommon": 4,
+      "common": 0
+    },
+    "epicPlus": 0.45,
+    "legendPlus": 0.383
+  },
+  "big5TopFiveScorers": {
+    "counts": {
+      "generational": 26,
+      "legend": 111,
+      "epic": 141,
+      "rare": 845,
+      "uncommon": 323,
+      "common": 54
+    },
+    "epicPlus": 0.185,
+    "legendPlus": 0.091
+  },
+  "leagueTopScorerIsEpicPlusForward": 0.347,
+  "winners": {
+    "UCL": {
+      "editions": 60,
+      "withLegendPlus": 0.667,
+      "epicOnly4Plus": 0,
+      "epicOnlyUnder4": 18,
+      "noEpicPlus": 2,
+      "noEpicPlusRate": 0.033,
+      "examplesNoEpicPlus": [
+        "11:2003:dortmund",
+        "11:2019:man-utd"
+      ]
+    },
+    "WC": {
+      "editions": 15,
+      "withLegendPlus": 0.6,
+      "epicOnly4Plus": 0,
+      "epicOnlyUnder4": 2,
+      "noEpicPlus": 4,
+      "noEpicPlusRate": 0.267,
+      "examplesNoEpicPlus": [
+        "11:2001:ksa",
+        "11:2005:col",
+        "22:2005:fra",
+        "22:2009:gre"
+      ]
+    },
+    "EURO": {
+      "editions": 15,
+      "withLegendPlus": 0.533,
+      "epicOnly4Plus": 0,
+      "epicOnlyUnder4": 5,
+      "noEpicPlus": 2,
+      "noEpicPlusRate": 0.133,
+      "examplesNoEpicPlus": [
+        "11:2003:aut",
+        "22:2019:rou"
+      ]
+    },
+    "COPA": {
+      "editions": 15,
+      "withLegendPlus": 0.333,
+      "epicOnly4Plus": 0,
+      "epicOnlyUnder4": 4,
+      "noEpicPlus": 6,
+      "noEpicPlusRate": 0.4,
+      "examplesNoEpicPlus": [
+        "11:2003:uru",
+        "22:2003:chi",
+        "22:2019:ecu",
+        "33:2003:uru",
+        "33:2007:uru",
+        "33:2011:col"
+      ]
+    },
+    "CWC": {
+      "editions": 15,
+      "withLegendPlus": 0.733,
+      "epicOnly4Plus": 0,
+      "epicOnlyUnder4": 2,
+      "noEpicPlus": 2,
+      "noEpicPlusRate": 0.133,
+      "examplesNoEpicPlus": [
+        "11:2008:river",
+        "33:2020:athletic"
+      ]
+    }
+  },
+  "development": {
+    "belowEpicPlayersAt85PlusPerSeason": 139.7,
+    "rareAt85PlusPerSeason": 139.7,
+    "highestRatingBelowEpic": 88
+  },
+  "seconds": 607.2
+}

@@ -470,7 +470,11 @@ function resolveShot(match, team, opponent, slice, rng) {
   const keeper = goalkeeperOf(opponent);
   const quality = freshEffective(shooter);
   const keeperQuality = keeper ? freshEffective(keeper) : opponent.defence - 8;
-  const big = rng() < team.style.bigChance * (1 + shooter.bigGame * match.bigGameStakes * 0.3);
+  // Elite creators make big chances for their teammates; finals magnify elite quality.
+  const stakes = 1 + (match.bigGameStakes || 0) * 0.5;
+  let creation = 0;
+  for (const entry of team.onPitch) if (entry !== shooter && (entry.line === 'MF' || entry.line === 'FW')) creation += Math.max(0, (entry.rating || 0) - 84);
+  const big = rng() < team.style.bigChance * (1 + shooter.bigGame * match.bigGameStakes * 0.3) * (1 + Math.min(0.5, creation * 0.02 * stakes));
   const penalty = big && rng() < 0.09;
   const time = eventMinute(rng, slice);
   team.shots += 1;
@@ -494,8 +498,11 @@ function resolveShot(match, team, opponent, slice, rng) {
     }
     return;
   }
-  const accuracy = clamp((big ? 0.6 : 0.3) * (1 + (quality - opponent.defence) * 0.008), 0.12, 0.82);
-  const finish = clamp((big ? 0.62 : 0.21) * (1 + (quality - keeperQuality) * 0.006), 0.06, 0.88);
+  // Elite finishers convert far more; elite keepers save more (both stronger in big games).
+  const eliteShooter = Math.max(0, (shooter.rating || 0) - 84) * stakes;
+  const eliteKeeper = keeper ? Math.max(0, (keeper.rating || 0) - 84) * stakes : 0;
+  const accuracy = clamp((big ? 0.6 : 0.3) * (1 + (quality - opponent.defence) * 0.008 + eliteShooter * 0.006), 0.12, 0.84);
+  const finish = clamp((big ? 0.62 : 0.21) * (1 + (quality - keeperQuality) * 0.006 + eliteShooter * 0.014 - eliteKeeper * 0.012), 0.06, 0.9);
   team.xg += accuracy * finish;
   const assister = rng() < (big ? 0.82 : 0.55) ? pickAssister(rng, team, shooter) : null;
   if (assister) assister.keyPasses += 1;

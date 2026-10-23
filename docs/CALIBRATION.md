@@ -307,3 +307,113 @@ Back-to-back four-season runs on seed 314159 (same machine, same load): Phase 5 
 and 3.67–4.03 s a season, Phase 6 3.61–4.11 s. No measurable change. Absolute times in this
 run are high because the machine was under about 35 % background load; the Phase 5 table
 above, measured on a quiet machine, is the reference.
+
+## v4.2 — squads by formation, team fitness and international tournaments
+
+### Matches (3 seeds × 6 seasons, `npm run calibration`)
+
+| | v4.1 (main) | v4.2 |
+|---|---:|---:|
+| Goals per match | 2.72 | 2.73 |
+| Home / draw / away | 45.4 / 25.1 / 29.5 | 45.3 / 25.2 / 29.6 |
+| Shots / on target per team | 12.4 / 4.4 | 12.4 / 4.3 |
+| Yellows per team / reds per match | 2.14 / 0.126 | 2.14 / 0.131 |
+| Clean sheets | 29.4 % | 29.3 % |
+| Favourite wins, gap 15+ | 76.1 % | 75.6 % |
+| UCL winners per seed | 5.0 | 5.3 |
+
+All targets met before and after. Squad Reshape, team fitness and the backup-system
+penalty leave the match model where it was.
+
+Team fitness first cost the busiest clubs too much: with a 20-point weekly recovery and
+a 0.12-per-point penalty, `favorite-balance-v17` (16 seeds) dropped from 78 % to 53 %
+top-five winners (the Libertadores favourites from 81 % to 44 %), because sides playing
+midweek kept losing league points and form. Recovery 22, rotation from bench players
+within ten rating points of the XI, a 0.08-per-point penalty below 80 % and a 0.3 edge
+above 95 % bring it back to 69 % (test floor 60 %) while congested months still wear thin
+squads down (lowest team fitness about 72 % in a 20-week sample).
+
+### International tournaments (`npm run calibration-intl`, 3 seeds × 20 cycles, 360 tournaments)
+
+Rates for the four strongest teams by pre-tournament power; "shared" counts top-8 teams
+sharing a group per tournament.
+
+| | Top-4 group exits before | after | Favourite wins before | after | Shared before | after |
+|---|---:|---:|---:|---:|---:|---:|
+| World Cup | 10.8 % | 11.7 % | 16.7 % | 20.0 % | 2.3 | 0.08 |
+| Euros | 22.1 % | 9.2 % | 33.3 % | 25.0 % | 4.15 | 2.0 |
+| Copa América | 31.3 % | 10.8 % | 30.0 % | 38.3 % | 6.0 | 6.0 |
+| AFCON | 21.2 % | 7.9 % | 55.0 % | 18.3 % | 4.1 | 2.0 |
+| Asian Cup | 19.6 % | 11.3 % | 41.7 % | 30.0 % | 4.15 | 2.0 |
+| Gold Cup | 37.9 % | 12.9 % | 80.0 % | 35.0 % | 5.0 | 5.0 |
+| **All** | **23.8 %** | **10.6 %** | **42.8 %** | **27.8 %** | | |
+
+Targets: top-4 group exits 10–15 % (met), favourite wins 20–30 % (met). Copa América and
+Gold Cup "shared" values are the minimum possible with two and three groups.
+
+Seeding alone overcorrected (4 % group exits, 47 % favourite wins): national-team quality
+gaps decided too much. National-team matches now compress quality gaps per tournament
+(World Cup 0.65, Euros 0.3, Copa América 0.25, AFCON and Asian Cup 0.35, Gold Cup 0.25,
+Oceania 0.4, qualifiers and friendlies 0.6), because continental finals pit a few strong
+nations against much weaker fields while World Cup fields are closer. Club football is
+unchanged.
+
+### Performance (seed 314159, five seasons; CPU time of the process, back to back)
+
+| | Season | Offseason |
+|---|---:|---:|
+| v4.1 (main) | 3.29 s | 4.58–4.99 s |
+| v4.2 | 3.58–3.69 s (+9–12 %) | 4.54–5.03 s (±0 %) |
+
+Within the +20 % budget. Wall-clock times on this machine swung by a factor of two
+between identical runs (other programs were busy), so CPU time is the comparison; the
+20-season `npm run perf` output is kept in docs/calibration for reference only. The quick
+model's low-stakes rotation is skipped (rebuilding a line-up for every early cup tie cost
+more than the game itself); quick games rotate for fatigue through team fitness instead.
+
+## v4.3 — elite players drive results, goals and awards
+
+### Rarity (`npm run calibration-rarity`, 3 seeds × 20 seasons = 60 seasons)
+
+| | Before (main) | After | Target |
+|---|---:|---:|---:|
+| Ballon d'Or winners Epic+ | 63 % (21 Rare, 1 Uncommon) | 100 % (90 % Legend/Generational) | ≥ 95 % |
+| Ballon d'Or podium Epic+ | 63 % | 98 % (no Uncommon/Common) | ≥ 85 % |
+| World Golden Boot Epic+ | 45 % | 97 % | ≥ 80 % |
+| Big-5 league top scorer is an Epic+ forward | 35 % | 70 % | usually |
+| UCL winners with a Legend/Generational | 67 % | 90 % | about 75 % |
+| UCL winners with no Epic+ | 3 % | 2 % | ≤ 5 % |
+| World Cup winners with a Legend/Generational | 60 % | 87 % | about 75 % |
+| World Cup winners with no Epic+ | 27 % | 0 % | ≤ 5 % |
+| Euros / Club World Cup winners with no Epic+ | 13 % / 13 % | 0 % / 0 % | |
+| Copa América winners with no Epic+ | 40 % | 20 % | |
+| Players below Epic rated 85+ per season | 140 | 0 | |
+
+Two targets are only partly met. UCL winners with a Legend or Generational run above
+75 % (90 %), and of the few UCL winners with only Epics most had fewer than four. Both
+come from the same lever (the handicap for sides without a Legend in the biggest
+competitions): easing it lets more 1–3-Epic sides win, tightening it pushes the Legend
+share higher. Copa América winners often have no Epic+ because several South American
+nations have none at all; someone has to win.
+
+The root cause of the old numbers was development, not awards: Rare ratings could reach
+88, inside the Epic band, so about 140 "Rare" players a season played at Epic level and
+won awards as Rares. Ratings below Epic now stop one point under the next band; a
+breakout season can promote a young Rare to Epic while there are fewer than 50 Epics.
+
+### Matches (final run, 2 seeds × 10 seasons)
+
+2.74 goals, 45.5 / 25.2 / 29.3, 12.4 shots and 4.4 on target per team, 2.13 yellows,
+0.126 reds, 29.0 % clean sheets: all targets met, unchanged from v4.2. International:
+11.5 % top-four group exits, 33 % favourite wins (2 seeds × 6 cycles; the 360-tournament
+run in v4.2 gave 28 %).
+
+### Performance (seed 314159, five seasons, CPU time, run alongside the other final checks)
+
+| | Season | Offseason |
+|---|---:|---:|
+| v4.2 (main) | 4.58 s | 6.22 s |
+| v4.3 | 5.25 s (+15 %) | 7.24 s (+16 %) |
+
+Within the +20 % budget. The extra offseason time is the move bookkeeping and the
+season power ranks; the extra season time is the elite terms in every shot.

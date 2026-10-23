@@ -58,7 +58,8 @@ await click('next-season');
 const offseasonScreens = screens.slice(before).filter((html) => html.includes('Offseason in progress'));
 assert(offseasonScreens.length >= 4, `offseason stages painted (${offseasonScreens.length})`);
 const last = offseasonScreens.at(-1);
-for (const marker of ['Top signings', 'Coaching changes', 'live-steps']) assert(last.includes(marker), `offseason screen shows ${marker}`);
+// v4.3: the live offseason screen lists Elite moves (by rarity) instead of Top signings (by fee).
+for (const marker of ['Elite moves', 'Coaching changes', 'live-steps']) assert(last.includes(marker), `offseason screen shows ${marker}`);
 assert(offseasonScreens.some((html) => html.includes('Transfer market')));
 
 // Same world as a plain run.
