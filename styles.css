@@ -1663,3 +1663,10 @@ a.academy-tag:hover { color: var(--cyan); }
   .people-row { gap: 10px; }
   .people-meta { gap: 2px 10px; }
 }
+
+/* v4.6 links everywhere: text-only club, nation and competition links take the size and
+   weight of their surroundings (scoreboards, labels, table cells) and turn cyan on hover. */
+.entity-link.text-link, .entity-link.comp-link { display: inline; gap: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; vertical-align: baseline; }
+.entity-link.text-link:hover, .entity-link.comp-link:hover, .sc-event-text .player-link:hover, .match-star small .player-link:hover { color: var(--cyan); text-decoration: underline; text-underline-offset: 2px; }
+.sc-event-text .player-link, .match-star small .player-link, .award-name .player-link { display: inline; color: inherit; font: inherit; vertical-align: baseline; }
+.story-card .story-more { margin-top: 6px; }

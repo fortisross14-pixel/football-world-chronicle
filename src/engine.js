@@ -214,7 +214,7 @@ const PLAYER_HISTORY_CACHE = new WeakMap();
 const ELITE_MARKET_CACHE = new WeakMap();
 const HISTORICAL_INDEX_CACHE = new WeakMap();
 
-function invalidateRuntimeCache(state) {
+export function invalidateRuntimeCache(state) {
   RUNTIME_CACHE.delete(state);
   ELITE_MARKET_CACHE.delete(state);
 }
@@ -2317,7 +2317,7 @@ function newCurrentSeason(state) {
 export function createWorld(seed = Date.now() % 2147483647) {
   const state = {
     version: 4,
-    dataRevision: 35,
+    dataRevision: 36,
     seed,
     rngSeed: seed >>> 0,
     nextPlayerId: 1,
@@ -3515,9 +3515,48 @@ function matchExpectations(state, { homeId, awayId, competitionId, stage, knocko
   const shape = (base, delta) => base * (1 + c.lambdaAmplitude * Math.tanh(delta / base * c.lambdaScale));
   const contextFactor = Math.exp(c.contextPerPoint * (homeContext - awayContext));
   const gapScale = isInternational ? (c.internationalGapScaleByCompetition[competitionId] ?? c.internationalGapScale) : 1;
-  const homeLambda = clamp(shape(homeBaseGoals, ((homeAttack - awayDefence) / attackDivisor + difference / homeEdgeDivisor) * gapScale) * contextFactor, 0.2, 3.6);
-  const awayLambda = clamp(shape(awayBaseGoals, ((awayAttack - homeDefence) / defenceDivisor - difference / awayEdgeDivisor) * gapScale) / contextFactor, 0.18, 3.3);
+  // Elite players act on expected goals directly, outside the saturating curve, so a
+  // great forward adds goals to his team instead of taking them from teammates, and a
+  // great keeper or defender takes goals away from the opponent (v4.6).
+  const homeStars = squadStarPoints(homeSquad || getTeamSquad(state, homeId, isInternational));
+  const awayStars = squadStarPoints(awaySquad || getTeamSquad(state, awayId, isInternational));
+  const homeStarFactor = Math.exp((STAR_GOALS.attack * homeStars.attack - STAR_GOALS.defence * awayStars.defence) * gapScale);
+  const awayStarFactor = Math.exp((STAR_GOALS.attack * awayStars.attack - STAR_GOALS.defence * homeStars.defence) * gapScale);
+  const homeLambda = clamp(shape(homeBaseGoals, ((homeAttack - awayDefence) / attackDivisor + difference / homeEdgeDivisor) * gapScale) * contextFactor * homeStarFactor, 0.2, 3.6);
+  const awayLambda = clamp(shape(awayBaseGoals, ((awayAttack - homeDefence) / defenceDivisor - difference / awayEdgeDivisor) * gapScale) / contextFactor * awayStarFactor, 0.18, 3.3);
   return { homeStrength, awayStrength, homeLambda, awayLambda };
+}
+
+// Direct effect of elite players on expected goals. A player's points grow with his
+// rating above 82 and much faster with rarity: a 98 Generational forward is worth about
+// +20 % goals for his team, a 92 Legend about +7 %, an 88 Epic about +2 %, a Rare almost
+// nothing. Team totals are capped so a side full of stars does not run away.
+const STAR_GOALS = {
+  attack: 0.005, defence: 0.0046, floor: 82, power: 1.2, cap: 42,
+  rarity: { generational: 1, legend: 0.6, epic: 0.26, rare: 0.08 },
+  attackLine: { FW: 1, MF: 0.7, DF: 0.12, GK: 0 },
+  defenceLine: { GK: 1, DF: 0.8, MF: 0.22, FW: 0.04 }
+};
+
+function squadStarPoints(squad) {
+  if (!squad) return { attack: 0, defence: 0 };
+  if (squad.starPoints) return squad.starPoints;
+  let attack = 0;
+  let defence = 0;
+  const attackers = [];
+  for (const player of squad.starters || []) {
+    if (!player || player.depth) continue;
+    const weight = STAR_GOALS.rarity[player.rarity];
+    const surplus = (player.rating || 0) - STAR_GOALS.floor;
+    if (!weight || surplus <= 0) continue;
+    const points = surplus ** STAR_GOALS.power * weight;
+    const own = points * (STAR_GOALS.attackLine[player.position] || 0);
+    attack += own;
+    defence += points * (STAR_GOALS.defenceLine[player.position] || 0);
+    if (own > 0) attackers.push({ id: player.id, points: own });
+  }
+  squad.starPoints = { attack: Math.min(STAR_GOALS.cap, attack), defence: Math.min(STAR_GOALS.cap, defence), attackers };
+  return squad.starPoints;
 }
 
 
@@ -3552,6 +3591,30 @@ function poissonSample(state, mean) {
   let count = 0;
   while (product > limit && count < 12) { count += 1; product *= random(state); }
   return count;
+}
+
+// Quick-model scoring (v4.6). A star's goals are partly added and partly taken from
+// teammates. The added part is the share of the team's expected goals that his quality
+// brings (STAR_GOALS); those goals mostly go to the elite attackers. The rest are shared
+// as before, but no one takes more than LIGHT_MAX_SHARE of them, so a star scores more
+// at a better team (more chances) rather than at a weak one (no one else to shoot).
+const LIGHT_MAX_SHARE = 0.36;
+const LIGHT_STAR_FINISH = 0.85;
+
+function lightScorerWeights(squad, sources) {
+  if (squad.lightWeights && squad.lightWeights.sources === sources) return squad.lightWeights.weights;
+  const total = sources.reduce((sum, source) => sum + source.goalW, 0);
+  const weights = sources.map((source) => Math.min(source.goalW, LIGHT_MAX_SHARE / (1 - LIGHT_MAX_SHARE) * (total - source.goalW)));
+  squad.lightWeights = { sources, weights };
+  return weights;
+}
+
+function pickWeighted(state, items, weights) {
+  let total = 0;
+  for (const weight of weights) total += weight;
+  let needle = random(state) * total;
+  for (let index = 0; index < items.length; index += 1) { needle -= weights[index]; if (needle <= 0) return items[index]; }
+  return items[items.length - 1];
 }
 
 function pickLightScorer(state, sources) {
@@ -3667,10 +3730,19 @@ function simulateLightMatch(state, { homeId, awayId, competitionId, competitionN
   }
   const goalEvents = [];
   const sidePlayers = { home: squadMatchSources(homeSquad).xi.filter((source) => source.id), away: squadMatchSources(awaySquad).xi.filter((source) => source.id) };
+  const sideSquads = { home: homeSquad, away: awaySquad };
   for (const [side, goals, teamId, opponentId] of [['home', homeGoals, homeId, awayId], ['away', awayGoals, awayId, homeId]]) {
     const sources = sidePlayers[side];
+    const squad = sideSquads[side];
+    const stars = squadStarPoints(squad);
+    const addedShare = stars.attack > 0 ? 1 - Math.exp(-STAR_GOALS.attack * stars.attack) : 0;
+    const starSources = addedShare ? stars.attackers.map((row) => sources.find((source) => source.id === row.id)).filter(Boolean) : [];
+    const weights = sources.length ? lightScorerWeights(squad, sources) : null;
     for (let goal = 0; goal < goals; goal += 1) {
-      const scorer = sources.length ? pickLightScorer(state, sources) : null;
+      const added = starSources.length && random(state) < addedShare * LIGHT_STAR_FINISH;
+      const scorer = !sources.length ? null
+        : added ? pickWeighted(state, starSources, starSources.map((source) => stars.attackers.find((row) => row.id === source.id).points))
+          : pickWeighted(state, sources, weights);
       const assister = scorer && random(state) < 0.72 ? pickLightAssister(state, sources, scorer) : null;
       if (scorer) ensurePlayerStat(state, scorer.id, competitionId, teamId, false).goals += 1;
       if (assister) ensurePlayerStat(state, assister.id, competitionId, teamId, false).assists += 1;
@@ -6492,6 +6564,28 @@ function archiveCoachSummaries(state) {
 
 // Archived matches keep the result, events and statistics but drop the replay detail
 // (every shot, per-slice possession, full line-ups); the Showcase keeps its own copy.
+function headToHeadKnockout(match) {
+  if (!match.knockout && !match.aggregate) return false;
+  const id = String(match.competitionId || '');
+  if (id.startsWith('CUP-') || id.startsWith('SC-')) return /quarter/i.test(String(match.stage || ''));
+  return !isLeagueRecord(match);
+}
+
+// League games are never knockout; kept as a guard for odd records.
+function isLeagueRecord(match) {
+  return /^[A-Z]{3}\d$/.test(String(match.competitionId || ''));
+}
+
+// The smallest record head-to-head needs.
+function scorelineRecord(match) {
+  const row = { id: match.id, season: match.season, week: match.week, competitionId: match.competitionId, competitionName: match.competitionName, stage: match.stage,
+    homeId: match.homeId, awayId: match.awayId, homeGoals: match.homeGoals, awayGoals: match.awayGoals, winnerId: match.winnerId || null, isInternational: Boolean(match.isInternational), knockout: true, scoreline: true };
+  if (match.penalties) row.penalties = match.penalties;
+  if (match.extraTime) row.extraTime = true;
+  if (match.aggregate) row.aggregate = match.aggregate;
+  return row;
+}
+
 function compactArchivedMatch(match) {
   const { timeline, possessionSlices, lineups, keyChances, playerRatings, ...rest } = match;
   if (lineups) rest.formations = { home: lineups.home?.formationId || null, away: lineups.away?.formationId || null };
@@ -6569,9 +6663,14 @@ function archiveSeason(state) {
     if (comp.championId) registerChampion(state, comp.id, comp.name, comp.championId, comp.finalistId, true);
   }
   archiveCoachSummaries(state);
-  const landmarks = state.current.matches
-    .filter((match) => match.landmark || match.stage === 'Final' || (!match.isInternational && rivalryDefinitionForIds(match.homeId, match.awayId)))
-    .map((match) => compactArchivedMatch(match));
+  // Finals, semi-finals and derbies keep their full record. Other knockout rounds of
+  // continental, global and international football (and domestic cups from the
+  // quarter-finals) keep a scoreline, so head-to-head has the meetings that matter (v4.6).
+  const landmarks = [];
+  for (const match of state.current.matches) {
+    if (match.landmark || /^final$|semi-final/i.test(String(match.stage || '').trim()) || (!match.isInternational && rivalryDefinitionForIds(match.homeId, match.awayId))) landmarks.push(compactArchivedMatch(match));
+    else if (headToHeadKnockout(match)) landmarks.push(scorelineRecord(match));
+  }
   state.history.landmarkMatches.push(...landmarks);
   archivePowerRankings(state);
 }
@@ -9631,6 +9730,8 @@ export function isShowcaseSelectedMatch(state, match) {
 }
 
 export function isShowcaseMatchEmbargoed(state, match) {
+  // Only this season's Showcase can be pending; earlier finals are history (v4.6).
+  if (Number.isFinite(match?.season) && Number.isFinite(state?.season) && match.season !== state.season) return false;
   if (!isShowcaseSelectedMatch(state, match)) return false;
   const prepared = state?.current?.postseason?.prepared;
   const showcaseRows = state?.current?.postseason?.showcaseMatches || [];
@@ -10807,6 +10908,24 @@ export function upgradeWorld(state) {
     }
     if (state.current) state.current.youthIntake ||= [];
     state.dataRevision = 35;
+  }
+  if (state.dataRevision < 36) {
+    // v4.6: head-to-head. Older seasons kept only some landmark games; Showcase finals and
+    // semi-finals stored with each postseason have scores, so they are recovered here.
+    // Other meetings start with the next archived season.
+    state.history.landmarkMatches ||= [];
+    const known = new Set(state.history.landmarkMatches.map((row) => row.id));
+    for (const postseason of state.history.postseasons || []) {
+      for (const row of postseason.showcaseMatches || []) {
+        const id = row.matchId || row.id;
+        if (!id || known.has(id) || !row.finalScore || !row.homeId || !row.awayId) continue;
+        known.add(id);
+        state.history.landmarkMatches.push({ id, season: postseason.season, week: row.week, competitionId: row.competitionId, competitionName: row.competitionName, stage: row.stage,
+          homeId: row.homeId, awayId: row.awayId, homeGoals: row.finalScore.home, awayGoals: row.finalScore.away, winnerId: row.winnerId || null,
+          isInternational: Boolean(row.isInternational), knockout: true, landmark: true, scoreline: true, ...(row.penalties ? { penalties: row.penalties } : {}) });
+      }
+    }
+    state.dataRevision = 36;
   }
   return state;
 }

@@ -1,5 +1,29 @@
 # v4 match engine and player model (in progress)
 
+## v4.6 — Star impact, season stats, head-to-head, links everywhere, steady live screens
+
+### One great player lifts his team
+- Elite players now act on expected goals directly, outside the saturating quality curve: a 98 Generational forward adds about a fifth to his team's expected goals, a 92 Legend about 7 %, an 88 Epic about 2 %, a Rare almost nothing. Elite keepers and defenders take goals away from the opponent the same way. Team totals are capped so a side full of stars does not run away. Elite coaches still add on top.
+- Quick-model (league) goals: a star's goals are partly added (the extra chances his quality brings, mostly finished by him) and partly taken from teammates. No player takes more than 36 % of the team's other goals, so a star scores more at a better team, not at a weak one.
+- `scripts/star-impact.mjs` (npm run star-impact): best Generational moved to a mid-table club (power rank 10–14) and to a top-5 club in 4 seeds, one season with and without him, plus a noise-free expected-points table. Mid-table: +6 places on average (12→8 expected, +18.5 expected points), top 6 in 3 of 4, top 8 in 4 of 4, top 3 once, no title. Top-5 club: top 3 in all four, one title. Star league goals 25–33 at mid-table clubs, 28–43 at top clubs.
+- 1 seed × 5 seasons: 2.72 goals a game, 45.6 / 25.6 / 28.8 home / draw / away (all in target).
+
+### Competition stats by season
+- The Statistics tab (players, teams, coaches) has a Season selector: This season (the default while a season runs), All-time and every past season. A season view ranks by goals or wins rather than titles. The Overview shows this season's top scorers and assists while a season runs.
+- Unplayed Showcase games are taken out of the current season and of all-time totals.
+
+### Head-to-head
+- A Showcase match from an earlier season is no longer treated as embargoed (every past final of a Showcase competition used to be hidden).
+- Season archives keep finals, semi-finals and derbies in full and a scoreline for the other knockout rounds of continental, global and international football (and domestic cups from the quarter-finals).
+- Save data revision 36: old saves recover Showcase finals and semi-finals with scores from the stored postseasons; other meetings start with the next season.
+
+### Links everywhere
+- Competition names link to the competition (match rows, Showcase list headings, pre-game, live and full-time screens, live season cards, career and coach tables, history and records). Club and nation names link in Showcase screens, head-to-head, leaders, award podiums, transfer and Squad Reshape rows. Goalscorers in match rows, the live commentary and the shootout feed link to players. Magazine stories link to the player or club they are about.
+- Leaving a Showcase match through a link pauses it where it was (pre-game, live minute, break or shootout); coming back to the Showcase reopens the same screen. Nothing is played, skipped or revealed.
+
+### Steady live screens
+- Re-rendering the same screen keeps the page and the Showcase overlay at their scroll position, so the stats stay in view while a match, season or offseason plays. A new route, a newly opened match or the start of a live run begins at the top.
+
 ## v4.5 — Flexible elite ranges, offseason new players and retirements
 
 ### Elite ranges

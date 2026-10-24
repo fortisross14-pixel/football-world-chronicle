@@ -45,6 +45,8 @@
     "regression-v43": "node scripts/regression-v43.mjs",
     "calibration-rarity": "node scripts/calibration-rarity.mjs",
     "regression-v44": "node scripts/regression-v44.mjs",
+    "regression-v46": "node scripts/regression-v46.mjs",
+    "star-impact": "node scripts/star-impact.mjs",
     "calibration-coaches": "node scripts/calibration-coaches.mjs"
   },
   "dependencies": {
