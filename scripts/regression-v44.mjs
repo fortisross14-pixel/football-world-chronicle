@@ -49,9 +49,9 @@ for (const row of intake) {
   if (stars === 4) assert.notEqual(row.rarity, 'common', '4★ academies produce no Commons');
 }
 const active = world.players.filter((player) => player.status === 'active');
-assert(count(active, 'generational') <= 3, 'Generational cap');
-assert(count(active, 'legend') <= 16, 'Legend cap');
-assert(count(active, 'epic') <= 52, 'Epic cap');
+assert(count(active, 'generational') <= 4, 'Generational range max');
+assert(count(active, 'legend') <= 17, 'Legend range max');
+assert(count(active, 'epic') <= 55, 'Epic range max');
 report.youth = { intake: intake.length, byRarity: Object.fromEntries(['generational', 'legend', 'epic', 'rare', 'uncommon', 'common'].map((rarity) => [rarity, count(intake, rarity)])) };
 
 // ── Academy scores move once per offseason and stay in 0–100 ──

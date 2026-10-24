@@ -1,5 +1,17 @@
 # v4 match engine and player model (in progress)
 
+## v4.5 — Flexible elite ranges, offseason new players and retirements
+
+### Elite ranges
+- Elite players now live in ranges instead of fixed caps: Generational 2–4 (usually 3), Legend 12–17 (usually 15), Epic 42–55 (usually 50).
+- Below the usual level, academy elite rolls happen normally. Above it, each offseason rolls a generation size that allows a few extra elites in a bumper year and none in a thin one. At the maximum a roll is downgraded, as before. Below the minimum that rarity's rolls are three times as likely and skip the country filter.
+- Rare-to-Epic breakouts share the same Epic range and allowance. Players now record their peak rating.
+- Old saves continue under the new ranges; nothing in the save format changes.
+
+### Offseason screens
+- The live offseason screen and the Offseason summary show "Top 10 new players" and "Top 10 retirements" side by side (stacked on phones), sorted by rarity, then rating. New players show portrait, rarity, position, age, nation, club and "Academy · N★"; retirements show peak rating, last club, seasons, career goals, titles and a Hall of Fame badge.
+- A line above them gives the live elite counts with their ranges. The summary links to full lists (#/offseason/debuts, #/offseason/retirements).
+
 ## v4.4 — Coach rarity and careers, youth academies
 
 ### Coach rarity

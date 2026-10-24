@@ -102,7 +102,7 @@ const topSizes = world.clubs.filter((club) => club.tier === 'detailed' && club.d
 assert(Math.min(...topSizes) >= 13 && Math.max(...topSizes) <= 18, `top-flight squads stay between 13 and 18 (${Math.min(...topSizes)}–${Math.max(...topSizes)})`);
 const after = {};
 for (const player of world.players) if (player.status === 'active') after[player.rarity] = (after[player.rarity] || 0) + 1;
-assert(after.generational <= 3 && after.legend <= 15 && after.epic <= 50, 'rarity caps hold after an offseason');
+assert(after.generational <= 4 && after.legend <= 17 && after.epic <= 55, 'rarity ranges hold after an offseason (v4.5 maxima)');
 report.secondSeason = { transfers: world.current.transfers.length, squadSizes: [Math.min(...topSizes), Math.max(...topSizes)], rarities: after };
 
 // --- Old saves (data revision 25) upgrade and keep playing ------------------------
