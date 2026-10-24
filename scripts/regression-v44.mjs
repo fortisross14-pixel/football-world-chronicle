@@ -80,7 +80,7 @@ for (const club of legacy.clubs) { delete club.academyScore; delete club.academy
 for (const player of legacy.players) delete player.academyClubId;
 delete legacy.current.youthIntake;
 const upgraded = upgradeWorld(JSON.parse(JSON.stringify(legacy)));
-assert.equal(upgraded.dataRevision, 35);
+assert(upgraded.dataRevision >= 35, 'upgraded to v4.4 or later');
 assert.equal(upgraded.coaches.find((coach) => coach.id === extraLegend.id).rarity, 'legend', 'existing coaches are never demoted');
 assert(upgraded.coachRarityTargets, 'targets are stored');
 assert(upgraded.clubs.filter((club) => club.division === 1).some((club) => club.academyScore >= 80), 'migrated worlds get seeded 5★ academies');
