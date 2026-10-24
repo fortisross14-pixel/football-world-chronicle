@@ -3856,8 +3856,7 @@ function buildSeasonPlayingTime(state) {
 // Yearly growth or decline on top of the career-curve archetype.
 // Ratings stay inside the rarity: below Epic a player tops out one point under the next
 // band (Rare 84, Uncommon 79, Common 69), so "Epic" always means elite. Breakouts can
-// promote a young Rare to Epic while the Epic population is under its ceiling.
-const EPIC_POPULATION_CAP = 50;
+// promote a young Rare to Epic while the Epic population is inside its range.
 function rarityRatingCap(player) {
   const band = STAR_RARITIES[player.rarity];
   return band && (band.rank || 1) < 4 ? band.max - 1 : 100;
@@ -3904,8 +3903,8 @@ function developPlayer(state, player, playing, club, coach) {
       story.type = 'breakout';
       // A Rare whose ceiling now reaches the Epic band joins the elite, if there is room.
       const room = player.rarity === 'rare' && player.potential > band.max ? epicRoom(state) : null;
-      // The last places under the cap are left for academy graduates (v4.4).
-      if (room && room.epics < EPIC_POPULATION_CAP - 8) {
+      // Breakouts follow the same Epic range as academy rolls (v4.5).
+      if (room && eliteRollKept(state, 'epic', room.epics)) {
         room.epics += 1;
         player.rarity = 'epic';
         player.potential = Math.max(player.potential, STAR_RARITIES.epic.min + 1);
@@ -4032,7 +4031,47 @@ const ACADEMY_PATRON_GAIN = { generational: 6, legend: 4, epic: 3, rare: 1.5, un
 const MONEY_OWNER_LOSS = { generational: 0.5, legend: 1, epic: 2, rare: 3, uncommon: 3.5, common: 4 };
 const YOUTH_COACH_GAIN = { generational: 3, legend: 2.5, epic: 2, rare: 1.5, uncommon: 1, common: 0.5 };
 const ACADEMY_DRIFT = 0.08;
-const PLAYER_CAPS = { generational: 3, legend: 15, epic: 50 };
+// Elite population ranges (v4.5). Below the usual level, elite rolls happen normally (and
+// get more likely under the min). Above it, each offseason's generation size decides how
+// many extra elites may arrive: none in a thin year, a few in a bumper one. At the max a
+// roll is downgraded. Breakouts to Epic share the same allowance.
+export const ELITE_RANGES = {
+  generational: { min: 2, target: 3, max: 4 },
+  legend: { min: 12, target: 15, max: 17 },
+  epic: { min: 42, target: 50, max: 55 }
+};
+const ELITE_LOW_BOOST = 3;
+// Extra elites above the usual level, by generation-size roll (thresholds on 0–1).
+const ELITE_EXTRA_STEPS = { generational: [[0.88, 1]], legend: [[0.86, 2], [0.56, 1]], epic: [[0.9, 4], [0.7, 3], [0.45, 2], [0.2, 1]] };
+const ELITE_ALLOWANCE = new WeakMap();
+
+function eliteAllowance(state) {
+  const key = state.offseasonProgress?.fromSeason ?? state.season;
+  let allowance = ELITE_ALLOWANCE.get(state);
+  if (!allowance || allowance.key !== key) {
+    const size = random(state);
+    allowance = { key, size, extra: Object.fromEntries(Object.entries(ELITE_EXTRA_STEPS).map(([rarity, steps]) => [rarity, steps.find(([at]) => size >= at)?.[1] || 0])) };
+    ELITE_ALLOWANCE.set(state, allowance);
+  }
+  return allowance;
+}
+
+// Whether an elite roll of this rarity keeps its rarity at the current count (uses up
+// one of this offseason's extra places when above the usual level).
+function eliteRollKept(state, rarity, count) {
+  const range = ELITE_RANGES[rarity];
+  if (!range || count < range.target) return true;
+  if (count >= range.max) return false;
+  const allowance = eliteAllowance(state);
+  if (allowance.extra[rarity] <= 0) return false;
+  allowance.extra[rarity] -= 1;
+  return true;
+}
+
+export function getEliteCounts(state) {
+  const counts = rarityCounts(state);
+  return Object.fromEntries(Object.entries(ELITE_RANGES).map(([rarity, range]) => [rarity, { count: counts[rarity] || 0, ...range }]));
+}
 
 function academyClass(club) {
   const reputation = club.reputation || 60;
@@ -4085,10 +4124,13 @@ function rollYouthRarity(state, club, nationality, counts, clubHasGenerational) 
   const stars = academyStars(club.academyScore);
   const table = { ...ACADEMY_TABLES[stars] };
   if (HISTORIC_ACADEMIES.has(club.id)) for (const rarity of ['epic', 'legend', 'generational']) if (table[rarity]) table[rarity] *= 1.6;
+  // Below the range minimum, that rarity's rolls become more likely.
+  const short = (key) => ELITE_RANGES[key] && (counts[key] || 0) < ELITE_RANGES[key].min;
+  for (const key of Object.keys(table)) if (short(key)) table[key] *= ELITE_LOW_BOOST;
   let rarity = weightedPick(state, Object.keys(table), (key) => table[key]);
-  if ((STAR_RARITIES[rarity]?.rank || 1) >= 4 && random(state) > ELITE_YOUTH_KEEP[eliteYouthGroup(nationality)]) rarity = 'rare';
+  if ((STAR_RARITIES[rarity]?.rank || 1) >= 4 && !short(rarity) && random(state) > ELITE_YOUTH_KEEP[eliteYouthGroup(nationality)]) rarity = 'rare';
   if (rarity === 'generational' && clubHasGenerational) rarity = 'legend';
-  while (PLAYER_CAPS[rarity] !== undefined && (counts[rarity] || 0) >= PLAYER_CAPS[rarity]) rarity = RARITY_DOWN[rarity];
+  while (ELITE_RANGES[rarity] && !eliteRollKept(state, rarity, counts[rarity] || 0)) rarity = RARITY_DOWN[rarity];
   return rarity;
 }
 
@@ -7855,6 +7897,7 @@ function* evolveWorldSteps(state) {
     developPlayer(state, player, seasonPlayingTime, clubBeforeLifecycle, clubBeforeLifecycle ? getCoach(state, clubBeforeLifecycle.id, false) : null);
     const multiplier = player.careerMultipliers[player.careerYear] ?? 0.85;
     player.rating = playerRatingFor(player, multiplier);
+    player.peakRating = Math.max(player.peakRating || 0, player.rating);
     player.marketValue = calculateMarketValue(state, player);
     const currentClub = player.clubId ? getClub(state, player.clubId) : null;
     const ambitionChange = ambitionHappinessChange(state, player, currentClub);
@@ -9876,6 +9919,41 @@ export function* startNextSeasonSteps(state) {
   archiveWorldNews(state, state.current.offseason.headlines);
   state.offseasonProgress = undefined;
   yield 'done';
+}
+
+// Players who debuted and players who retired in the current (or just finished)
+// offseason, best first: rarity, then rating, then potential.
+export function getOffseasonPeople(state) {
+  const progress = state.offseasonProgress;
+  const season = progress ? progress.fromSeason + 1 : state.season;
+  const rank = (player) => STAR_RARITIES[player.rarity]?.rank || 0;
+  const order = (a, b) => rank(b) - rank(a) || (b.rating || 0) - (a.rating || 0) || (b.potential || 0) - (a.potential || 0) || String(a.id).localeCompare(String(b.id));
+  const intake = new Map([...(state.current?.youthIntake || []), ...(state.current?.offseason?.youthIntake || [])].map((row) => [row.playerId, row]));
+  const debuts = (state.players || [])
+    .filter((player) => player.status === 'active' && player.debutSeason === season)
+    .sort(order)
+    .map((player) => {
+      const row = intake.get(player.id);
+      return { playerId: player.id, rarity: player.rarity, position: player.position, age: season - player.birthYear, nationality: player.nationality, clubId: player.clubId || null, rating: player.rating, potential: player.potential ?? null,
+        academy: Boolean(row || player.academy), academyClubId: row?.clubId || player.academyClubId || null, academyStars: row?.academyStars ?? null };
+    });
+  // Mid-offseason the retirements sit in the pending list until the new season is set up;
+  // before that point state.current still holds last year's.
+  const pending = state.pendingSeasonRetirements || [];
+  const rows = progress
+    ? (pending.length ? pending : state.season > progress.fromSeason ? (state.current?.retirements || []) : [])
+    : (state.current?.retirements || state.current?.offseason?.retirements || []);
+  const retiredIds = new Set(rows.filter((row) => row.type === 'player').map((row) => row.playerId));
+  const titles = new Map();
+  for (const honour of state.history.honours || []) if (retiredIds.has(honour.playerId)) titles.set(honour.playerId, (titles.get(honour.playerId) || 0) + 1);
+  const hall = new Set((state.history.hallOfFamePlayers || []).filter((row) => retiredIds.has(row.playerId)).map((row) => row.playerId));
+  // Saves from before v4.5 have no recorded peak: estimate it from the career curve.
+  const peak = (player) => Math.max(player.peakRating || 0, player.rating || 0, player.peakRating ? 0 : playerRatingFor(player, Math.max(1, ...(player.careerMultipliers || []))));
+  const retirements = rows.filter((row) => row.type === 'player').map((row) => ({ row, player: getPlayer(state, row.playerId) })).filter(({ player }) => player)
+    .map(({ row, player }) => ({ playerId: player.id, rarity: player.rarity, position: player.position, nationality: player.nationality, lastClubId: row.formerClubId || player.lastClubId || null,
+      peakRating: peak(player), seasons: player.careerYear || player.careerLength || 0, goals: player.careerGoals || 0, titles: titles.get(player.id) || 0, hallOfFame: hall.has(player.id) }))
+    .sort((a, b) => (STAR_RARITIES[b.rarity]?.rank || 0) - (STAR_RARITIES[a.rarity]?.rank || 0) || b.peakRating - a.peakRating || String(a.playerId).localeCompare(String(b.playerId)));
+  return { season, debuts, retirements };
 }
 
 // What the offseason has produced so far: coach moves, biggest signings, retirements.

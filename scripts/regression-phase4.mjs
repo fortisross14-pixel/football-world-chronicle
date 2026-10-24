@@ -118,7 +118,7 @@ for (let season = 0; season < 8; season += 1) {
   elite.push(rows.filter((player) => player.rating >= 88).length);
   const rarities = {};
   for (const player of rows) rarities[player.rarity] = (rarities[player.rarity] || 0) + 1;
-  assert(rarities.generational <= 3 && rarities.legend <= 15 && rarities.epic <= 50, 'rarity caps hold');
+  assert(rarities.generational <= 4 && rarities.legend <= 17 && rarities.epic <= 55, 'rarity ranges hold (v4.5 maxima)');
 }
 assert(Math.min(...elite) >= 12 && Math.max(...elite) <= 60, `elite (88+) population stays stable: ${elite.join(', ')}`);
 report.elite88 = elite;

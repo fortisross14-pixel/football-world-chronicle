@@ -62,6 +62,28 @@ const last = offseasonScreens.at(-1);
 for (const marker of ['Elite moves', 'Coaching changes', 'live-steps']) assert(last.includes(marker), `offseason screen shows ${marker}`);
 assert(offseasonScreens.some((html) => html.includes('Transfer market')));
 
+// v4.5: top new players and top retirements, with the elite counts and ranges above them.
+const text = (html) => html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+const finalScreen = screens.at(-1);
+for (const marker of ['Top 10 new players', 'Top 10 retirements']) assert(finalScreen.includes(marker), `offseason screen shows ${marker}`);
+assert(/Generational \d+ \(2–4\) · Legend \d+ \(12–17\) · Epic \d+ \(42–55\)/.test(text(finalScreen)), 'elite counts and ranges line');
+const newPlayers = finalScreen.slice(finalScreen.indexOf('Top 10 new players'), finalScreen.indexOf('Top 10 retirements'));
+assert((newPlayers.match(/class="people-row"/g) || []).length === 10, 'ten new players listed');
+assert(/href="#\/player\/[^"]+\/overview"/.test(newPlayers) && /href="#\/club\//.test(newPlayers) && /href="#\/nation\//.test(newPlayers), 'player, club and nation links');
+const rankOf = { generational: 6, legend: 5, epic: 4, rare: 3, uncommon: 2, common: 1 };
+const order = [...newPlayers.matchAll(/rarity-badge rarity-(\w+)/g)].map((m) => rankOf[m[1]]);
+assert(order.every((value, index) => index === 0 || order[index - 1] >= value), 'new players sorted by rarity first');
+await click('live-close');
+location.hash = '#/offseason/summary';
+await handlers['window:hashchange']?.();
+assert(app.innerHTML.includes('Top 10 new players') && app.innerHTML.includes('Show all'), 'summary page has the lists with Show all');
+location.hash = '#/offseason/debuts';
+await handlers['window:hashchange']?.();
+assert(app.innerHTML.includes('Every new player'), 'Show all page for new players');
+location.hash = '#/offseason/retirements';
+await handlers['window:hashchange']?.();
+assert(app.innerHTML.includes('Every retirement'), 'Show all page for retirements');
+
 // Same world as a plain run.
 const plain = createWorld(seed);
 plain.showcasePreferences = { UCL: 'final' };

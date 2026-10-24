@@ -1637,3 +1637,29 @@ input::placeholder { color: var(--text-3); }
   .coach-band { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
   .coach-band-track { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* v4.5 offseason: elite ranges, top new players and top retirements */
+.elite-ranges { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; margin: 0 0 12px; color: var(--text-2); font-size: var(--fs-13); }
+.elite-ranges > i { font-style: normal; color: var(--text-3); padding: 0 8px; }
+.elite-range > span { color: var(--rc); font-weight: 700; }
+.elite-range strong { font-size: var(--fs-16); font-weight: 800; font-stretch: 78%; font-variant-numeric: tabular-nums; color: var(--text); }
+.elite-range small { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.people-grid { align-items: stretch; }
+.people-note { margin: -4px 0 8px; color: var(--text-3); font-size: var(--fs-12); }
+.people-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 56px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.people-row:last-child { border-bottom: 0; }
+.people-portrait { display: block; line-height: 0; }
+.people-main { display: grid; gap: 4px; min-width: 0; }
+.people-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; font-weight: 700; }
+.people-name .player-link { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.people-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--text-2); font-size: var(--fs-12); }
+.people-meta a { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; }
+.people-meta .crest { flex: none; }
+.academy-tag { color: var(--text-2); font-weight: 600; }
+a.academy-tag:hover { color: var(--cyan); }
+.people-figure { display: grid; justify-items: end; font-size: var(--fs-19); font-weight: 800; font-stretch: 76%; font-variant-numeric: tabular-nums; line-height: 1; }
+.people-figure small { font-size: var(--fs-11); font-weight: 700; font-stretch: 100%; color: var(--text-3); letter-spacing: .06em; }
+@media (max-width: 759px) {
+  .people-row { gap: 10px; }
+  .people-meta { gap: 2px 10px; }
+}
