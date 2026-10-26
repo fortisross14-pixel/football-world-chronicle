@@ -20,10 +20,19 @@ const app = {
   get innerHTML() { return this._html; },
   set innerHTML(value) { this._html = value; if (value.includes('live-hero')) screens.push(value); }
 };
+// v4.6.1: during a live run only the page area and the command bar are repainted.
+let partialPaints = 0;
+const main = {
+  _html: '',
+  get innerHTML() { return this._html; },
+  set innerHTML(value) { this._html = value; partialPaints += 1; if (value.includes('live-hero')) screens.push(value); }
+};
+const bar = { outerHTML: '' };
 globalThis.document = {
   body: { classList: new FakeClassList() },
   addEventListener(type, cb) { handlers[`document:${type}`] = cb; },
-  getElementById(id) { return id === 'app' ? app : null; },
+  getElementById(id) { return id === 'app' ? app : id === 'main-content' && app.innerHTML.includes('id="main-content"') ? main : null; },
+  querySelector(selector) { return selector === '.command-bar' ? bar : null; },
   querySelectorAll() { return []; }
 };
 globalThis.window = {
@@ -95,4 +104,6 @@ assert.equal(live.season, plain.season);
 assert.equal(JSON.stringify(live.history.champions), JSON.stringify(plain.history.champions), 'same champions as a plain run');
 assert.equal(JSON.stringify(live.history.transfers.map((row) => [row.playerId, row.toClubId, row.fee])), JSON.stringify(plain.history.transfers.map((row) => [row.playerId, row.toClubId, row.fee])), 'same transfers as a plain run');
 
-console.log(JSON.stringify({ seasonScreens: seasonScreens.length, offseasonScreens: offseasonScreens.length, passed: true }, null, 2));
+assert(partialPaints >= 40, `live weeks repaint only the page area (${partialPaints})`);
+assert(bar.outerHTML.includes('command-bar'), 'the command bar is repainted with them');
+console.log(JSON.stringify({ seasonScreens: seasonScreens.length, offseasonScreens: offseasonScreens.length, partialPaints, passed: true }, null, 2));

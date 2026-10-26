@@ -4386,8 +4386,20 @@ function render() {
   const sidebarScroll = document.getElementById('sidebar-nav')?.scrollTop || 0;
   // A live run starting (or ending) is a new screen too.
   const viewKey = `${routeKey}|${simLive || simLiveDone?.kind || ''}`;
-  const scroll = routeChanged || viewKey !== lastRenderedView ? null : captureScroll();
+  const sameView = !routeChanged && viewKey === lastRenderedView;
+  const scroll = sameView ? captureScroll() : null;
   lastRenderedView = viewKey;
+  // During a live run only the page area and the command bar change: swap just those, so
+  // the rest of the shell (and whatever the reader is touching) stays put.
+  const liveMain = sameView && simLive ? document.getElementById('main-content') : null;
+  const liveBar = liveMain && typeof document.querySelector === 'function' ? document.querySelector('.command-bar') : null;
+  if (liveMain && liveBar) {
+    liveMain.innerHTML = liveSimPage();
+    liveBar.outerHTML = topbar(currentRoute);
+    restoreScroll(scroll);
+    bind();
+    return;
+  }
   document.getElementById('app').innerHTML =`<a class="skip-link" href="#main-content">Skip to content</a><div class="app-shell" data-section="${sectionFor(currentRoute)}">${sidebar(currentRoute)}<button class="sidebar-scrim" id="sidebar-scrim" data-action="close-menu" aria-label="Close navigation" tabindex="-1"></button><div class="main-shell">${topbar(currentRoute)}${sectionStrip(currentRoute)}<main id="main-content" tabindex="-1" class="content${routeChanged && !simLive ? ' page-enter' : ''}">${simLive || simLiveDone ? liveSimPage() : `${navigationTrail(currentRoute)}${page(currentRoute)}`}</main>${mobileBottomNav(currentRoute)}</div></div>${searchOverlay()}${clubModal()}${postseasonMatchModal()}<div id="toast-root" role="status" aria-live="polite"></div>`;
   const sidebarElement = document.getElementById('sidebar-nav');
   if (sidebarElement) sidebarElement.scrollTop = sidebarScroll;
@@ -4413,6 +4425,8 @@ function captureScroll() {
 }
 
 function restoreScroll(saved) {
+  // Scroll events from restoring are ours, not the reader's.
+  ignoreScrollUntil = performance.now() + 80;
   [...(document.querySelectorAll?.(SCROLL_KEEPERS) || [])].forEach((element, index) => {
     const top = saved.overlays.get(scrollKey(element, index));
     if (top) element.scrollTop = top;
@@ -4593,6 +4607,43 @@ function finishedOffseasonProgress() {
 }
 
 const nextPaint = () => new Promise((resolve) => setTimeout(resolve, 0));
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ── Scrolling while something plays (v4.6.1) ──
+// Each simulated week blocks the page for a moment and every repaint swaps content under
+// the finger, so a live run (or a Showcase match) waits while the reader scrolls and
+// carries on a moment after they stop.
+const SCROLL_IDLE_MS = 350;
+let lastScrollInput = 0;
+let touchActive = false;
+let ignoreScrollUntil = 0;
+
+function noteScrollInput() {
+  const now = performance.now();
+  if (now >= ignoreScrollUntil) lastScrollInput = now;
+}
+
+function userIsScrolling() {
+  const idle = performance.now() - lastScrollInput;
+  // A finger resting on the screen holds things up to 3 s (in case a touchend is missed).
+  return idle < SCROLL_IDLE_MS || (touchActive && idle < 3000);
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  const passive = { passive: true, capture: true };
+  window.addEventListener('wheel', noteScrollInput, passive);
+  window.addEventListener('scroll', noteScrollInput, passive);
+  window.addEventListener('touchmove', noteScrollInput, passive);
+  window.addEventListener('touchstart', () => { touchActive = true; noteScrollInput(); }, passive);
+  window.addEventListener('touchend', () => { touchActive = false; noteScrollInput(); }, passive);
+  window.addEventListener('touchcancel', () => { touchActive = false; noteScrollInput(); }, passive);
+}
+
+// Lets the browser paint, then holds while the reader is scrolling.
+async function livePause() {
+  await new Promise((resolve) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(() => setTimeout(resolve, 0)) : setTimeout(resolve, 0)));
+  while (userIsScrolling()) await wait(80);
+}
 
 // Plays weeks one at a time, repainting the live screen between them.
 async function runWeeksLive(count) {
@@ -4600,7 +4651,7 @@ async function runWeeksLive(count) {
   for (let index = 0; index < count && !state.current.completed; index += 1) {
     simulateNextWeek(state);
     render();
-    await nextPaint();
+    await livePause();
   }
   simLive = null;
 }
@@ -4609,10 +4660,10 @@ async function runWeeksLive(count) {
 async function runOffseasonLive() {
   simLive = 'offseason';
   render();
-  await nextPaint();
+  await livePause();
   for (const _ of startNextSeasonSteps(state)) {
     render();
-    await nextPaint();
+    await livePause();
   }
   simLive = null;
 }
@@ -4794,6 +4845,8 @@ function runPostseasonContinuousMatch() {
       clearPostseasonMatchTimer();
       return;
     }
+    // The match clock holds while the reader scrolls through the stats.
+    if (userIsScrolling()) { postseasonTimer = setTimeout(step, 120); return; }
     postseasonTickIndex = Math.min(finalIndex, postseasonTickIndex + 1);
     const tick = timeline[postseasonTickIndex] || timeline[finalIndex];
     syncPostseasonLiveProgress(match);
@@ -4867,6 +4920,7 @@ function runPostseasonPenaltyShootout() {
       clearPostseasonMatchTimer();
       return;
     }
+    if (userIsScrolling()) { postseasonTimer = setTimeout(step, 120); return; }
     postseasonPenaltyIndex = Math.min(sequence.length, postseasonPenaltyIndex + 1);
     syncPostseasonLiveProgress(match);
     render();
