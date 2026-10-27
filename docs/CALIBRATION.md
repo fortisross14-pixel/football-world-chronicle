@@ -467,3 +467,39 @@ Youth intake per season: 0.2 Generational, 0.7 Legend, 2.5 Epic, 294 Rare, 464 U
 | v4.4 | 7.86 s | 11.15 s |
 
 No change (both measured under the same parallel load, so the absolute times are higher than in v4.3's table).
+
+## v4.7 — breakout stars and rich clubs (`node scripts/market-stars.mjs`, 2 seeds × 8 seasons)
+
+Seeds 314159 and 271828, run in parallel; "before" is the v4.6 engine on the same seeds.
+
+| | Before | After | Target |
+|---|---:|---:|---:|
+| Epic+ 88+ at clubs with reputation < 82, per season (seed 314159) | 11, 14, 10, 7, 6, 2, 2, 2, 2 | 9, 5, 3, 2, 0, 0, 0, 0, 0 | few |
+| Same (seed 271828) | 9, 10, 4, 2, 2, 5, 6, 5, 5 | 6, 3, 2, 2, 0, 2, 0, 1, 1 | few |
+| Left after 1 / 2 / 3 seasons at the club (non-Loyal, broke out in first season there) | 0 % / 25 % / 85 % | 43 % / 100 % / 100 % | ~40 % / 85–90 % / ~all |
+| Left after 1 / 2 / 3 seasons as a breakout star (non-Loyal, all) | 17 % / 55 % / 93 % | 68 % / 94 % / 100 % | |
+| Longest stay at a small club | 4 seasons | 3 seasons | |
+| Elite moves per window | 4–20 | 6–17 | today's 7–17 |
+| Bidding wars (16 windows) | — | 69 | |
+| Fees for 90+ players: median / p90 / max | $17.9m / $57.3m / $61.9m | $63.7m / $112.1m / $143.0m | 95-rated 20-year-old ≈ $60–150m |
+| European clubs among the 20 richest | 13 / 12 | 18 / 18 | mostly |
+| Clubs above $400m | 7 / 4 (most had spent < $30m in three windows) | 1 / 0 (Real Madrid, $95m spent) | very few |
+
+The first-season measure is small (7 stars broke out in their first season at a club); the
+"as a breakout star" row includes players who reached 88 after several seasons at the club,
+who are already on the 80–95 % part of the schedule.
+
+Before, the 20 richest included Elfsborg, Atlántico, Plaza Colonia (Legend billionaire owners
+injecting $100m a year), Dinamo Zagreb, Red Star, Colo-Colo, Al Ain, Dynamo Kyiv and Jeonbuk
+(top clubs of small leagues receiving $86–105m a year, Bayern $122m). After: the European
+giants and strong second-level clubs, plus Flamengo, Al Hilal, Colo-Colo, Nacional or Sydney FC
+at $236–274m.
+
+Quick calibration (1 seed × 5 seasons): 2.72 goals, 45.4 / 25.6 / 29.0, 12.5 shots and 4.4 on
+target per team, 2.14 yellows, 0.131 reds, 28.8 % clean sheets (all in target); 5 Ballon d'Or
+winners from 5 clubs, 4 UCL winners, 2.4 champions per elite league.
+
+Regressions run: regression-market-geography (its appended export list no longer re-exports
+`invalidateRuntimeCache`, which made it fail to load on main as well), market-career-balance,
+editor-v316, smoke-test, regression-phase4, regression-phase5, regression-v43, regression-v4-ui:
+all pass.

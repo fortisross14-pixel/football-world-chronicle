@@ -10,7 +10,7 @@ const source = fs.readFileSync(engineUrl, 'utf8').replace(/from '(\.\/[^']+)'/g,
 const engine = await import(`data:text/javascript;base64,${Buffer.from(source + `\nexport {
   chooseRookieDestination, geographicClubPick, ensureClubRosters, transferPlayer,
   availableForTransfer, playerClubTenure, updatePlayerDiscontent, ambitionHappinessChange,
-  invalidateRuntimeCache, runTransferMarket
+  runTransferMarket
 };`).toString('base64')}`);
 
 assert(countryAffinity('England', 'Australia', 'Europe', 'Asia') > countryAffinity('England', 'Japan', 'Europe', 'Asia'));
