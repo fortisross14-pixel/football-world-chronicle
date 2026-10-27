@@ -70,6 +70,7 @@ import {
   getClubSquadTarget,
   getSquadReshape,
   getSeasonMoves,
+  getPlayerTransferInterest,
   getClubChanges,
   coachCareerPhase,
   academyStars,
@@ -3182,7 +3183,26 @@ function moveTeam(clubId, nationalTeamId = null) {
 
 function playerMovesTable(rows) {
   if (!rows.length) return '<div class="empty-state compact">No player moves match this filter yet.</div>';
-  return `<div class="table-scroll"><table class="data-table moves-table"><thead><tr><th>Player</th><th>Rarity</th><th>Pos</th><th class="num">Age</th><th class="num">Rating</th><th>From → To</th><th>How</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${playerLink(row.playerId)}</td><td>${rarityBadge(row.rarity)}</td><td><span class="position-pill pos-${row.position.toLowerCase()}">${row.position}</span></td><td class="num">${row.age}</td><td class="num"><strong>${row.rating}</strong></td><td class="move-route">${moveTeam(row.fromClubId)} <span aria-hidden="true">→</span> ${moveTeam(row.toClubId)}</td><td>${esc(row.how)}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="table-scroll"><table class="data-table moves-table"><thead><tr><th>Player</th><th>Rarity</th><th>Pos</th><th class="num">Age</th><th class="num">Rating</th><th>From → To</th><th>How</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${playerLink(row.playerId)}</td><td>${rarityBadge(row.rarity)}</td><td><span class="position-pill pos-${row.position.toLowerCase()}">${row.position}</span></td><td class="num">${row.age}</td><td class="num"><strong>${row.rating}</strong></td><td class="move-route">${moveTeam(row.fromClubId)} <span aria-hidden="true">→</span> ${moveTeam(row.toClubId)}</td><td>${esc(row.how)}${biddingWarNote(row)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+// Profile line: the clubs that bid for the player in the latest window.
+function transferInterestLine(player) {
+  const interest = getPlayerTransferInterest(state, player.id);
+  if (!interest) return '';
+  const others = interest.clubIds.filter((id) => id !== interest.signedClubId);
+  const links = (ids) => ids.map((id) => teamLink(id)).join(', ');
+  let text = '';
+  if (!interest.signedClubId) text = `${links(interest.clubIds)} ${interest.clubIds.length > 1 ? 'were' : 'was'} chasing him; he stayed`;
+  else if (player.clubId === interest.signedClubId) text = `Signed for ${teamLink(interest.signedClubId)}${others.length ? ` ahead of ${links(others)}` : ''}`;
+  return text ? `<p class="transfer-interest"><span>Transfer interest</span> ${text}</p>` : '';
+}
+
+// "Bidding war" with the clubs that lost out, when there was one.
+function biddingWarNote(row) {
+  const rivals = (row.rivalClubIds || []).filter((id) => clubById(id));
+  if (!rivals.length) return '';
+  return `<small class="move-war">Bidding war · beat ${rivals.map((id) => teamLink(id)).join(', ')}</small>`;
 }
 
 function coachMovesTable(rows) {
@@ -3194,7 +3214,7 @@ function coachMovesTable(rows) {
 function eliteMovesList(limit = 12) {
   const rows = getSeasonMoves(state, { eliteOnly: true }).players.slice(0, limit);
   if (!rows.length) return '<div class="empty-state compact">No Epic, Legend or Generational player has moved yet.</div>';
-  return `<div class="archive-list">${rows.map((row) => `<div class="archive-row elite-move"><strong>${rarityBadge(row.rarity)} ${playerLink(row.playerId)} <small>${row.rating}</small></strong><span>${moveTeam(row.fromClubId)} → ${moveTeam(row.toClubId)}</span><small class="move-how">${esc(row.how)}</small></div>`).join('')}</div>`;
+  return `<div class="archive-list">${rows.map((row) => `<div class="archive-row elite-move"><strong>${rarityBadge(row.rarity)} ${playerLink(row.playerId)} <small>${row.rating}</small></strong><span>${moveTeam(row.fromClubId)} → ${moveTeam(row.toClubId)}</span><small class="move-how">${esc(row.how)}${biddingWarNote(row)}</small></div>`).join('')}</div>`;
 }
 
 function movesPage() {
@@ -3510,7 +3530,7 @@ function playerPage(id, tabRaw = 'overview') {
   const recentLogs = [...(career.logs || [])].slice(-6).reverse();
   const topHonours = groupedRecords(career.honours, 'competitionName').slice(0, 6);
   return `${heading}
-    <div class="two-column wide-left section-gap"><div class="stack">${player.status === 'active' ? playerExtrasPanel(player) : ''}<section class="panel"><div class="panel-head"><h3>${esc(careerLabel)}</h3><span class="panel-meta">Career Y${Math.min(player.careerYear + 1, player.careerLength)}/${player.careerLength}</span></div><p class="role-copy">${esc(player.name)} is a ${esc(STAR_RARITIES[player.rarity]?.label || player.rarity)} ${esc(player.roleLabel.toLowerCase())}. ${career.honours.length ? `The career currently includes ${career.honours.length} team trophies.` : 'The first major team trophy is still ahead.'} ${hof ? `Retirement earned induction into the Football Hall of Fame with a legacy score of ${hof.score}.` : player.status === 'retired' ? 'The career ended without Football Hall of Fame induction.' : 'The legacy is still being written.'}</p><div class="staff-effects">${player.status === 'active' ? availabilityChips(player.id) : ''}<span>Base ${player.baseQuality}</span><span>Ages ${player.debutAge || 18}–${(player.debutAge || 18) + player.careerLength}</span><span>${player.realWorldId ? 'Historical icon' : 'Original world star'}</span>${playerLeagueContext(player) ? `<span>${esc(playerLeagueContext(player))}</span>` : ''}</div><div class="spotlight-grid"><article class="spotlight-card"><span>Current team</span><strong>${player.clubId ? teamTextLink(player.clubId, false, 'Club') : 'Free agent'}</strong><small>${player.clubId ? competitionLink(clubById(player.clubId)?.leagueId) : esc(status)}</small></article><article class="spotlight-card"><span>Contract</span><strong>${player.status === 'active' ? (player.contractYears ? `${player.contractYears} yr` : 'Ending now') : 'Closed'}</strong><small>${player.status === 'active' ? 'Career leverage in the market' : 'Career complete'}</small></article><article class="spotlight-card"><span>International</span><strong>${career.international.caps} caps</strong><small>${career.international.goals} goals for country</small></article></div></section>
+    <div class="two-column wide-left section-gap"><div class="stack">${player.status === 'active' ? playerExtrasPanel(player) : ''}<section class="panel"><div class="panel-head"><h3>${esc(careerLabel)}</h3><span class="panel-meta">Career Y${Math.min(player.careerYear + 1, player.careerLength)}/${player.careerLength}</span></div><p class="role-copy">${esc(player.name)} is a ${esc(STAR_RARITIES[player.rarity]?.label || player.rarity)} ${esc(player.roleLabel.toLowerCase())}. ${career.honours.length ? `The career currently includes ${career.honours.length} team trophies.` : 'The first major team trophy is still ahead.'} ${hof ? `Retirement earned induction into the Football Hall of Fame with a legacy score of ${hof.score}.` : player.status === 'retired' ? 'The career ended without Football Hall of Fame induction.' : 'The legacy is still being written.'}</p><div class="staff-effects">${player.status === 'active' ? availabilityChips(player.id) : ''}<span>Base ${player.baseQuality}</span><span>Ages ${player.debutAge || 18}–${(player.debutAge || 18) + player.careerLength}</span><span>${player.realWorldId ? 'Historical icon' : 'Original world star'}</span>${playerLeagueContext(player) ? `<span>${esc(playerLeagueContext(player))}</span>` : ''}</div><div class="spotlight-grid"><article class="spotlight-card"><span>Current team</span><strong>${player.clubId ? teamTextLink(player.clubId, false, 'Club') : 'Free agent'}</strong><small>${player.clubId ? competitionLink(clubById(player.clubId)?.leagueId) : esc(status)}</small></article><article class="spotlight-card"><span>Contract</span><strong>${player.status === 'active' ? (player.contractYears ? `${player.contractYears} yr` : 'Ending now') : 'Closed'}</strong><small>${player.status === 'active' ? 'Career leverage in the market' : 'Career complete'}</small></article><article class="spotlight-card"><span>International</span><strong>${career.international.caps} caps</strong><small>${career.international.goals} goals for country</small></article></div>${player.status === 'active' ? transferInterestLine(player) : ''}</section>
     ${recentLogs.length ? `<section class="panel"><div class="panel-head"><h3>Recent matches</h3><a href="${base}/statistics">Match log</a></div><div class="form-log">${recentLogs.map((log) => `<div class="form-log-row"><span class="form-${String(log.result || '').toLowerCase()}">${esc(log.result || '')}</span><span class="form-log-comp">${competitionEmblem(log.competitionId, 'xs')}${competitionLink(log.competitionId)}</span><span class="form-log-opp">${teamLink(log.opponentId, log.isInternational)}</span><span class="num">${esc(log.score || '')}</span><span class="num">${log.goals ? `${log.goals} G` : ''}${log.assists ? ` ${log.assists} A` : ''}</span><b class="rating-chip ${log.rating >= 8 ? 'high' : log.rating < 6.3 ? 'low' : ''}">${log.rating.toFixed(1)}</b></div>`).join('')}</div></section>` : ''}</div>
     <div class="stack"><section class="panel"><div class="panel-head"><h3>Legacy</h3></div>${hof ? `<div class="legacy-callout"><strong>${icon('trophy')}Football Hall of Fame</strong><span>Inducted ${esc(hof.inductionSeasonLabel)} · Score ${hof.score}</span></div>` : '<div class="empty-state compact">Hall of Fame induction is decided only when the player retires.</div>'}${legends.length ? `<div class="legend-mini-list">${legends.map((row) => `<a href="#/club/${row.clubId}/legacy">${crest(row.clubId, 'xs')}<span>Club legend · ${esc(clubById(row.clubId)?.name || row.clubId)}</span><b>${row.score}</b></a>`).join('')}</div>` : ''}</section>
     <section class="panel"><div class="panel-head"><h3>Honours</h3><a href="${base}/honours">All honours</a></div>${topHonours.length ? `<div class="trophy-cabinet compact">${topHonours.map((group) => `<div class="trophy-shelf"><span class="trophy-count">${group.years.length}</span><div><strong>${esc(group.name)}</strong><small>${group.years.sort((a, b) => a - b).map((year) => getSeasonLabel(year)).join(' · ')}</small></div></div>`).join('')}</div>` : '<div class="empty-state compact">No team trophies yet.</div>'}${individualAwards.length ? `<div class="award-tags">${groupedRecords(individualAwards, 'name').slice(0, 6).map((group) => `<span class="trophy-tag">${icon('medal')}${esc(group.name)} ×${group.years.length}</span>`).join('')}</div>` : ''}</section></div></div>`;

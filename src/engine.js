@@ -40,7 +40,7 @@ import {
   BACKUP_SYSTEM_PENALTY,
   BACKUP_SYSTEM_PENALTY_ADAPTIVE
 } from './squad-model.js';
-import { countryAffinity, domesticMobilityChance, eliteDepartureChance } from './market-policy.js';
+import { countryAffinity, domesticMobilityChance, eliteDepartureChance, breakoutDepartureChance } from './market-policy.js';
 
 const COUNTRY_TO_CODE = Object.fromEntries(
   Object.entries(COUNTRY_META).map(([country, meta]) => [country, meta.code])
@@ -1038,10 +1038,25 @@ function countryPool(state, country) {
   return Number(state.countryFinance?.[country]?.pool || countryFinanceProfile(country).base);
 }
 
+const FINANCE_NOMINAL_LEAGUE_SIZE = 16;
+const FINANCE_UNMODELLED_CLUB_WEIGHT = 1.0;
+
+// Owner money follows the football economy: a billionaire at a minor club in a small
+// market injects far less than one at a giant in a rich league.
+function ownerInjectionReach(state, club) {
+  const market = clamp(countryPool(state, club.country) / 700, 0.35, 1.15);
+  const stature = clamp(((club.reputation || 60) - 55) / 30, 0.4, 1);
+  return market * stature;
+}
+
 function clubCountryAllocationMap(state, country) {
   const clubs = (state.clubs || []).filter((club) => club.country === country && club.division === 1);
   const pool = countryPool(state, country);
-  const totalWeight = clubs.reduce((sum, club) => sum + financialTierWeight(club.financialTier), 0) || 1;
+  // A league with only a few modelled clubs still shares its economy with the rest of
+  // its football pyramid: count the missing clubs (up to 16) at a modest weight, so the
+  // top club of a six-club league does not take a third of the country's money.
+  const modelled = clubs.reduce((sum, club) => sum + financialTierWeight(club.financialTier), 0);
+  const totalWeight = modelled + Math.max(0, FINANCE_NOMINAL_LEAGUE_SIZE - clubs.length) * FINANCE_UNMODELLED_CLUB_WEIGHT || 1;
   return new Map(clubs.map((club) => [club.id, pool * financialTierWeight(club.financialTier) / totalWeight]));
 }
 
@@ -1166,11 +1181,17 @@ function refreshClubFinancesFromPools(state) {
       // Transfer-sale windfalls remain in cash, but recurring wealth comes from the country's
       // pool and the club's institutional bucket. Cash naturally burns down if the owner leaves.
       const owner = (state.owners || []).find((item) => item.id === club.ownerId && item.status !== 'retired');
-      const ownerInjection = ownerAnnualCashInjection(owner);
+      const ownerInjection = Number((ownerAnnualCashInjection(owner) * ownerInjectionReach(state, club)).toFixed(1));
       club.ownerAnnualInjection = ownerInjection;
       club.finances = clamp(Math.round(club.finances * 0.72 + share * ownerFactor + ownerInjection - operatingCost), 3, 1100);
       club.wageBudget = Number(Math.max(1.2, share * 0.24 * Math.min(1.35, ownerFactor)).toFixed(1));
       club.transferBudget = Math.max(2, Math.round(Math.min(club.finances * 0.58, share * (0.72 + Math.max(0, ownerFactor - 1) * 0.9) + ownerInjection * 0.72 + club.finances * 0.12)));
+      // Cash far above what the club needs (2.5× its yearly payroll) flows into this
+      // summer's transfer budget instead of piling up unused.
+      const needs = 2.5 * Math.max(Number(club.currentPayroll || 0), club.wageBudget * 0.8);
+      if (club.finances > needs) {
+        club.transferBudget = Math.round(Math.min(club.finances * 0.85, club.transferBudget + (club.finances - needs) * 0.5));
+      }
     }
   }
 }
@@ -7328,7 +7349,10 @@ function playerMoveRows(state) {
     else if (move.freeTransfer && move.fromClubId) how = `Contract expired at ${from} · free${years ? `, ${years}` : ''}`;
     else if (move.freeTransfer) how = `Free agent · ${years || 'signed'}`;
     else how = `Transfer · ${money(move.fee)}`;
-    rows.push({ playerId: move.playerId, fromClubId: move.fromClubId || null, toClubId: move.toClubId || null, how, kind: move.loan ? 'loan' : move.freeTransfer ? 'free' : 'transfer', fee: move.fee || 0 });
+    if (move.reason === 'Homecoming') how = `Homecoming · ${move.fee ? money(move.fee) : 'free'}`;
+    // Bidding war: the clubs that lost out.
+    const rivalClubIds = (move.biddingWar?.rivalClubIds || []).filter(Boolean);
+    rows.push({ playerId: move.playerId, fromClubId: move.fromClubId || null, toClubId: move.toClubId || null, how, kind: move.loan ? 'loan' : move.freeTransfer ? 'free' : 'transfer', fee: move.fee || 0, rivalClubIds });
   }
   for (const row of current.loanReturns || []) rows.push({ playerId: row.playerId, fromClubId: row.fromClubId, toClubId: row.toClubId, how: 'Back from loan', kind: 'loan-return', fee: 0 });
   const unattached = (playerId, clubId, how) => {
@@ -7383,6 +7407,15 @@ function coachMoveRows(state) {
     rows.push({ coachId, name: coach.name, rarity: coach.rarity, rating: coach.quality, fromClubId, fromNationalTeamId, toClubId: arrival?.toClubId || null, toNationalTeamId: arrival?.toNationalTeamId || null, how });
   }
   return rows.sort((a, b) => (MOVE_RARITY_ORDER[b.rarity] || 0) - (MOVE_RARITY_ORDER[a.rarity] || 0) || b.rating - a.rating || a.name.localeCompare(b.name));
+}
+
+// Clubs chasing a player in the latest window: who bid and who signed him (or that he stayed).
+export function getPlayerTransferInterest(state, playerId) {
+  const player = getPlayer(state, playerId);
+  const interest = player?.transferInterest;
+  if (!interest || interest.season !== state.season || !interest.clubIds?.length) return null;
+  const clubIds = interest.clubIds.filter((id) => getClub(state, id));
+  return clubIds.length ? { season: interest.season, clubIds, signedClubId: interest.signedClubId || null } : null;
 }
 
 export function getSeasonMoves(state, { clubId = null, eliteOnly = false } = {}) {
@@ -8226,9 +8259,22 @@ function primeDestinationAllowed(state, player, buyer, seller = null) {
 function playerCareerStage(state, player) {
   const age = Math.max(player.debutAge || 17, state.season - player.birthYear);
   const remaining = Math.max(0, (player.careerLength || 16) - (player.careerYear || 0));
-  if (age <= 21 || (player.careerYear || 0) <= 3) return 'development';
+  // Ability, not only age: an Epic+ player rated 88+ is ready for a big stage at any age.
+  const ready = player.rating >= BREAKOUT_RATING && ELITE_RARITY_SET.has(player.rarity);
+  if (!ready && (age <= 21 || (player.careerYear || 0) <= 3)) return 'development';
   if (age >= 32 || remaining <= 3) return 'late';
   return 'prime';
+}
+
+const BREAKOUT_RATING = 88;
+const ELITE_RARITY_SET = new Set(['epic', 'legend', 'generational']);
+
+// An Epic+ star rated 88+ whose club sits below his level: not one of Europe's
+// leading destinations and with a reputation well under his rating.
+function isBreakoutStarAt(state, player, club) {
+  if (!club || !ELITE_RARITY_SET.has(player.rarity) || player.rating < BREAKOUT_RATING) return false;
+  if ((club.reputation || 0) >= Math.min(88, player.rating - 6)) return false;
+  return !europeanEliteClubIds(state, 18).has(club.id);
 }
 
 function eliteMigrationPressure(state, player, club) {
@@ -8390,8 +8436,17 @@ function availableForTransfer(state, player) {
   const seller = getClub(state, player.clubId);
   if (!seller || !['epic', 'legend', 'generational'].includes(player.rarity)) return true;
   const success = playerRecentSuccess(state, player);
+  const tenure = playerClubTenure(state, player);
+  if (isBreakoutStarAt(state, player, seller)) {
+    const club = recentMajorClubAchievement(state, seller.id, 2);
+    const breakout = breakoutDepartureChance({ tenure, loyal: hasTrait(player, 'loyal'),
+      recentMajorSuccess: club.titles + club.finals > 0 || success.majorHonours > 0 });
+    // An unhappy star can still force his way out sooner than the schedule.
+    const unhappy = tenure >= 1 && (player.unhappySeasons || 0) >= 2 ? 0.97 : 0;
+    return stableStringRoll(`${state.season}:${state.seed}:departure:${player.id}`) < Math.max(breakout, unhappy);
+  }
   const chance = eliteDepartureChance({
-    tenure: playerClubTenure(state, player), topClub: seller.reputation >= 85 || clubFinancialTierRank(seller) >= 3,
+    tenure, topClub: seller.reputation >= 85 || clubFinancialTierRank(seller) >= 3,
     happiness: player.happiness, unhappySeasons: player.unhappySeasons || 0,
     migrationPressure: eliteMigrationPressure(state, player, seller), payrollPressure: Number(seller.payrollPressureRatio || 1),
     success: success.majorHonours + success.majorAwards,
@@ -8615,12 +8670,119 @@ function transferDramaStory(state, key, headline, body, playerId, importance = '
   });
 }
 
+// What a buyer may spend on one elite signing: its transfer budget, or for a rich club
+// a share of its cash (Generational/Legend 65 %, Epic 45 %; global superstars up to 72 %
+// at Tier S clubs). Wages are checked separately.
+function eliteSpendingLimit(buyer, player, globalSuperstar = false) {
+  const cash = Number(buyer.finances || 0);
+  const share = ['generational', 'legend'].includes(player.rarity) ? 0.65 : player.rarity === 'epic' ? 0.45 : 0;
+  const superstarShare = globalSuperstar ? (clubFinancialTierRank(buyer) >= 4 ? 0.72 : 0.58) : 0;
+  return Math.max(Number(buyer.transferBudget || 0), cash * Math.max(share, superstarShare));
+}
+
+// A breakout star is priced on what he is now, not discounted because he wants out.
+function breakoutBaseFee(state, player, buyer) {
+  const age = Math.max(18, state.season - player.birthYear);
+  const raw = calculateMarketValueRaw(player.rating, player.rarity, age, player.position);
+  const years = Math.max(0, player.contractYears || 0);
+  const contract = years <= 1 ? 0.7 : years === 2 ? 0.85 : 1;
+  return Number(Math.max(askingPrice(state, player, buyer), raw * 0.36 * contract).toFixed(1));
+}
+
+// Clubs chasing a player this window (shown on his profile).
+function noteTransferInterest(state, player, clubs) {
+  const ids = [...new Set(clubs.filter(Boolean).map((club) => club.id))].slice(0, 5);
+  if (!ids.length) return;
+  player.transferInterest = { season: state.season, clubIds: ids, signedClubId: null };
+}
+
+// Several suitors bid for a breakout star. The fee climbs with the number of bidders
+// (about +22 % for each extra club); a club drops out when the price passes what it can
+// spend. The player picks the best sporting project among the clubs still in.
+function runBreakoutBiddingWar(state, player, seller, first, possibleBuyers, buyerWeight, limits, rosters) {
+  const others = possibleBuyers
+    .filter((club) => club !== first && (club.reputation || 0) >= Math.max(76, (seller.reputation || 60) + 2))
+    .map((club) => ({ club, weight: buyerWeight(club) * (0.75 + random(state) * 0.5) }))
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 3)
+    .map((row) => row.club);
+  const bidders = [first, ...others];
+  if (bidders.length < 2) return null;
+  const base = breakoutBaseFee(state, player, first);
+  const target = base * (1 + 0.22 * (bidders.length - 1)) * (0.94 + random(state) * 0.14);
+  const age = Math.max(player.debutAge || 17, state.season - player.birthYear);
+  const stepFirst = player.rating < 90 || (age <= 20 && player.rating < 92);
+  const project = (club) => {
+    const roster = rosters.get(club.id) || [];
+    const giant = (club.reputation || 0) >= 92;
+    const step = (club.reputation || 0) >= 78 && (club.reputation || 0) < 90;
+    return clubDestinationScore(state, club)
+      + (positionNeedFromRoster(state, club, roster) === player.position ? 4 : 0)
+      - clubStarLoad(roster) * 1.6
+      + (stepFirst ? (step ? 4 : giant ? -5 : 0) : 0)
+      + random(state) * 5;
+  };
+  const staying = bidders.filter((club) => (limits.get(club.id) || 0) >= target * 0.85);
+  const pool = staying.length ? staying : [first];
+  const offers = pool.map((club) => ({ club, score: project(club) })).sort((a, b) => b.score - a.score);
+  const winner = offers[0].club;
+  const fee = Math.max(base, Math.min(target, limits.get(winner.id) || base));
+  return { winner, fee: Number(fee.toFixed(1)), bidders };
+}
+
+function playerHomeClubId(state, player) {
+  if (player.academyClubId) return player.academyClubId;
+  if (player.spawnClubId) return player.spawnClubId;
+  return (state.history?.transfers || []).find((row) => row.playerId === player.id && row.fromClubId)?.fromClubId || null;
+}
+
+// Loyal players in their last two or three seasons often go home to the academy or first
+// club that made them.
+function runLoyalHomecomings(state, clubs, activePlayers, rosters) {
+  let moves = 0;
+  const clubsById = new Map(clubs.map((club) => [club.id, club]));
+  for (const player of activePlayers) {
+    if (moves >= 12) break;
+    if (!player.clubId || player.loan || !hasTrait(player, 'loyal')) continue;
+    if (player.transferProtectedUntilSeason && state.season < player.transferProtectedUntilSeason) continue;
+    const remaining = (player.careerLength || 16) - (player.careerYear || 0);
+    if (remaining > 3 || remaining < 1 || (player.careerYear || 0) < 6) continue;
+    const homeId = playerHomeClubId(state, player);
+    const home = homeId ? clubsById.get(homeId) : null;
+    if (!home || home.id === player.clubId) continue;
+    const roll = stableStringRoll(`${state.season}:${state.seed}:homecoming:${player.id}`);
+    if (roll >= (remaining === 1 ? 0.5 : 0.35)) continue;
+    const seller = clubsById.get(player.clubId);
+    const roster = rosters.get(home.id) || [];
+    const salary = salaryOfferFor(state, player, home, 'transfer');
+    if (!canClubCarrySalary(home, rosterPayroll(roster), salary, 0, 1.08)) continue;
+    // A sentimental fee: clubs let a loyal veteran go home cheaply.
+    const fee = (player.contractYears || 0) <= 1 ? 0 : Number(Math.min(askingPrice(state, player, home) * 0.4, Number(home.transferBudget || 0)).toFixed(1));
+    if (fee > Number(home.finances || 0)) continue;
+    transferPlayer(state, player, home, seller, fee, fee === 0);
+    const record = state.current.transfers[state.current.transfers.length - 1];
+    if (record?.playerId === player.id) record.reason = 'Homecoming';
+    player.happiness = Math.max(player.happiness || 0, 85);
+    if (seller && rosters.has(seller.id)) rosters.set(seller.id, rosters.get(seller.id).filter((item) => item.id !== player.id));
+    rosters.get(home.id)?.push(player);
+    if (STAR_RARITIES[player.rarity]?.rank >= STAR_RARITIES.rare.rank) {
+      transferDramaStory(state, `homecoming-${player.id}`, `${player.name} comes home to ${home.name}`,
+        `The loyal ${player.roleLabel.toLowerCase()} leaves ${seller?.name || 'his club'} to finish his career where it began${fee ? ` ($${fee.toFixed(1)}m)` : ''}.`,
+        player.id, ELITE_RARITY_SET.has(player.rarity) ? 'feature' : 'major');
+    }
+    moves += 1;
+  }
+  return moves;
+}
+
 function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = false) {
   const drama = { refusals: 0 };
   const caps = { generational: initial ? 1 : 3, legend: initial ? 4 : 8, epic: initial ? 7 : 12 };
   const moved = { generational: 0, legend: 0, epic: 0 };
   const movedByPosition = { GK: 0, DF: 0, MF: 0, FW: 0 };
   const positionCaps = { GK: initial ? 1 : 2, DF: initial ? 3 : 5, MF: initial ? 4 : 7, FW: initial ? 4 : 7 };
+  const breakoutCap = initial ? 6 : 30;
+  let breakoutMoves = 0;
   let moves = 0;
   const eliteEuropeMarket = europeanEliteClubIds(state, 18);
   const leagueRankById = new Map();
@@ -8639,27 +8801,36 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
         + (seller ? Math.max(0, 86 - seller.reputation) * (['generational', 'legend'].includes(player.rarity) ? 0.75 : 0.42) : 32)
         + migrationPressure * 0.9 + (player.unhappySeasons || 0) * 15
         + Math.max(0, Number(seller?.payrollPressureRatio || 1) - 1) * 62;
-      return { player, seller, desire, migrationPressure };
+      return { player, seller, desire, migrationPressure, breakout: isBreakoutStarAt(state, player, seller) };
     })
-    .filter(({ player, seller, desire, migrationPressure }) => !seller || desire >= (player.rarity === 'generational' ? 34 : 27) || migrationPressure >= 48)
+    .filter(({ player, seller, desire, migrationPressure, breakout }) => !seller || breakout || desire >= (player.rarity === 'generational' ? 34 : 27) || migrationPressure >= 48)
     .sort((a, b) => Number(Boolean(b.player.transferListed)) - Number(Boolean(a.player.transferListed))
+      || Number(b.breakout) - Number(a.breakout)
       || b.migrationPressure - a.migrationPressure
       || STAR_RARITIES[b.player.rarity].rank - STAR_RARITIES[a.player.rarity].rank
       || b.desire - a.desire
       || b.player.rating - a.player.rating);
 
   for (const candidate of candidates) {
-    const { player, seller, desire, migrationPressure } = candidate;
+    const { player, seller, desire, migrationPressure, breakout } = candidate;
     const careerStage = playerCareerStage(state, player);
-    const eliteEurope = eliteEuropeMarket;
-    const sellerDestinationScore = seller ? clubDestinationScore(state, seller) : 0;
-    if (moved[player.rarity] >= caps[player.rarity]) continue;
-    if (movedByPosition[player.position] >= positionCaps[player.position]) continue;
-    if (seller) {
+    const age = Math.max(player.debutAge || 17, state.season - player.birthYear);
+    // Breakout stars have their own (larger) quota so the usual caps never leave
+    // an available star without a turn; other elite moves keep today's caps.
+    if (breakout) {
+      if (breakoutMoves >= breakoutCap) continue;
+    } else {
+      if (moved[player.rarity] >= caps[player.rarity]) continue;
+      if (movedByPosition[player.position] >= positionCaps[player.position]) continue;
+    }
+    // A small club cannot block a big bid because its squad is short: it sells and
+    // refills in the Squad Reshape.
+    if (seller && !breakout) {
       const sellerTarget = seller.division === 2 ? CLUB_ROSTER_TARGET.reserve : CLUB_ROSTER_TARGET[seller.tier];
       if ((rosters.get(seller.id)?.length || 0) <= Math.max(3, sellerTarget - 1) && migrationPressure < 70
         && !player.transferListed && player.happiness >= 40 && Number(seller.payrollPressureRatio || 1) < 1.20) continue;
     }
+    const limits = new Map();
     let possibleBuyers = clubs.filter((buyer) => {
       if (buyer.id === seller?.id || buyer.division === 2) return false;
       if (!initial && Number(buyer.payrollPressureRatio || 1) >= 1.18) return false;
@@ -8672,15 +8843,14 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       // Very young elite talent usually earns an intermediate move before the superclubs.
       if (player.rating < 84 && buyer.reputation >= 88) return false;
       if (player.rating < 89 && achievement < 22 && buyer.reputation >= 92) return false;
-      const fee = seller ? askingPrice(state, player, buyer) : 0;
-      const globalSuperstar = migrationPressure >= 55 && ['generational', 'legend'].includes(player.rarity);
-      const spendingLimit = globalSuperstar
-        ? Math.max(buyer.transferBudget, buyer.finances * (clubFinancialTierRank(buyer) >= 4 ? 0.72 : 0.58))
-        : buyer.transferBudget;
-      const wageLimit = Math.max(0.8, buyer.wageBudget * (globalSuperstar ? 0.62 : 0.52));
+      const fee = seller ? (breakout ? breakoutBaseFee(state, player, buyer) : askingPrice(state, player, buyer)) : 0;
+      const globalSuperstar = (breakout || migrationPressure >= 55) && ['generational', 'legend'].includes(player.rarity);
+      const spendingLimit = eliteSpendingLimit(buyer, player, globalSuperstar);
+      const wageLimit = Math.max(0.8, buyer.wageBudget * (globalSuperstar || breakout ? 0.62 : 0.52));
       const offeredSalary = salaryOfferFor(state, player, buyer, seller ? 'transfer' : 'free');
       const buyerBill = rosterPayroll(rosters.get(buyer.id) || []);
       if (fee > spendingLimit || offeredSalary > wageLimit || !canClubCarrySalary(buyer, buyerBill, offeredSalary, 0, 1.01)) return false;
+      limits.set(buyer.id, spendingLimit);
       const samePosition = (rosters.get(buyer.id) || []).filter((item) => item.position === player.position);
       const weakest = samePosition.sort((a, b) => a.rating - b.rating)[0];
       return !weakest || player.rating >= weakest.rating + (player.transferListed ? -3 : player.rarity === 'epic' ? 1 : 0);
@@ -8695,7 +8865,7 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       }
     }
     if (!possibleBuyers.length) continue;
-    const buyer = geographicClubPick(state, possibleBuyers, player, (club) => {
+    const buyerWeight = (club) => {
       const clubRoster = rosters.get(club.id) || [];
       const systemNeed = clubSystemNeed(state, club, clubRoster);
       const positionFit = (positionNeedFromRoster(state, club, clubRoster) === player.position ? 12 : 3)
@@ -8710,18 +8880,32 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       const achievement = playerAchievementScore(state, player, 3);
       const giant = club.reputation >= 92;
       const steppingStone = club.reputation >= 78 && club.reputation < 90;
-      const developmentFit = player.rating < 89 && achievement < 28 ? (steppingStone ? 1.9 : giant ? 0.35 : 1) : 1;
+      // Step by step: younger or 88–89 breakout stars usually go to a strong second-level
+      // club first; 90+ stars attract the giants, who can sign straight from small clubs.
+      const breakoutStep = breakout && (player.rating < 90 || (age <= 20 && player.rating < 92));
+      const developmentFit = breakoutStep ? (steppingStone ? 1.9 : giant ? 0.45 : 1)
+        : breakout ? (giant ? 1.6 : steppingStone ? 0.9 : 1)
+        : player.rating < 89 && achievement < 28 ? (steppingStone ? 1.9 : giant ? 0.35 : 1) : 1;
       const leagueRank = leagueRankById.get(club.leagueId) || 12;
       const leaguePull = Math.max(0.62, 1.36 - (leagueRank - 1) * 0.055);
       const destinationPull = Math.max(0.58, clubDestinationScore(state, club) / 88);
       const institutionalPull = 0.55 + clubFinancialTierRank(club) * 0.22;
       const financePull = Math.max(0.65, Math.min(1.35, countryPool(state, club.country) / 650));
       return Math.max(1, (club.reputation - 63 + positionFit + (club.ownerNegotiationBonus || 0) * 30) * hoardingPenalty * europePull * goalkeeperDemand * developmentFit * leaguePull * destinationPull * institutionalPull * financePull);
-    });
-    let fee = seller ? askingPrice(state, player, buyer) : 0;
-    // Bidding war: a second big club drives the fee up before the winner is decided.
+    };
+    let buyer = geographicClubPick(state, possibleBuyers, player, buyerWeight);
+    let fee = seller ? (breakout ? breakoutBaseFee(state, player, buyer) : askingPrice(state, player, buyer)) : 0;
     let rival = null;
-    if (seller && random(state) < 0.55) {
+    let war = null;
+    if (seller && breakout) {
+      // Bidding war: every credible suitor bids, the fee rises with interest and the
+      // player picks the best sporting project among the offers that stay in.
+      war = runBreakoutBiddingWar(state, player, seller, buyer, possibleBuyers, buyerWeight, limits, rosters);
+      if (war) { buyer = war.winner; fee = war.fee; }
+      else fee = Math.min(fee, limits.get(buyer.id) ?? fee);
+      noteTransferInterest(state, player, war ? war.bidders : [buyer]);
+    } else if (seller && random(state) < 0.55) {
+      // Bidding war: a second big club drives the fee up before the winner is decided.
       let rivalScore = -Infinity;
       for (const club of possibleBuyers) {
         if (club === buyer || (club.reputation || 0) < 80) continue;
@@ -8730,9 +8914,11 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       }
       if (rival) {
         const raised = Number((fee * (1.08 + random(state) * 0.14)).toFixed(1));
-        if (raised <= Math.max(buyer.transferBudget, buyer.finances * 0.6)) fee = raised; else rival = null;
+        if (raised <= Math.max(limits.get(buyer.id) || 0, buyer.finances * 0.6)) fee = raised; else rival = null;
       }
     }
+    fee = Number(fee.toFixed(1));
+    if (seller && !breakout) noteTransferInterest(state, player, rival ? [buyer, rival] : [buyer]);
     const europeStepUp = seller?.confederation !== 'Europe' && buyer.confederation === 'Europe' ? 0.16 : 0;
     const destinationGain = clubDestinationScore(state, buyer) - (seller ? clubDestinationScore(state, seller) : 58);
     const personality = hasTrait(player, 'loyal') && seller ? -0.18 : hasTrait(player, 'mercenary') ? 0.1 : 0;
@@ -8747,7 +8933,8 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       0.32,
       0.998
     );
-    if (random(state) > acceptance) {
+    // An available breakout star moves when a suitable club bids; refusals are rare.
+    if (random(state) > (breakout ? Math.max(0.92, acceptance) : acceptance)) {
       if (['legend', 'generational'].includes(player.rarity) && drama.refusals < 4) {
         drama.refusals += 1;
         transferDramaStory(state, `refuses-${player.id}-${buyer.id}`, `${player.name} turns down ${buyer.name}`, `${player.name} rejects the move${seller ? ` and stays at ${seller.name}` : ''} for now.`, player.id);
@@ -8755,17 +8942,29 @@ function runEliteTransferMarket(state, clubs, activePlayers, rosters, initial = 
       continue;
     }
     // A late collapse: medical, personal terms or a last-minute change of heart.
-    if (seller && random(state) < 0.05) {
+    if (seller && random(state) < (breakout ? 0.03 : 0.05)) {
       transferDramaStory(state, `collapse-${player.id}-${buyer.id}`, `${player.name}'s move to ${buyer.name} collapses`, `The deal falls through at the last moment; ${player.name} remains at ${seller.name}.`, player.id);
       continue;
     }
     const oldClubId = player.clubId;
     transferPlayer(state, player, buyer, seller, fee, !seller);
-    if (rival) transferDramaStory(state, `race-${player.id}`, `${buyer.name} win the race for ${player.name}`, `${buyer.name} beat ${rival.name} to the signing after a bidding war that pushed the fee to ${fee.toFixed(1)}m.`, player.id, 'feature');
+    const rivals = war ? war.bidders.filter((club) => club.id !== buyer.id) : rival ? [rival] : [];
+    if (rivals.length) {
+      const record = state.current.transfers[state.current.transfers.length - 1];
+      if (record?.playerId === player.id) record.biddingWar = { rivalClubIds: rivals.map((club) => club.id), bidders: rivals.length + 1 };
+      const names = rivals.map((club) => club.name);
+      const beaten = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+      transferDramaStory(state, `race-${player.id}`, `Bidding war: ${buyer.name} beat ${names[0]} to ${player.name}`,
+        `${buyer.name} beat ${beaten} to the signing of ${player.name} from ${seller.name} after a bidding war that pushed the fee to $${fee.toFixed(1)}m.`, player.id, 'feature');
+    }
+    if (player.transferInterest?.season === state.season) player.transferInterest.signedClubId = buyer.id;
     if (oldClubId && rosters.has(oldClubId)) rosters.set(oldClubId, rosters.get(oldClubId).filter((item) => item.id !== player.id));
     rosters.get(buyer.id).push(player);
-    moved[player.rarity] += 1;
-    movedByPosition[player.position] += 1;
+    if (breakout) breakoutMoves += 1;
+    else {
+      moved[player.rarity] += 1;
+      movedByPosition[player.position] += 1;
+    }
     moves += 1;
   }
   // Summer standoffs: restless stars who wanted out but are still there.
@@ -8946,6 +9145,7 @@ function runTransferMarket(state, initial = false) {
   }));
   const maxMoves = initial ? Math.min(260, Math.round(state.clubs.length * 0.18)) : Math.min(420, Math.round(state.clubs.length * 0.24));
   let moves = initial ? 0 : runPayrollClearanceMarket(state, clubs, rosters);
+  if (!initial) moves += runLoyalHomecomings(state, clubs, activePlayers, rosters);
   moves += runEliteTransferMarket(state, clubs, activePlayers, rosters, initial);
   for (const buyer of clubs) {
     if (moves >= maxMoves) break;

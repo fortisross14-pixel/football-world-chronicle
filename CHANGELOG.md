@@ -1,5 +1,28 @@
 # v4 match engine and player model (in progress)
 
+## v4.7 — Breakout stars move up, rich clubs spend
+
+### Breakout stars
+- An Epic+ player rated 88+ is "ready" at any age: the development discount on his ambition no longer applies.
+- At a club below his level (reputation under min(88, rating − 6) and outside Europe's 18 leading destinations), his availability follows completed seasons at the club: 0 % in the debut season, then 40 %, 80 % and 95 % a year. Loyal players: 0 / 15 / 40 / 70 %. A major trophy or continental final in the last two seasons lowers the chance by a fifth. Buyers still have to exist and afford him.
+- Step by step: 88–89 stars (and 90–91 stars aged 20 or under) lean towards strong second-level clubs; 90+ stars lean towards the giants, who can sign straight from small clubs.
+- A short squad no longer lets the seller block the sale (the Squad Reshape refills it). Breakout moves have their own quota (30 a window), so the usual caps never leave one without a turn; other elite moves keep today's caps.
+- Bidding wars: up to four credible suitors bid, the fee climbs about 22 % per extra bidder from a floor based on current ability, clubs drop out past what they can spend, and the player picks the best sporting project still in. Magazine story ("Bidding war: Milan beat Real Madrid to Maldini"); the Moves table shows the beaten clubs.
+- Loyal homecomings: in the last three seasons of his career a Loyal player goes home to his academy or first club with a 35 % chance a summer (50 % in the final one), for a sentimental fee, with a Magazine story.
+
+### Rich clubs spend
+- For an Epic+ signing a club can spend 65 % of its cash on a Generational or Legend and 45 % on an Epic (not only the transfer budget); wage rules are unchanged.
+- Cash above 2.5× the yearly payroll flows into the summer's transfer budget (half of the surplus, at most 85 % of cash).
+- Why minor clubs got rich: a country's money was split only among the clubs modelled in its top division, so the top club of a six-club league took about a third of it (Dinamo Zagreb, Colo-Colo, Al Ain and Red Star received €95–105m a year, close to Bayern's €121m). Leagues now share as if they had at least 16 clubs. Owner cash injections were flat (a Legend billionaire gave €100m a year to Elfsborg or Atlántico); they now scale with the country's football economy and the club's stature.
+
+### UI
+- Moves table and Elite moves list: "Bidding war · beat …" with links to the rival clubs.
+- Player profile: a "Transfer interest" line naming the clubs that bid in the latest window and who signed him (or that he stayed).
+
+### Measurement
+- `scripts/market-stars.mjs` (2 seeds × 8 seasons, run in parallel); see docs/CALIBRATION.md, v4.7.
+- No save migration: new fields (`biddingWar` on transfer records, `transferInterest` on players) are optional, and finances settle at the next offseason.
+
 ## v4.6 — Star impact, season stats, head-to-head, links everywhere, steady live screens
 
 ### One great player lifts his team

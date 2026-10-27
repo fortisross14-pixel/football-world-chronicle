@@ -51,3 +51,15 @@ export function eliteDepartureChance({ tenure, topClub, happiness = 70, unhappyS
     * patience * (0.65 + temperament * 0.9) / (1 + Math.min(3, success) * 0.3);
   return Math.max(0.02, Math.min(0.92, chance));
 }
+
+// A breakout star (Epic+, rated 88+) at a club below his level. Tenure is completed
+// seasons at the club: nobody leaves in his debut season, then the pull of a bigger
+// stage grows each summer. Loyal players follow a slower schedule. Recent major
+// success (a major trophy or continental final in the last two seasons) buys a
+// little patience but never overrides the schedule.
+export function breakoutDepartureChance({ tenure, loyal = false, recentMajorSuccess = false }) {
+  if (tenure < 1) return 0;
+  const schedule = loyal ? [0, 0.15, 0.40, 0.70] : [0, 0.40, 0.80, 0.95];
+  const chance = schedule[Math.min(3, tenure)];
+  return recentMajorSuccess ? chance * 0.8 : chance;
+}

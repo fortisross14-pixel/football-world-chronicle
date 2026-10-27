@@ -1574,6 +1574,9 @@ input::placeholder { color: var(--text-3); }
 .move-route { white-space: nowrap; }
 .move-how { display: block; color: var(--text-3); font-size: var(--fs-12); }
 .elite-move small { color: var(--text-3); font-weight: 600; }
+.move-war { display: block; margin-top: 2px; color: var(--gold); font-size: var(--fs-12); font-weight: 600; }
+.transfer-interest { margin: 12px 0 0; color: var(--text-2); font-size: var(--fs-13, 13px); }
+.transfer-interest > span { margin-right: 6px; color: var(--text-3); font-size: var(--fs-12); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 .club-changes-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 12px; }
 .club-changes-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 4px; }
 .club-changes .archive-row b.up { color: var(--green); }
